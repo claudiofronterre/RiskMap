@@ -1,0 +1,186 @@
+---
+title: "Checking a fit"
+description: >
+  How a fit was computed, the Monte Carlo samples behind it, and the
+  uncertainty of its estimates from profile likelihoods and the parametric
+  bootstrap.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  out.width = "90%",
+  fig.align = "center",
+  dpi = 150
+)
+# The profiles and the bootstrap take a few minutes, so precompute.R computes
+# them once, with the code shown below, and the article loads the results.
+precomputed <- readRDS("precomputed/checking-a-fit.rds")
+```
+
+Two questions follow every fit. Was the fit computed reliably, and how
+uncertain are its estimates? This article answers the first with
+`check_fit()` and the Monte Carlo samples, and the second with profile
+likelihoods and the parametric bootstrap. Whether the model suits the data is a
+different question, which the article *Assessing predictions and simulations*
+takes up.
+
+## A fit to check
+
+The model is a binomial model of river blindness in 90 Liberian villages, with
+the logarithm of elevation as a covariate and a spatial Gaussian process.
+
+```{r fit-model, message = FALSE}
+library(RiskMap)
+library(sf)
+
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+liberia <- st_transform(liberia, propose_crs(liberia, messages = FALSE))
+
+set.seed(2026)
+fit <- glgpm(npos ~ log_elevation + gp(),
+             data = liberia,
+             family = "binomial",
+             denominator = ntest)
+fit
+```
+
+## How the fit was computed
+
+Binomial, Poisson and negative binomial models are fitted by Monte Carlo
+maximum likelihood. The likelihood is an integral over the spatial effects at
+the villages, which RiskMap estimates by importance sampling. The estimate is
+then certified with an independent sample, which bounds its Monte Carlo error
+in statistical standard errors. `check_fit()` goes through this computation.
+
+```{r check-fit}
+checks <- check_fit(fit)
+checks
+```
+
+Each row is one check. *Monte Carlo accuracy* is the bound on the Monte Carlo
+error, here a small fraction of a standard error. *Importance weights* gives the
+effective number of draws and the shape of the tail of the weights, which
+should stay below 0.7. *Other maxima* says whether a search found a higher
+maximum of the likelihood. The remaining rows flag variances estimated at zero,
+a spatial scale too short for the spacing of the data, and the importance
+distribution used. A check that needs attention is marked with an exclamation
+mark or a cross, and the fix follows. `summary()` gives the evidence behind
+each row, and `plot()` draws the certificate, the effective draws and the tail
+shape at each stage of the fit, and the screen of short spatial scales behind
+the check for other maxima.
+
+```{r check-plot, fig.width = 9, fig.height = 6.5, out.width = "100%"}
+plot(checks)
+```
+
+The extra checks compute something new. The check of the radius predicts how
+often the allowance in the certificate for the Monte Carlo error of the
+certification sample is too small. It takes about twice as long as the fit.
+
+```{r check-radius}
+check_fit(fit, extra = "radius")
+```
+
+## The samples of the spatial effects
+
+After the fit, a Markov chain Monte Carlo sampler draws the spatial effects at
+the villages given the data, at the estimated parameters. `predict()` uses
+these samples. `plot_mcmc()` shows the trace and autocorrelation of the mean
+of the effects and of the effect at the village with the smallest effective
+sample size, and the effective sample sizes at all villages, which
+`summarise_mcmc()` returns.
+
+```{r mcmc-plot, fig.height = 5}
+plot_mcmc(fit)
+```
+
+```{r mcmc-summary}
+summary(summarise_mcmc(fit)$ess)
+```
+
+## Profile likelihoods
+
+`summary()` gives Wald intervals, which assume that the estimate is normally
+distributed. That is often poor for the spatial variance and scale, whose
+likelihood is skewed. A profile likelihood maximises the likelihood over the
+other parameters at each value of one, and the values where it falls by
+$\chi^2_{1,0.95}/2$ from its maximum give a 95% interval. For a binomial model
+the likelihood is estimated from one bank of Monte Carlo draws.
+
+```{r profile, eval = FALSE}
+profiles <- profile(fit,
+                    parameters = c("log_elevation", "sigma2", "phi"),
+                    pairs = list(c("sigma2", "phi")),
+                    cores = 4)
+```
+
+```{r profile-load, include = FALSE}
+profiles <- precomputed$profiles
+```
+
+```{r profile-print}
+profiles
+```
+
+The profile interval of the scale stretches much further above the estimate
+than the Wald interval. `plot()` draws each profile with its interval, the
+dashed curve being the quadratic approximation behind the Wald interval, and
+the joint profile of the spatial variance and scale with their profiles along
+its sides. `plot_profile()` selects parameters and pairs, and
+`scale = "deviance"` draws the profile deviance instead.
+
+```{r profile-plot, fig.width = 9, fig.height = 7.5, out.width = "100%"}
+plot(profiles)
+```
+
+`check_fit()` reads the profiles too. It flags a profile that is flat, so that
+an interval is open at one end, or that rises above the estimate, which would
+mean the fit had not found the maximum.
+
+```{r check-profile}
+check_fit(fit, profile = profiles)
+```
+
+## The parametric bootstrap
+
+The parametric bootstrap simulates datasets from the fitted model at its
+estimate, refits the model to each, and uses the spread of the estimates.
+It gives bias-corrected (BC) intervals as well as percentile intervals.
+
+```{r bootstrap, eval = FALSE}
+bootstrap <- parametric_bootstrap(fit,
+                                  n_sim = 200,
+                                  cores = 4)
+```
+
+```{r bootstrap-load, include = FALSE}
+bootstrap <- precomputed$bootstrap
+```
+
+```{r bootstrap-summary}
+summary(bootstrap)
+```
+
+```{r bootstrap-plot, fig.width = 8, fig.height = 5.5, out.width = "100%"}
+plot_bootstrap(bootstrap, log_scale = TRUE)
+```
+
+The bootstrap distribution of the scale is wide and skewed, as the profile
+showed. Some simulated datasets carry little information about it, and give
+estimates near zero, which pull the lower percentile limit down. The
+bias-corrected interval adjusts for this, and is closer to the profile
+interval.
+
+## Learn more
+
+Chapter [3](https://www.mbgr.org/03_model-fitting.html) of the book
+*Model-based geostatistics for global public health using R* treats the
+estimation of geostatistical models, including Monte Carlo maximum likelihood
+and the uncertainty of the estimates.

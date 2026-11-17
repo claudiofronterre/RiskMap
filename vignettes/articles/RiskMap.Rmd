@@ -1,0 +1,162 @@
+---
+title: "Get started"
+description: >
+  From survey data to a map of disease prevalence and its uncertainty, in one
+  page.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 5.4,
+  out.width = "80%",
+  fig.align = "center",
+  dpi = 150
+)
+# The country and county boundaries are downloaded once by precompute.R, so
+# that the article doesn't depend on the boundary service when it is built.
+boundaries <- readRDS("precomputed/liberia-boundaries.rds")
+```
+
+This article goes from survey data to a map of prevalence in a few steps. It
+fits a geostatistical model to counts of people found with a disease in a set
+of villages, checks how the fit was computed, predicts prevalence across the
+country with its uncertainty, and summarises it by county. The other articles
+take each step further.
+
+## The data
+
+The `liberia` data give, for 90 villages in Liberia, the number of people
+examined for the nodules of river blindness (`ntest`) and the number found with
+them (`npos`).
+
+```{r load-data, message = FALSE}
+library(RiskMap)
+library(sf)
+
+data(liberia)
+head(liberia)
+```
+
+RiskMap works with `sf` objects whose coordinates have a reference system. The
+coordinates here are longitude and latitude, so the data are projected to the
+coordinate reference system that `propose_crs()` chooses, which keeps the
+distances between villages accurate.
+
+```{r project-data}
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+crs <- propose_crs(liberia)
+liberia <- st_transform(liberia, crs)
+```
+
+## Fitting the model
+
+The model treats the number of positives in each village as binomial, and adds
+a spatial Gaussian process, `gp()`, to the logit of prevalence. Nearby villages
+then share part of their risk. Covariates enter the formula as in `glm()`.
+Binomial models are fitted by Monte Carlo maximum likelihood, so `set.seed()`
+makes the fit reproducible.
+
+```{r fit-model}
+set.seed(2026)
+fit <- glgpm(npos ~ gp(),
+             data = liberia,
+             family = "binomial",
+             denominator = ntest)
+summary(fit)
+```
+
+The spatial correlation scale is the distance over which the correlation
+between two villages falls by a factor of about three. With the exponential
+correlation used by default, the practical range, the distance at which the
+correlation falls to 0.05, is about three times the scale.
+
+## Checking the fit
+
+`check_fit()` goes through the checks on how the fit was computed and flags
+anything that needs attention. The article *Checking a fit* covers it, with
+profile likelihoods and the parametric bootstrap.
+
+```{r check-fit}
+check_fit(fit)
+```
+
+## Predicting across the country
+
+Predictions are made on a grid of points covering Liberia, built by
+`create_grid()` from the country's boundary. The boundaries come from
+[geoBoundaries](https://www.geoboundaries.org/) through the geobounds package.
+
+```{r download-boundaries, eval = FALSE}
+library(geobounds)
+border <- st_transform(gb_get_adm0("Liberia"), crs)
+counties <- st_transform(gb_get_adm1("Liberia"), crs)
+```
+
+```{r load-boundaries, include = FALSE}
+border <- boundaries$border
+counties <- boundaries$counties
+```
+
+`predict()` gives the predictive distribution of prevalence at each point of
+the grid. Its summaries here are the mean, the limits of a 95% interval, and
+the probability that prevalence exceeds 20%.
+
+```{r predict-grid}
+grid <- create_grid(border, spacing = 5)
+prediction <- predict(fit,
+                      newdata = grid,
+                      summaries = c("mean", "lower", "upper", "exceedance"),
+                      thresholds = 0.2)
+plot(prediction)
+```
+
+Every result of RiskMap has a `plot()` method, and a function with the same
+arguments and its own help page, such as `plot_prediction()` for predictions.
+This article uses `plot()` for a plain map and the `plot_*()` function when it
+sets arguments. Here they map the limits of the 95% interval, and the
+probability that prevalence exceeds 20%.
+
+```{r plot-interval, fig.width = 9, fig.height = 4.4, out.width = "100%"}
+plot_prediction(prediction, summaries = c("lower", "upper"))
+```
+
+```{r plot-exceedance}
+plot_prediction(prediction, summaries = "exceedance", thresholds = 0.2)
+```
+
+## Summarising by county
+
+With `boundaries`, `predict()` also averages the predictions over each area.
+The draws at the grid points are then joint, so the average of each county has
+a proper interval.
+
+```{r predict-counties}
+by_county <- predict(fit,
+                     newdata = grid,
+                     boundaries = counties,
+                     aggregate = "mean")
+to_table(by_county)
+plot(by_county)
+```
+
+## Where next
+
+- *Projections and distances* explains the choice of a coordinate reference
+  system and the empirical variogram.
+- *Families and links* fits counts, continuous outcomes and other links.
+- *Checking a fit* looks closer at how a fit was computed and at the
+  uncertainty of its estimates.
+- *Prediction targets* covers exceedance probabilities, population weights,
+  transformed targets and standardisation.
+- *Assessing predictions and simulations* compares models by spatial
+  cross-validation and on simulated data.
+
+Chapters [3](https://www.mbgr.org/03_model-fitting.html) and
+[4](https://www.mbgr.org/04_geostatistical-prediction.html) of the book
+*Model-based geostatistics for global public health using R* treat model
+fitting and prediction at length.

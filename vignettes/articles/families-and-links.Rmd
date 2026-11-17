@@ -1,0 +1,219 @@
+---
+title: "Families and links"
+description: >
+  Gaussian, binomial, Poisson and negative binomial models, named and custom
+  links, exposures, and the parameters of a model.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6.5,
+  fig.height = 4.5,
+  out.width = "85%",
+  fig.align = "center",
+  dpi = 150
+)
+options(RiskMap.messages = FALSE)
+```
+
+`glgpm()` fits generalised linear models with a spatial Gaussian process in the
+linear predictor. As in `glm()`, the `family` gives the distribution of the
+response and its link. This article fits each family RiskMap supports, shows
+how to name a link or give one as a function, and how exposures and the
+parameters of a model are set.
+
+```{r packages, message = FALSE}
+library(RiskMap)
+library(sf)
+```
+
+## Continuous outcomes
+
+A Gaussian model is a linear model with a spatial Gaussian process. The
+`italy_sim` data have ten simulated measurements at each of 200 locations in
+Italy, and a covariate, the population density. Gaussian models are fitted by
+exact maximum likelihood, with no Monte Carlo step.
+
+```{r gaussian}
+data(italy_sim)
+fit_gaussian <- glgpm(y ~ pop_dens + gp(),
+                      data = italy_sim,
+                      family = "gaussian")
+summary(fit_gaussian)
+```
+
+The measurement error variance is the variation of the measurements at a
+location around the value of the spatial process there. With several
+measurements per location it is estimated well.
+
+## Binomial outcomes and their links
+
+Binomial models need the number of trials, given in `denominator`. The
+`liberia` data give the number of people examined for river blindness in each
+village and the number found with nodules.
+
+```{r liberia-data}
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+liberia <- st_transform(liberia, propose_crs(liberia, messages = FALSE))
+```
+
+The string `"binomial"` takes the logit link. A family object names another
+link, as in `glm()`. Binomial models take the logit, probit, complementary
+log-log and Cauchy links.
+
+```{r binomial-links}
+set.seed(2026)
+fit_logit <- glgpm(npos ~ log_elevation + gp(),
+                   data = liberia,
+                   family = "binomial",
+                   denominator = ntest)
+fit_probit <- glgpm(npos ~ log_elevation + gp(),
+                    data = liberia,
+                    family = binomial("probit"),
+                    denominator = ntest)
+rbind(logit = unlist(coef(fit_logit)),
+      probit = unlist(coef(fit_probit)))
+```
+
+The coefficients are on different scales, but the two models describe much the
+same prevalence. The fitted prevalences at the villages agree closely.
+
+```{r compare-links}
+cor(fitted(fit_logit), fitted(fit_probit))
+```
+
+## Imperfect diagnostic tests
+
+A test with sensitivity $s_e$ and specificity $s_p$ finds a positive with
+probability $s_e p + (1 - s_p)(1 - p)$ when the true prevalence is $p$. Any
+link that is not named in a family can be given as its inverse in `invlink`, a
+function of the linear predictor. The fit below takes the logit of true
+prevalence as the linear predictor, for a test with sensitivity 0.95 and
+specificity 0.98.
+
+```{r imperfect-test}
+set.seed(2026)
+fit_test <- glgpm(npos ~ log_elevation + gp(),
+                  data = liberia,
+                  family = "binomial",
+                  denominator = ntest,
+                  invlink = function(eta) {
+                    0.95 * plogis(eta) + 0.02 * (1 - plogis(eta))
+                  })
+coef(fit_test)$beta
+```
+
+The coefficients now describe true prevalence. `check_fit()` adds a row on the
+link, because a link given as a function is not known to make the likelihood
+log-concave. Custom links are experimental, and how they are given may change
+in a minor release.
+
+## Counts
+
+Poisson models take the log link. The `anopheles` data give the number of
+*Anopheles* mosquitoes caught at 116 sites in southern Cameroon. Counts often
+vary more than a Poisson distribution allows, and a nugget, `gp(nugget = TRUE)`,
+adds an independent effect at each site to take up that extra variation.
+
+```{r poisson}
+data(anopheles)
+set.seed(2026)
+fit_poisson <- glgpm(Total ~ elevation + gp(nugget = TRUE),
+                     data = anopheles,
+                     family = "poisson")
+summary(fit_poisson)
+```
+
+The check that needs a look is the spatial scale. At about 2.5 km it is
+shorter than the median distance between neighbouring sites, so the data say
+little about it. `check_fit()` points to its profile likelihood, or to a mild
+penalty that stabilises the spatial variance and scale,
+`set_control_mcml(pc_prior = TRUE)`.
+
+For counts collected over different efforts, such as trap nights, the exposure
+goes in `denominator`, and the mean count is the exposure times the inverse
+link of the linear predictor. An `offset()` term in the formula does the same
+for an offset on the scale of the linear predictor.
+
+## Overdispersed counts
+
+`negative_binomial()` gives a negative binomial response with the log link,
+whose size $\theta$ sets the extra variation, the variance of a count with mean
+$\mu$ being $\mu + \mu^2/\theta$. To show what it recovers, the counts below
+are simulated at the `anopheles` sites, with `specify_glgpm()` and
+`simulate_glgpm()`, from a negative binomial model with size 2.
+
+```{r simulate-counts}
+truth <- specify_glgpm(Total ~ gp(),
+                       data = anopheles,
+                       family = negative_binomial(),
+                       parameters = list(beta = 1.5,
+                                         sigma2 = 0.5,
+                                         phi = 20,
+                                         theta = 2))
+counts <- simulated_data(simulate_glgpm(truth,
+                                        what = "data",
+                                        seed = 1))
+```
+
+```{r negative-binomial}
+set.seed(2026)
+fit_negbin <- glgpm(Total ~ gp(),
+                    data = counts,
+                    family = negative_binomial())
+summary(fit_negbin)
+```
+
+The size is estimated with an interval that covers its true value. A Poisson
+model of the same counts has no parameter for the extra variation, and puts it
+into a spatial process with a very short scale, which `check_fit()` flags.
+
+```{r poisson-on-overdispersed}
+set.seed(2026)
+fit_counts <- glgpm(Total ~ gp(),
+                    data = counts,
+                    family = "poisson")
+coef(fit_counts)
+```
+
+With one count per location a negative binomial model can estimate a nugget or
+the size, not both.
+
+## The parameters of a model
+
+Every parameter has one name, used by `coef()`, by `start_pars` and
+`fixed_pars` of `glgpm()`, and by `specify_glgpm()`. `glgpm_parameters()` lists
+those of a model before it is fitted, with their automatic starting values.
+
+```{r parameters}
+glgpm_parameters(npos ~ log_elevation + gp(nugget = TRUE),
+                 data = liberia,
+                 family = "binomial")
+```
+
+`fixed_pars` holds a parameter at a value instead of estimating it. Here the
+spatial scale is held at 50 km, and the other parameters are estimated with it.
+`start_pars` sets starting values in the same way, and `start_pars = coef(fit)`
+starts a fit from the estimates of another.
+
+```{r fixed-scale}
+set.seed(2026)
+fit_held <- glgpm(npos ~ log_elevation + gp(),
+                  data = liberia,
+                  family = "binomial",
+                  denominator = ntest,
+                  fixed_pars = list(phi = 50))
+coef(fit_held)
+```
+
+## Learn more
+
+Chapter [3](https://www.mbgr.org/03_model-fitting.html) of the book
+*Model-based geostatistics for global public health using R* treats linear and
+generalised linear geostatistical models, with Gaussian, binomial and Poisson
+outcomes.

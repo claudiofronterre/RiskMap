@@ -1,0 +1,252 @@
+---
+title: "Prediction targets"
+description: >
+  Summaries and exceedance probabilities at locations, population-weighted
+  summaries over areas, the uncertainty of the parameters, extrapolation,
+  transformed targets and standardisation.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 5.4,
+  out.width = "75%",
+  fig.align = "center",
+  dpi = 150
+)
+options(RiskMap.messages = FALSE)
+# Boundaries and population counts are downloaded once by precompute.R, so
+# that the article doesn't depend on those services when it is built.
+liberia_boundaries <- readRDS("precomputed/liberia-boundaries.rds")
+grid_population <- readRDS("precomputed/liberia-population-grid.rds")
+ghana_boundaries <- readRDS("precomputed/ghana-boundaries.rds")
+```
+
+A geostatistical model gives a predictive distribution for any quantity that
+depends on the spatial process, at any location and over any area. `predict()`
+draws from that distribution and summarises the draws. This article shows the
+targets it can summarise and the choices that shape them.
+
+## A model and a grid
+
+The model is a binomial model of river blindness in 90 Liberian villages, and
+the predictions are made on a 5 km grid covering the country.
+
+```{r fit-model, message = FALSE}
+library(RiskMap)
+library(sf)
+
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+crs <- propose_crs(liberia, messages = FALSE)
+liberia <- st_transform(liberia, crs)
+
+set.seed(2026)
+fit <- glgpm(npos ~ gp(),
+             data = liberia,
+             family = "binomial",
+             denominator = ntest)
+```
+
+```{r download-boundaries, eval = FALSE}
+library(geobounds)
+border <- st_transform(gb_get_adm0("Liberia"), crs)
+counties <- st_transform(gb_get_adm1("Liberia"), crs)
+```
+
+```{r load-boundaries, include = FALSE}
+border <- liberia_boundaries$border
+counties <- liberia_boundaries$counties
+```
+
+```{r grid}
+grid <- create_grid(border, spacing = 5)
+```
+
+## Summaries at locations
+
+`summaries` chooses what is computed from the draws at each location, among
+the mean, median, standard deviation, coefficient of variation, the limits and
+the width of an interval, and the probability of exceeding each of the
+`thresholds`. The response here is prevalence.
+
+```{r predict-locations}
+prediction <- predict(fit,
+                      newdata = grid,
+                      summaries = c("mean", "interval_width", "exceedance"),
+                      thresholds = c(0.1, 0.2))
+prediction
+```
+
+`plot()` maps the first summary, and `plot_prediction()` chooses others.
+Several summaries, or several thresholds, are drawn side by side.
+
+```{r plot-mean-width, fig.width = 9, fig.height = 4.4, out.width = "100%"}
+plot_prediction(prediction, summaries = c("mean", "interval_width"))
+```
+
+```{r plot-exceedance, fig.width = 9, fig.height = 4.4, out.width = "100%"}
+plot_prediction(prediction,
+                summaries = "exceedance",
+                thresholds = c(0.1, 0.2))
+```
+
+The probability of exceeding a threshold is often the target that decides an
+intervention, such as treating every community where prevalence is likely to
+be above 20%. Besides the response, the prediction holds the linear predictor
+and the spatial process, which `quantity` selects.
+
+```{r plot-spatial}
+plot_prediction(prediction, quantity = "spatial")
+```
+
+## Summaries over areas, weighted by population
+
+With `boundaries`, `predict()` aggregates the draws at the grid points within
+each area, and with `weights` it weights them, here by the number of people in
+each grid cell. The population counts come from
+[WorldPop](https://www.worldpop.org/) through `get_worldpop()`, are summed
+into 5 km cells in the projection of the data, and become a grid with a column
+of counts.
+
+```{r population, eval = FALSE}
+library(terra)
+population <- get_worldpop("LBR", year = 2020, resolution = "1km")
+population <- project(population, crs(vect(border)),
+                      method = "sum", res = 5000)
+names(population) <- "population"
+grid_population <- create_grid(border, raster = population)
+```
+
+The mean of prevalence over a county, weighted by population, is the
+population-weighted prevalence. The weighted sum is the expected number of
+people with nodules, if the prevalence among those examined applies to
+everyone.
+
+```{r predict-counties}
+by_county <- predict(fit,
+                     newdata = grid_population,
+                     boundaries = counties,
+                     aggregate = c("mean", "sum"),
+                     weights = "population")
+to_table(by_county, sort_by = "mean")
+```
+
+```{r plot-counties, fig.width = 9, fig.height = 4.4, out.width = "100%"}
+plot_prediction(by_county, spatial_scale = "both")
+```
+
+Grids from `create_grid()` know the area of their cells, so a cell that a
+county boundary crosses is shared between the counties in proportion to its
+area.
+
+## Joint and marginal draws
+
+The draws at different locations can be joint, keeping the correlation between
+them, or marginal, drawn location by location. A summary at one location is the
+same either way, but a summary over an area needs joint draws, since its
+uncertainty depends on how the locations vary together. `predict()` draws
+jointly when it is given `boundaries`, and marginally otherwise, which is
+faster for large grids. `joint = TRUE` asks for joint draws without
+boundaries, for example to keep them with `keep_samples = TRUE` for a target of
+your own.
+
+## The uncertainty of the parameters
+
+Plug-in prediction treats the estimated parameters as known. With
+`parameter_uncertainty = TRUE`, `predict()` also draws the parameters from the
+approximate distribution of their estimates, and repeats the prediction for
+each draw, so the intervals include both sources of uncertainty.
+
+```{r predict-uncertain}
+uncertain <- predict(fit,
+                     newdata = grid,
+                     summaries = c("mean", "interval_width"),
+                     parameter_uncertainty = TRUE)
+mean(uncertain$predictions$response_interval_width) /
+  mean(prediction$predictions$response_interval_width)
+```
+
+The ratio of the average widths of the intervals shows how much they widen.
+The difference matters most in small or sparse surveys, where the spatial
+variance and scale are poorly estimated.
+
+## Where predictions extrapolate
+
+Far from the data, a prediction rests on the model more than on the
+observations. `assess_extrapolation()` flags the locations where the data
+leave much of the spatial variance unexplained, or where a covariate lies
+outside the range of the data.
+
+```{r extrapolation}
+extrapolation <- assess_extrapolation(fit, newdata = grid)
+extrapolation
+plot(extrapolation)
+```
+
+## Transformed targets and standardisation
+
+Some targets are functions of the linear predictor rather than the mean of the
+response. The `malnutrition` data give the height-for-age z-score (HAZ) of 2,671
+children in Ghana, with their age, in years, and sex. A Gaussian model of HAZ
+describes the mean z-score at each location. A child is stunted when HAZ is
+below $-2$, so the proportion stunted at a location is
+$\Phi\{(-2 - \mu)/\sigma\}$, where $\mu$ is the mean z-score there and $\sigma$
+the standard deviation of children's z-scores around it, estimated by the
+measurement error variance.
+
+```{r fit-ghana}
+data(malnutrition)
+ghana_crs <- propose_crs(malnutrition, messages = FALSE)
+malnutrition <- st_transform(malnutrition, ghana_crs)
+
+set.seed(2026)
+fit_haz <- glgpm(HAZ ~ age + sex + gp(),
+                 data = malnutrition,
+                 family = "gaussian")
+sd_child <- sqrt(coef(fit_haz)$sigma2_me)
+stunting <- function(link) pnorm((-2 - link) / sd_child)
+```
+
+The mean z-score depends on age and sex, so a prediction needs them. With
+`standardise`, `predict()` averages the targets over a reference population,
+here equal numbers of girls and boys at each year of age from 0 to 4, so that
+every location and region is compared on the same population. A `.weight`
+column weights the rows of the reference population.
+
+```{r download-ghana, eval = FALSE}
+ghana <- st_transform(gb_get_adm0("Ghana"), ghana_crs)
+regions <- st_transform(gb_get_adm1("Ghana"), ghana_crs)
+```
+
+```{r load-ghana, include = FALSE}
+ghana <- ghana_boundaries$ghana
+regions <- ghana_boundaries$regions
+```
+
+```{r predict-stunting}
+reference <- expand.grid(age = 0:4 + 0.5,
+                         sex = c("female", "male"))
+reference$.weight <- 1
+
+by_region <- predict(fit_haz,
+                     newdata = create_grid(ghana, spacing = 10),
+                     boundaries = regions,
+                     aggregate = "mean",
+                     transform = list(stunting = stunting),
+                     standardise = reference)
+to_table(by_region, quantity = "stunting", sort_by = "mean", digits = 3)
+plot_prediction(by_region, quantity = "stunting")
+```
+
+## Learn more
+
+Chapter [4](https://www.mbgr.org/04_geostatistical-prediction.html) of the book
+*Model-based geostatistics for global public health using R* treats
+prediction, with targets at locations and over areas, and Chapter
+[5](https://www.mbgr.org/05_case-studies.html) the mapping of stunting in
+Ghana.
