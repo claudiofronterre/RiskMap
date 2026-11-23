@@ -18,7 +18,8 @@ using namespace Rcpp;
 // garbage collection took about half of a fit. Working memory here is on the
 // C++ heap. The arithmetic follows the R code step by step, with the same
 // LAPACK and BLAS routines R calls and the same order of summation, so the
-// results are identical to that code.
+// results are identical to that code if the BLAS repeats its bits from call to
+// call.
 
 namespace {
 

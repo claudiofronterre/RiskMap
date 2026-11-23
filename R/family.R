@@ -1133,8 +1133,8 @@ read_family_link <- function(family, link) {
 ##' - `compiled`, the weights and rows of the log-likelihood are compiled
 ##'   (`cpp_importance_log_weights()`, `cpp_link_log_likelihood()`), with
 ##'   `code` as their link, for every link with a `code`. Under a named link
-##'   they are those of `compute_log_weights_in_r()` and
-##'   `compute_link_log_likelihood_rows()` to the last bit. The compiled
+##'   they agree with those of `compute_log_weights_in_r()` and
+##'   `compute_link_log_likelihood_rows()` to the last bits. The compiled
 ##'   weights evaluate an integrated kernel through its table themselves.
 ##' - `assumes_concave`, the mode search factorises its Hessian without a
 ##'   guard and returns it unfloored, for the canonical link without a kernel.
