@@ -22,8 +22,8 @@ using namespace Rcpp;
 // log_mixture_proposal() step by step: the same BLAS calls R makes for `%*%`
 // and forwardsolve(), and the long double accumulation R uses in rowSums(),
 // colSums() and sum(), so the weights are identical to it where the compiler
-// does not fuse multiply and add (as on x86-64), and agree to the last bits
-// where it does (as on arm64).
+// does not fuse multiply and add, and agree to the last bits where it does (as
+// on arm64 and for x86-64-v3 and later).
 
 namespace {
 

@@ -1374,6 +1374,11 @@ make_compiled_test_problem <- function(with_random_effect) {
        linear = rnorm(observations), curvature = runif(observations, 0.1, 2))
 }
 
+# Results of BLAS and LAPACK are compared with a tolerance in the next three
+# tests. R and the compiled code call the same routines, but a BLAS need not
+# give the same bits for the same call at another place in memory (MKL doesn't
+# unless the memory is aligned). What neither BLAS nor a fused multiply and add
+# can change is compared exactly.
 test_that("compiled marginals of the global iteration equal the R code", {
   for (with_random_effect in c(FALSE, TRUE)) {
     problem <- make_compiled_test_problem(with_random_effect)
@@ -1385,12 +1390,13 @@ test_that("compiled marginals of the global iteration equal the R code", {
                            latent_gradient(latent_map, problem$linear))
     compiled <- cpp_global_marginals(problem$precision, problem$linear,
                                      problem$curvature, latent_map$columns)
-    expect_identical(compiled$marginal_mean,
-                     latent_linear_predictor(latent_map, centre))
-    expect_identical(compiled$marginal_variance, as.numeric(rowsum(
+    expect_equal(compiled$marginal_mean,
+                 latent_linear_predictor(latent_map, centre),
+                 tolerance = 1e-12)
+    expect_equal(compiled$marginal_variance, as.numeric(rowsum(
       inverse[latent_map$pair_linear], latent_map$pair_observation,
       reorder = FALSE
-    )))
+    )), tolerance = 1e-12)
   }
   expect_null(cpp_global_marginals(-diag(3), numeric(3), numeric(3),
                                    cbind(1:3)))
@@ -1408,13 +1414,14 @@ test_that("the compiled converged proposal equals the R code", {
       problem$precision, problem$linear, problem$curvature, latent_map$columns
     )
     expect_identical(compiled$precision, proposal_precision)
-    expect_identical(compiled$centre, as.numeric(backsolve(root, forwardsolve(
+    expect_equal(compiled$centre, as.numeric(backsolve(root, forwardsolve(
       t(root), latent_gradient(latent_map, problem$linear)
-    ))))
-    expect_identical(compiled$root,
-                     reference_inverse_cholesky_factor(proposal_precision))
-    expect_identical(inverse_cholesky_factor(proposal_precision),
-                     compiled$root)
+    ))), tolerance = 1e-12)
+    expect_equal(compiled$root,
+                 reference_inverse_cholesky_factor(proposal_precision),
+                 tolerance = 1e-12)
+    expect_equal(inverse_cholesky_factor(proposal_precision), compiled$root,
+                 tolerance = 1e-12)
   }
   expect_null(cpp_global_proposal_factors(-diag(3), numeric(3), numeric(3),
                                           cbind(1:3)))
@@ -1433,8 +1440,8 @@ test_that("the compiled spatial prior equals the R code and defers jitter", {
     covariance <- 1.7 * correlation
     root <- factor_covariance(covariance)
     expect_identical(compiled$covariance, covariance)
-    expect_identical(compiled$root, root)
-    expect_identical(compiled$precision, chol2inv(root))
+    expect_equal(compiled$root, root, tolerance = 1e-12)
+    expect_equal(compiled$precision, chol2inv(root), tolerance = 1e-12)
   }
   # Two sites at the same place without a nugget give a singular covariance,
   # which the engine factorises with jitter as before.
@@ -1517,8 +1524,8 @@ test_that("compiled importance weights equal the R computation", {
       )
       # The R code can carry a random effect's name on a single-row result.
       # The weights are identical where the compiler does not fuse multiply
-      # and add, as on x86-64. Where it does, as on arm64, the compiled sums
-      # differ from R's in the last bits.
+      # and add. Where it does, as on arm64 and for x86-64-v3 and later, the
+      # compiled sums differ from R's in the last bits.
       expect_equal(
         engine$evaluate(target, draws, log_weights_only = TRUE,
                         proposal_parameters = parameters),
@@ -1530,13 +1537,10 @@ test_that("compiled importance weights equal the R computation", {
 
 test_that("compiled weights of named links equal R's where the bounds act and with an integrated nugget", {
   # The weights of a named link are R's to the last bit where the compiler
-  # does not fuse multiply and add, as on x86-64.
+  # does not fuse multiply and add, and to rounding where it does, as on arm64
+  # and for x86-64-v3 and later.
   same_as_r <- function(compiled, in_r) {
-    if (identical(R.version$arch, "x86_64")) {
-      expect_identical(compiled, unname(in_r))
-    } else {
-      expect_equal(compiled, unname(in_r), tolerance = 1e-12)
-    }
+    expect_equal(compiled, unname(in_r), tolerance = 1e-12)
   }
   set.seed(33)
   locations <- 15
