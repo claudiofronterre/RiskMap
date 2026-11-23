@@ -13,22 +13,22 @@ will confirm the change by email.
 
 - Ubuntu 24.04 (local), R 4.6.2.
 - GitHub Actions, with R release on macOS, Windows and Ubuntu, and R-devel and
-  R 4.5.3 (oldrel-1) on Ubuntu. These run the full test suite. `Depends` asks for
-  R 4.5.0.
+  R 4.5.3 (oldrel-1) on Ubuntu. These run the full test suite, apart from 11
+  tests that skip on Windows. `Depends` asks for R 4.5.0.
 - R-hub. On gcc-asan and m1-san the examples and the full test suite ran
   without reports from the address or undefined behaviour sanitizers. Under
-  valgrind the examples of the first 22 of the 47 help pages with examples ran
-  without errors before R-hub's limit of 6 hours. Valgrind runs of the tests
-  alone, without those skipped on CRAN, one over all the test files and five over
-  parts of them, also stopped at that limit. Up to there they reported no invalid
-  reads or writes and no use of uninitialised values. Valgrind looks for leaks
-  when a process exits, which in these runs only processes forked by parallel
-  did, in one of them. There it found nothing definitely lost, and blocks
-  possibly lost in libraries that RiskMap uses through sf and units, such as
-  udunits2 and PROJ. No stack names RiskMap's own code. rchk reports only Rcpp's
-  own protection helpers (`Armor.h` and `Shield.h`). On clang-asan and
-  clang-ubsan the dependency terra could not be installed in R-hub's containers,
-  so RiskMap was not checked there.
+  valgrind, with one BLAS thread, the examples of all 47 help pages that have
+  them, without `\donttest{}`, and the full test suite ran to the end in
+  several jobs. There were no invalid reads or writes, and no report has a
+  frame in RiskMap's code. The reports are blocks possibly lost in libraries
+  that sf and units use, such as udunits2 and PROJ, in cli and in R itself, a
+  few hundred bytes definitely lost in PROJ and GDAL as sf calls them, and two
+  uses of uninitialised values in `nlminb()` of R's stats package, which plain
+  `nlminb()` also gives on the same problem. Two limits on the elapsed time of
+  a test fail under valgrind because it is slower. rchk reports only Rcpp's own
+  protection helpers (`Armor.h` and `Shield.h`). On clang-asan and clang-ubsan
+  the dependency terra could not be installed in R-hub's containers, so RiskMap
+  was not checked there.
 
 ## R CMD check results
 
