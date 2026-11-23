@@ -13,19 +13,22 @@ will confirm the change by email.
 
 - Ubuntu 24.04 (local), R 4.6.2.
 - GitHub Actions, with R release on macOS, Windows and Ubuntu, and R-devel and
-  R 4.5 (oldrel-1), the version in `Depends`, on Ubuntu. These run the full test
-  suite.
+  R 4.5.3 (oldrel-1) on Ubuntu. These run the full test suite. `Depends` asks for
+  R 4.5.0.
 - R-hub. On gcc-asan and m1-san the examples and the full test suite ran
   without reports from the address or undefined behaviour sanitizers. Under
   valgrind the examples of the first 22 of the 47 help pages with examples ran
   without errors before R-hub's limit of 6 hours. Valgrind runs of the tests
-  alone, one over all the test files and five over parts of them, also stopped
-  at that limit. Up to there they reported no invalid reads or writes and no use
-  of uninitialised values. Valgrind looks for leaks when a process exits, which
-  only those forked by parallel did, and there it found nothing definitely lost.
-  rchk reports only Rcpp's own protection helpers (`Armor.h` and `Shield.h`). On
-  clang-asan and clang-ubsan the dependency terra could not be installed in
-  R-hub's containers, so RiskMap was not checked there.
+  alone, without those skipped on CRAN, one over all the test files and five over
+  parts of them, also stopped at that limit. Up to there they reported no invalid
+  reads or writes and no use of uninitialised values. Valgrind looks for leaks
+  when a process exits, which in these runs only processes forked by parallel
+  did, in one of them. There it found nothing definitely lost, and blocks
+  possibly lost in libraries that RiskMap uses through sf and units, such as
+  udunits2 and PROJ. No stack names RiskMap's own code. rchk reports only Rcpp's
+  own protection helpers (`Armor.h` and `Shield.h`). On clang-asan and
+  clang-ubsan the dependency terra could not be installed in R-hub's containers,
+  so RiskMap was not checked there.
 
 ## R CMD check results
 
