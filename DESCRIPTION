@@ -23,7 +23,7 @@ Authors@R:
            role = "aut",
            comment = c(ORCID = "0000-0002-3624-8951")))
 Depends:
-    R (>= 4.1.0)
+    R (>= 4.5.0)
 Imports:
     cli (>= 3.6.0),
     Deriv,

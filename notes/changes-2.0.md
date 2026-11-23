@@ -1834,11 +1834,10 @@ radius with a short profile of the scale instead of every extra check, the
 binomial example of `profile()` profiles the scale alone, and the joint
 profiles of `profile()` and `plot_profile()` use a grid of 7 by 7. Each example
 outside `\donttest{}` runs in under three seconds.
-- RiskMap asks for R 4.1.0 or later instead of 3.5.0. Its own code needs R
-3.6.0, for `hcl.colors()` and `set.seed(sample.kind =)`, the current versions
-of ggplot2, scales and sf need R 4.1.0, and the full test suite passes on R
-4.1.3. Deriv's current version needs R 4.5.0, so on older R an earlier Deriv
-from the CRAN archive is needed (4.1.6 was used with R 4.1.3). A fit that holds
-every parameter no longer fails on R before 4.4.0, where `rcond()` of its empty
-information raised a LAPACK error, and two tests of Gaussian prediction compare
-values without the dimnames that older versions of Matrix add.
+- RiskMap asks for R 4.5.0 or later instead of 3.5.0, because the current
+version of Deriv, which it imports, needs it. CI checks this version as
+oldrel-1. RiskMap's own code needs only R 3.6.0, and it stays safe on older R. A
+fit that holds every parameter doesn't fail on R before 4.4.0, where `rcond()` of
+its empty information raised a LAPACK error, and two tests of Gaussian
+prediction compare values without the dimnames that older versions of Matrix
+add.
