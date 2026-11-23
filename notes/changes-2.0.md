@@ -853,7 +853,8 @@ the time it did in R, and such fits are 1.3 to 1.8 times faster on surveys of
 200 to 400 sites, from 90 to 65 seconds for probit on the Tanzania survey of
 387 sites and from 29 to 16 minutes for a cauchit fit that needs two stages.
 The compiled weights repeat the R computation operation for operation, so fits
-are unchanged (to the last bit on x86-64). An inverse link given as a function
+are unchanged (up to the last bits on platforms whose compilers fuse multiply
+and add). An inverse link given as a function
 in `invlink` still computes its weights in R.
 
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object

@@ -24,8 +24,9 @@ using Rcpp::NumericVector;
 // once and no score or curvature matrices are allocated. A canonical Poisson
 // mean that overflows gives -Inf for that draw. Under a named link the
 // observations of a draw are summed in long double, as rowSums() sums them in
-// compute_link_log_likelihood_rows(), so that the rows are R's to the last
-// bit, and a draw with a probability outside [0, 1] gives -Inf.
+// compute_link_log_likelihood_rows(), so that the rows are R's unless the
+// compiler fuses multiply and add, which changes their last bits, and a draw
+// with a probability outside [0, 1] gives -Inf.
 // [[Rcpp::export]]
 NumericVector cpp_link_log_likelihood(const NumericMatrix eta_r,
                                       const NumericVector y_r,

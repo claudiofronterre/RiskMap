@@ -106,9 +106,8 @@ test_that("the compiled rows of a named link are R's", {
                                                  linkf)
     code <- make_family("binomial", linkf)$code
     expect_identical(code, match(link, c("probit", "cloglog", "cauchit")) + 1L)
-    # Equal to R's to the last bit where the compiler does not fuse multiply
-    # and add, and to rounding where it does, as on arm64 and for x86-64-v3 and
-    # later.
+    # The last bits differ from R's where the compiler fuses multiply and add,
+    # as on arm64 and for x86-64-v3 and later.
     expect_equal(cpp_link_log_likelihood(eta, y, units, code), expected,
                  tolerance = 1e-14)
     expect_identical(cpp_link_log_likelihood(eta, y, units, code)[3], -Inf)

@@ -21,9 +21,9 @@ using namespace Rcpp;
 // on the R heap. It reproduces the R code of the engine's evaluate() and
 // log_mixture_proposal() step by step: the same BLAS calls R makes for `%*%`
 // and forwardsolve(), and the long double accumulation R uses in rowSums(),
-// colSums() and sum(), so the weights are identical to it where the compiler
-// does not fuse multiply and add, and agree to the last bits where it does (as
-// on arm64 and for x86-64-v3 and later).
+// colSums() and sum(), so the weights agree with it to the last bits. They are
+// identical unless the compiler fuses multiply and add (as on arm64 and for
+// x86-64-v3 and later) or the BLAS gives other bits for the same call.
 
 namespace {
 
@@ -183,8 +183,7 @@ std::vector<double> compute_deviations(const Bank& bank,
 // (spatial block standardised by the target factor, random effects with the
 // target variances) plus the log-likelihood of the link `link` (a LinkCode of
 // likelihood_kernel.h). Under a named link the observations of a draw are
-// summed in long double, as rowSums() sums them in R, so that the weights are
-// those of compute_log_weights_in_r() to the last bit. Returns the
+// summed in long double, as rowSums() sums them in R. Returns the
 // standardised spatial samples in `standardised` for reuse by the mixture.
 std::vector<double> compute_log_target(
     const std::vector<double>& deviations, const NumericVector& centre,

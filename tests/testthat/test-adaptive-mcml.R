@@ -1341,8 +1341,8 @@ test_that("the table of the check for other maxima is restored to user units", {
   expect_equal(restored[[1]]$estimate[4], log(20))
 })
 
-# The R computations that the compiled routines of the engine replaced. The
-# compiled versions must reproduce them exactly.
+# The R computations that the compiled routines of the engine replaced, which
+# the compiled versions must reproduce.
 reference_inverse_cholesky_factor <- function(hessian) {
   dimension <- nrow(hessian)
   reversed <- dimension:1
@@ -1523,9 +1523,8 @@ test_that("compiled importance weights equal the R computation", {
         }
       )
       # The R code can carry a random effect's name on a single-row result.
-      # The weights are identical where the compiler does not fuse multiply
-      # and add. Where it does, as on arm64 and for x86-64-v3 and later, the
-      # compiled sums differ from R's in the last bits.
+      # The last bits of the weights differ where the compiler fuses multiply
+      # and add, as on arm64 and for x86-64-v3 and later.
       expect_equal(
         engine$evaluate(target, draws, log_weights_only = TRUE,
                         proposal_parameters = parameters),
@@ -1536,9 +1535,8 @@ test_that("compiled importance weights equal the R computation", {
 })
 
 test_that("compiled weights of named links equal R's where the bounds act and with an integrated nugget", {
-  # The weights of a named link are R's to the last bit where the compiler
-  # does not fuse multiply and add, and to rounding where it does, as on arm64
-  # and for x86-64-v3 and later.
+  # The last bits of the weights differ from R's where the compiler fuses
+  # multiply and add, as on arm64 and for x86-64-v3 and later.
   same_as_r <- function(compiled, in_r) {
     expect_equal(compiled, unname(in_r), tolerance = 1e-12)
   }
