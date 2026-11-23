@@ -151,9 +151,7 @@ in the source repository.
   ggspatial for north arrows and scale bars, and jsonlite for
   [`get_worldpop()`](https://claudiofronterre.github.io/RiskMap/reference/get_worldpop.md),
   are suggested rather than imported, and those functions ask for them.
-- RiskMap needs R 4.1.0 or later. The current version of Deriv needs R
-  4.5.0, so on older R install an earlier Deriv from the CRAN archive
-  first, for example with `remotes::install_version("Deriv", "4.1.6")`.
+- RiskMap needs R 4.5.0 or later.
 - Custom links, the negative binomial family, the penalised complexity
   priors of
   [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md),
