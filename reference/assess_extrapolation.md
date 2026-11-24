@@ -60,7 +60,8 @@ print(x, ...)
 
   Not used, and an error if given, so that a misspelt argument is not
   ignored. A subset that lost the classes or the threshold prints as an
-  `sf` object, and the arguments go to its print method.
+  `sf` object, or as a data frame if it lost the geometry, and the
+  arguments go to its print method.
 
 ## Value
 
