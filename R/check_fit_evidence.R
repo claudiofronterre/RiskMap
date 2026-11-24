@@ -11,6 +11,8 @@ collect_check_data <- function(check, object, mcml) {
   last <- if (length(history)) history[[length(history)]]
   units <- object$distance_units %||% "distance units"
   screen <- optimizer$mcml_maxima_screen
+  replacement <- find_replacement(optimizer$mcml_maxima_check)
+  reference <- replacement$value %||% screen$alarm$fitted_comparison
   spatial_held <- any(grepl("sigma2", optimizer$mcml_boundary, fixed = TRUE))
   data <- switch(
     check,
@@ -37,15 +39,15 @@ collect_check_data <- function(check, object, mcml) {
       "Screen of short scales" = describe_screen_gate(screen),
       "Scale of the estimate" = if (!spatial_held) stats::coef(object)$phi,
       "Short scales, log-likelihood above the estimate" =
-        tabulate_short_scales(screen, units),
+        tabulate_short_scales(screen, units, replacement),
       "Largest exact lower bound, above the estimate" =
-        screen$alarm$statistic - screen$alarm$fitted_comparison,
+        screen$alarm$statistic - reference,
       "Limit with independent location effects, above the estimate" =
         if (!isTRUE(optimizer$mcml_pc_prior)) {
-          screen$independent$log_likelihood - screen$alarm$fitted_comparison
+          screen$independent$log_likelihood - reference
         },
       "Exact bound by scale and spatial share, above the estimate" =
-        tabulate_spatial_shares(screen, units),
+        tabulate_spatial_shares(screen, units, replacement),
       "Maxima from the dispersed starts" =
         tabulate_maxima_check(optimizer$mcml_maxima_check, units)
     ),
@@ -62,7 +64,7 @@ collect_check_data <- function(check, object, mcml) {
     ),
     "Spatial scale" = stats::setNames(list(
       stats::coef(object)$phi, optimizer$mcml_spacing,
-      isTRUE(optimizer$mcml_small_scale), isTRUE(optimizer$mcml_near_limit),
+      isTRUE(optimizer$mcml_small_scale), assess_near_limit(optimizer),
       isTRUE(optimizer$mcml_numerically_independent),
       isTRUE(optimizer$mcml_identifiability_failure)
     ), c(paste0("Scale (", units, ")"),
@@ -118,6 +120,52 @@ collect_check_data <- function(check, object, mcml) {
   Filter(function(value) length(value) > 0L, data)
 }
 
+##' The separate maximum that replaced the fit it was checked against
+##'
+##' A fit records its exact values and its screen of short scales against the
+##' fit that the check for other maxima followed, so an estimate at a separate
+##' maximum, which replaced that fit, needs its own log-likelihood. From the
+##' table of the check (`choose_maximum()`), `value` is the estimate's on the
+##' independent draws that chose it and `gain` how far it is above the first
+##' fit on the fitting draws. NULL where the estimate is at the maximum of the
+##' first fit.
+##' @noRd
+find_replacement <- function(check) {
+  kept <- which(as.logical(check$chosen))
+  if (length(kept) != 1L || is.null(check$maximum) ||
+      check$maximum[kept] == check$maximum[1L]) {
+    return(NULL)
+  }
+  list(value = check$independent_log_likelihood[kept],
+       gain = check$log_likelihood[kept] - check$log_likelihood[1L])
+}
+
+##' Whether the fit is near the limit of independent location effects
+##'
+##' Judged as `check_other_maxima()` judges it (`is_near_limit()`), from what
+##' the fit recorded, at any spatial scale. NA where it is not assessed. The
+##' limit is not recorded for models whose likelihood with independent location
+##' effects isn't computed, it doesn't apply to a penalised likelihood, with
+##' the spatial variance at zero the fit is that limit, and an estimate at a
+##' separate maximum has no recorded standard error.
+##' @noRd
+assess_near_limit <- function(optimizer) {
+  if (any(grepl("sigma2", optimizer$mcml_boundary, fixed = TRUE)) ||
+      isTRUE(optimizer$mcml_pc_prior)) {
+    return(NA)
+  }
+  if (isTRUE(optimizer$mcml_near_limit)) return(TRUE)
+  if (!is.null(find_replacement(optimizer$mcml_maxima_check))) return(NA)
+  limit <- optimizer$mcml_maxima_screen$independent
+  alarm <- optimizer$mcml_maxima_screen$alarm
+  # By their full names, since `$` would match `fitted_comparison_se`.
+  value <- alarm[["fitted_comparison"]]
+  se <- alarm[["fitted_comparison_se"]]
+  numbers <- c(limit$log_likelihood, limit$quadrature_error, value, se)
+  if (length(numbers) != 4L || !all(is.finite(numbers))) return(NA)
+  is_near_limit(value, se, limit)
+}
+
 ##' What the screen of short scales did, in a few words
 ##' @noRd
 describe_screen_gate <- function(screen) {
@@ -142,21 +190,25 @@ name_scale_column <- function(units) {
 ##' estimate on independent draws. A column is left out when the fit did not
 ##' record it, as when the screen did not run because the estimate is at a
 ##' short scale, and NULL when neither was recorded. The scale is in `units`.
+##' Both columns are above the estimate that replaced the screened fit
+##' (`find_replacement()`), where one did, and the attribute `gain` of the
+##' table then says how far it is above that fit on the fitting draws.
 ##' @noRd
-tabulate_short_scales <- function(screen, units) {
+tabulate_short_scales <- function(screen, units, replacement = NULL) {
   screened <- screen$screen
   bounds <- screen$alarm$bounds
-  reference <- screen$alarm$fitted_comparison
+  reference <- replacement$value %||% screen$alarm$fitted_comparison
   if (!is.finite(reference %||% NA_real_)) bounds <- NULL
   log_phi <- if (!is.null(screened)) screened$log_phi else bounds$log_phi
   if (!length(log_phi) || (is.null(screened) && is.null(bounds))) return(NULL)
   table <- data.frame(scale = exp(log_phi))
-  if (!is.null(screened)) table$screened <- screened$gap
+  if (!is.null(screened)) table$screened <- screened$gap - (replacement$gain %||% 0)
   if (!is.null(bounds)) {
     table$exact_bound <- bounds$bound[match(log_phi, bounds$log_phi)] -
       reference
   }
   names(table)[1L] <- name_scale_column(units)
+  attr(table, "gain") <- replacement$gain
   table
 }
 
@@ -165,12 +217,14 @@ tabulate_short_scales <- function(screen, units) {
 ##' For a fit with the spatial variance at zero and a nugget, the exact lower
 ##' bound on the likelihood with a share of the total variance in a spatial
 ##' effect (`judge_spatial_share()`), less the maximum with independent
-##' location effects, which is then the estimate. One row per scale in
-##' `units` and one column per share. NULL where the fit did not record them.
+##' location effects, which is then the estimate, or less the log-likelihood of
+##' the estimate that replaced that fit (`find_replacement()`). One row per
+##' scale in `units` and one column per share. NULL where the fit did not
+##' record them.
 ##' @noRd
-tabulate_spatial_shares <- function(screen, units) {
+tabulate_spatial_shares <- function(screen, units, replacement = NULL) {
   shares <- screen$alarm$shares
-  reference <- screen$independent$log_likelihood
+  reference <- replacement$value %||% screen$independent$log_likelihood
   if (is.null(shares) || !is.finite(reference %||% NA_real_)) return(NULL)
   log_phi <- sort(unique(shares$log_phi))
   table <- data.frame(scale = exp(log_phi))
@@ -352,9 +406,14 @@ write_check_data <- function(data) {
 }
 
 ##' One value of the data of a check as text
+##'
+##' A missing logical value is a question that the check did not assess.
 ##' @noRd
 format_check_value <- function(value) {
-  if (is.logical(value)) return(paste(ifelse(value, "yes", "no"), collapse = ", "))
+  if (is.logical(value)) {
+    answer <- ifelse(is.na(value), "not assessed", ifelse(value, "yes", "no"))
+    return(paste(answer, collapse = ", "))
+  }
   if (is.numeric(value)) {
     return(paste(format(value, digits = 4L, big.mark = ",", trim = TRUE),
                  collapse = ", "))

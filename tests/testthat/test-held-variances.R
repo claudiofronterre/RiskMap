@@ -340,10 +340,11 @@ test_that("the variances check reads the test of a held variance", {
   expect_no_match(untested$finding, "could not tell")
 })
 
-test_that("the alarm's finding does not name a short scale", {
+test_that("the alarm's finding does not name a scale", {
   alarm <- fit_check_maxima(list(mcml_maxima_alarm = TRUE))
   expect_identical(alarm$status, "PROBLEM")
-  expect_match(alarm$finding, "at another spatial scale")
+  expect_match(alarm$finding, "An exact lower bound on the likelihood is above")
+  expect_no_match(alarm$finding, "scale")
 })
 
 test_that("a rising held variance is reported in the certificate's sentence", {

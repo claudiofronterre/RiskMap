@@ -269,7 +269,7 @@ test_that("the outcome of the screen is reported to the user", {
                maxima_screen = list(independent = list(log_variance = log(2))),
                boundary_parameters = integer(), history = list(1))
   expect_warning(report_mcml_outcome(zero, layout, 0.1, FALSE),
-                 "numerically one of independent.*variance 2.*unresolved")
+                 "numerically one of independent location effects.*unresolved")
 })
 
 test_that("the screen is recorded for fits with and without random effects", {

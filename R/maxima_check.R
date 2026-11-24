@@ -462,10 +462,8 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     },
     spatial_covariance = engine$spatial_covariance,
     margin = 0.25, window = 2, step = 0.5, step_limit = 2,
-    # A numerical comparison tolerance: differences from an exact value
-    # smaller than this are not acted on. It is separate from the Monte Carlo
-    # and quadrature errors.
-    alarm_multiplier = 2.58, comparison_tolerance = 1e-4,
+    alarm_multiplier = exact_comparison$multiplier,
+    comparison_tolerance = exact_comparison$tolerance,
     independent = independent, plug_in = plug_in,
     # The Jensen bound with its numerical error, the change from 30 to 60
     # quadrature nodes, which enters through the posterior moments as well as
@@ -578,6 +576,29 @@ step_log_variance <- function(value_at, point, centre_value, index,
   }
   best <- which.max(values)
   list(value = values[best], point = points[[best]], failed = anyNA(values))
+}
+
+##' The settings of a comparison with an exact value
+##'
+##' `multiplier` is the number of Monte Carlo standard errors by which an
+##' estimated log-likelihood must differ from an exact value, and `tolerance` a
+##' numerical one. Smaller differences are not acted on. It is separate from
+##' the Monte Carlo and quadrature errors.
+##' @noRd
+exact_comparison <- list(multiplier = 2.58, tolerance = 1e-4)
+
+##' Whether a log-likelihood is near the limit of independent location effects
+##'
+##' TRUE when the estimated log-likelihood `value`, with standard error `se`,
+##' is not clearly above the exact `limit` at this Monte Carlo precision, which
+##' is also so when it is below. That says nothing about whether the data show
+##' spatial correlation.
+##' @noRd
+is_near_limit <- function(value, se, limit,
+                          multiplier = exact_comparison$multiplier,
+                          tolerance = exact_comparison$tolerance) {
+  value - limit$log_likelihood <=
+    limit$quadrature_error + tolerance + multiplier * se
 }
 
 ##' Estimated log-likelihood on the comparison bank, with its standard error
@@ -721,7 +742,7 @@ judge_spatial_share <- function(screen, fit, estimate, tolerance) {
 ##' A kept maximum at a positive scale below the shortest screened one whose
 ##' log-likelihood is not clearly above the limit at this Monte Carlo
 ##' precision stays a candidate like any other, and the record notes it as
-##' `near_limit` for a warning. An alarm persists if its exact value still
+##' `near_limit` for `check_fit()`. An alarm persists if its exact value still
 ##' exceeds the kept maximum, whatever the comparison with the limit says.
 ##' @return The kept `optimised` result, a `check` table of the candidates
 ##' (NULL if no refit was run), whether the kept maximum is `separate` from
@@ -855,12 +876,13 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
       !at_zero_variance && scale < min(screen$log_phi)) {
     # A positive short scale whose likelihood is not clearly above the limit
     # at this Monte Carlo precision. The candidate is kept and assessed as
-    # usual, with a warning.
-    gap <- judge_kept()$value - limit$log_likelihood
-    if (gap <= limit$quadrature_error + screen$comparison_tolerance +
-        screen$alarm_multiplier * judge_kept()$se) {
-      record$near_limit <- list(gap = gap, se = judge_kept()$se,
-                                draws = judge_kept()$draws, log_phi = scale)
+    # usual, and check_fit() says so.
+    if (is_near_limit(judge_kept()$value, judge_kept()$se, limit,
+                      screen$alarm_multiplier, screen$comparison_tolerance)) {
+      record$near_limit <- list(
+        gap = judge_kept()$value - limit$log_likelihood, se = judge_kept()$se,
+        draws = judge_kept()$draws, log_phi = scale
+      )
     }
   }
   if (isTRUE(record$alarm$fired)) {

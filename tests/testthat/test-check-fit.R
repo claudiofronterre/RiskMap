@@ -742,8 +742,12 @@ test_that("the screen tables keep what the fit recorded", {
   withr::defer(grDevices::dev.off())
   built <- ggplot2::ggplot_build(panel)
   labels <- unlist(lapply(built$data, function(layer) as.character(layer$label)))
-  expect_contains(labels, c("10% spatial", "20% spatial",
-                            "independent location effects"))
+  expect_contains(labels, c("10% spatial", "20% spatial"))
+  # The limit is named in the legend, not on the panel, where the name
+  # overprinted the estimate.
+  expect_false(any(grepl("independent", labels)))
+  linetype <- built$plot$scales$get_scales("linetype")
+  expect_identical(linetype$get_labels(), "Independent location effects")
   expect_false("gate" %in% labels)
   expect_match(describe_screen_outcome(data, 0.25),
                "^No exact lower bound is clearly above the estimate.$")
@@ -751,6 +755,161 @@ test_that("the screen tables keep what the fit recorded", {
                                             "Exact alarm" = TRUE), 0.25),
                "fit was repeated from it. An exact lower bound is above")
   expect_null(plot_screen_panel(list()))
+})
+
+test_that("the evidence is measured from the estimate that replaced the fit", {
+  # The estimate is at a separate maximum, 3 above the first fit on the
+  # fitting draws and 2.5 above it on the independent draws.
+  maxima <- data.frame(
+    log_likelihood = c(-100, -97, -97), maximum = c(2L, 1L, 1L),
+    independent_log_likelihood = c(-100.1, -97.6, NA),
+    independent_se = c(0.4, 0, NA), chosen = c(FALSE, TRUE, FALSE),
+    start = c("fitted", "small variance, short scale",
+              "large variance, short scale"), log_phi = log(c(4, 1, 1))
+  )
+  screen <- list(
+    gate = "opened",
+    screen = data.frame(log_phi = log(c(1, 2)), gap = c(-0.2, -5)),
+    independent = list(log_likelihood = -96.6, quadrature_error = 0),
+    alarm = list(statistic = -96.6, fitted_comparison = -100.1,
+                 fitted_comparison_se = 0.4,
+                 bounds = data.frame(log_phi = log(c(1, 2)),
+                                     bound = c(-97, -101), error = 0))
+  )
+  evidence <- function(check) {
+    flagged <- with_flags(mcml_maxima_screen = screen,
+                          mcml_maxima_check = check,
+                          mcml_maxima_alarm = TRUE, mcml_pc_prior = FALSE)
+    check_fit(flagged)$results[["Other maxima"]]$data
+  }
+  short <- "Short scales, log-likelihood above the estimate"
+  largest <- "Largest exact lower bound, above the estimate"
+  limit <- "Limit with independent location effects, above the estimate"
+  replaced <- evidence(maxima)
+  expect_equal(replaced[[largest]], 1)
+  expect_equal(replaced[[limit]], 1)
+  expect_equal(replaced[[short]]$exact_bound, c(0.6, -3.4))
+  expect_equal(replaced[[short]]$screened, c(-3.2, -8))
+  # The gate is 0.25 below the fit that was screened, not below the estimate.
+  panel <- plot_screen_panel(replaced)
+  lines <- Filter(function(layer) inherits(layer$geom, "GeomHline"),
+                  panel$layers)
+  heights <- unlist(lapply(lines, function(layer) layer$data$yintercept))
+  expect_contains(heights, -3.25)
+  expect_match(gsub("\n", " ", ggplot2::get_labs(panel)$subtitle),
+               "came within 0.25 of the first fit on the fitting draws")
+  # Without a replacement, or with a better point of the same maximum, the
+  # values are above the first fit's, as recorded.
+  same <- transform(maxima, maximum = 1L)
+  for (check in list(same, transform(maxima, chosen = c(TRUE, FALSE, FALSE)))) {
+    kept <- evidence(check)
+    expect_equal(kept[[largest]], 3.5)
+    expect_equal(kept[[limit]], 3.5)
+    expect_equal(kept[[short]]$exact_bound, c(3.1, -0.9))
+    expect_equal(kept[[short]]$screened, c(-0.2, -5))
+    expect_null(attr(kept[[short]], "gain"))
+    expect_match(gsub("\n", " ", ggplot2::get_labs(
+      plot_screen_panel(kept))$subtitle), "0.25 of the estimate")
+  }
+  # The bounds by spatial share are above the estimate too.
+  shares <- list(
+    independent = screen$independent,
+    alarm = list(shares = data.frame(log_phi = 0, share = 0.1, bound = -96))
+  )
+  expect_equal(tabulate_spatial_shares(shares, "km")[["10%"]], 0.6)
+  expect_equal(tabulate_spatial_shares(shares, "km",
+                                       find_replacement(maxima))[["10%"]], 1.6)
+  expect_null(find_replacement(NULL))
+})
+
+test_that("nearness to the limit of independent effects is assessed at any scale", {
+  near <- list(
+    gate = "closed", independent = list(log_likelihood = -100,
+                                        quadrature_error = 0),
+    alarm = list(fitted_comparison = -100.03, fitted_comparison_se = 0.025)
+  )
+  fit_with <- function(screen = near, small = FALSE, ...) {
+    with_flags(mcml_maxima_screen = screen, mcml_maxima_check = NULL,
+               mcml_near_limit = FALSE, mcml_small_scale = small,
+               mcml_boundary = character(), mcml_pc_prior = FALSE,
+               mcml_numerically_independent = FALSE,
+               mcml_identifiability_failure = FALSE, ...)
+  }
+  sentence <- "not clearly above the limit with independent location effects"
+  question <- "Likelihood near the limit of independent location effects"
+  answer <- function(fit) {
+    check_fit(fit)$results[["Spatial scale"]]$data[[question]]
+  }
+  printed <- function(object) {
+    gsub("\\s+", " ", paste(capture.output(print(object)), collapse = " "))
+  }
+  # A fit near the limit at a longer scale keeps its status and says so.
+  row <- find_check(fit_with(), "Spatial scale")
+  expect_identical(row$status, "OK")
+  expect_match(row$finding, "longer than the median distance")
+  expect_match(row$finding, sentence)
+  expect_true(answer(fit_with()))
+  expect_match(printed(check_fit(fit_with())), sentence)
+  expect_match(printed(summary(check_fit(fit_with()))),
+               paste(question, "yes"))
+  # A short scale is SUSPICIOUS with or without the limit, and below the
+  # shortest scale of the screen the fit records it itself.
+  short <- find_check(fit_with(small = TRUE), "Spatial scale")
+  expect_identical(short$status, "SUSPICIOUS")
+  expect_match(short$finding, sentence)
+  recorded <- fit_with(screen = NULL)
+  attr(recorded, "optimizer")$mcml_near_limit <- TRUE
+  expect_identical(find_check(recorded, "Spatial scale")$status, "SUSPICIOUS")
+  expect_true(answer(recorded))
+  # Clearly above the limit, by more than 2.58 standard errors.
+  above <- near
+  above$alarm$fitted_comparison <- -99.93
+  expect_false(answer(fit_with(above)))
+  expect_no_match(find_check(fit_with(above), "Spatial scale")$finding, sentence)
+  expect_match(printed(summary(check_fit(fit_with(above)))),
+               paste(question, "no "))
+  # Not assessed without the limit, the comparison or its standard error, with
+  # a penalty, or when the estimate is at a separate maximum.
+  without <- function(...) utils::modifyList(near, list(...))
+  replaced <- data.frame(
+    log_likelihood = c(-100, -97), maximum = c(2L, 1L),
+    independent_log_likelihood = c(-100, -97), independent_se = c(0.4, 0),
+    chosen = c(FALSE, TRUE), start = c("fitted", "exact alarm"),
+    log_phi = c(0, 1)
+  )
+  unassessed <- list(
+    fit_with(screen = NULL),
+    fit_with(list(gate = "unavailable", reason = "held coefficients")),
+    fit_with(without(alarm = NULL)),
+    fit_with(without(alarm = list(fitted_comparison = NULL))),
+    fit_with(without(alarm = list(fitted_comparison_se = NULL))),
+    fit_with(without(alarm = list(fitted_comparison = -Inf))),
+    fit_with(without(independent = list(quadrature_error = NULL)))
+  )
+  penalised <- fit_with()
+  attr(penalised, "optimizer")$mcml_pc_prior <- TRUE
+  separate <- fit_with()
+  attr(separate, "optimizer")$mcml_maxima_check <- replaced
+  for (fit in c(unassessed, list(penalised, separate))) {
+    expect_identical(answer(fit), NA)
+    expect_no_match(find_check(fit, "Spatial scale")$finding, sentence)
+    expect_match(printed(summary(check_fit(fit))),
+                 paste(question, "not assessed"))
+  }
+  expect_identical(assess_near_limit(list(
+    mcml_boundary = "spatial variance (sigma2)", mcml_maxima_screen = near
+  )), NA)
+})
+
+test_that("a numerically independent fit is reported without the variance of the limit", {
+  fit <- list(outcome = "numerically independent", certified = FALSE,
+              maxima_screen = list(independent = list(log_variance = log(198))))
+  warned <- expect_warning(
+    report_mcml_outcome(fit, list(index = list(sigma2 = 2L)), 0.1, FALSE),
+    class = "riskmap_warning_fit"
+  )
+  expect_match(conditionMessage(warned), "numerically one of independent")
+  expect_no_match(conditionMessage(warned), "variance")
 })
 
 test_that("a fit made before the bounds were kept draws the screen alone", {

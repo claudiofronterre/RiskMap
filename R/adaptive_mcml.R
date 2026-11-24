@@ -1963,16 +1963,11 @@ report_maxima_check <- function(fit) {
 ##' The spatial correlation at the fitted scale is numerically negligible, so
 ##' the fit is one of independent location effects and the scale is
 ##' unresolved. That is not evidence that the maximum lies at zero scale.
-##' `record` is the record of the screen (`check_other_maxima()`).
+##' The maximum with independent location effects can be at another variance
+##' (`check_other_maxima()`), so the estimate alone gives the variance.
 ##' @noRd
-report_numerically_independent <- function(record) {
-  variance <- record$independent$log_variance
-  with_variance <- if (!is.null(variance)) {
-    paste0(" with variance ", signif(exp(variance), 3))
-  } else {
-    ""
-  }
-  riskmap_warn(c("The fitted spatial scale is so short that the fit is numerically one of independent location effects{with_variance}.", "i" = "The spatial scale is unresolved, and standard errors and the Monte Carlo certificate are not reported. See {.fn check_fit}."), class = "riskmap_warning_fit")
+report_numerically_independent <- function() {
+  riskmap_warn(c("The fitted spatial scale is so short that the fit is numerically one of independent location effects.", "i" = "The spatial scale is unresolved, and standard errors and the Monte Carlo certificate are not reported. See {.fn check_fit}."), class = "riskmap_warning_fit")
 }
 
 ##' Warn that the likelihood has no maximum
@@ -2036,7 +2031,7 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
   }
   report_maxima_check(fit)
   if (identical(fit$outcome, "numerically independent")) {
-    report_numerically_independent(fit$maxima_screen)
+    report_numerically_independent()
   } else if (identical(fit$outcome, "weak identification")) {
     riskmap_warn(c("The observed information matrix is singular, so some parameters, often the spatial scale, are not identifiable from these data.", "i" = "The estimate has no standard errors or Monte Carlo certificate. See {.fn check_fit}."), class = "riskmap_warning_fit")
   } else if (isTRUE(fit$held_variance_rising)) {
