@@ -50,7 +50,7 @@ to_table(object, ...)
 - digits:
 
   A non-negative integer giving the number of decimal places used to
-  display numeric results.
+  display numeric results. Small values get more (see Details).
 
 - col_names:
 
@@ -67,11 +67,16 @@ This function creates a presentation-ready summary table from a fitted
 [coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md)
 or
 [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
-when numeric results are required for further analysis. Numeric values
-use fixed notation with `digits` decimal places, except when scientific
-notation is needed to represent very large or very small values clearly.
-Values that are compared share one notation: the estimate and confidence
-limits of a parameter, and one metric across models.
+when numeric results are required for further analysis.
+
+Numeric values have `digits` decimal places. Values that are compared,
+the estimate and confidence limits of a parameter or one metric across
+models, share one notation and one number of decimal places. When one of
+them is smaller in size than `10^(-digits)`, they get as many decimal
+places as the smallest needs for two significant digits. They are in
+scientific notation when that takes more than six decimal places, or
+when one of them is a million or more in size. Zeros and missing values
+don't count.
 
 The table of a fit or its summary has
 
