@@ -257,13 +257,22 @@ test_that("documents that print data frames as tables show the print", {
                                         spatial_threshold = 0.5)
   expect_identical(capture.output(knitr::knit_print(extrapolation)),
                    capture.output(print(extrapolation)))
-  # A subset without the classes is a table like any other.
+  # A subset is a table like any other.
   expect_output(knitr::knit_print(extrapolation[, "covariates_outside"]),
                 "a table")
+  expect_output(knitr::knit_print(extrapolation[1:2, ]), "a table")
+  # So is a table without the geometry, whose rows need not be locations.
+  rows <- st_drop_geometry(extrapolation)
+  expect_output(knitr::knit_print(rows), "a table")
+  expect_identical(capture.output(print(rows)),
+                   capture.output(print(as.data.frame(unclass(rows)))))
   listed <- glgpm_parameters(y ~ cov + gp(), data = binomial_data,
                              family = "binomial")
   expect_identical(capture.output(knitr::knit_print(listed)),
                    capture.output(print(listed)))
+  some <- listed[, c("label", "start")]
+  expect_output(knitr::knit_print(some), "a table")
+  expect_output(print(some), "distance_quantile")
 })
 
 test_that("the print of indicators states the classes and the thresholds", {

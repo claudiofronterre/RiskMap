@@ -1606,8 +1606,12 @@ still prints as an sf object and passes its arguments, such as `n`, to sf.
 `glgpm_parameters()`, which are data frames, print as they do in the console
 in R Markdown and Quarto documents whose `df-print` option shows data frames
 as tables, without a call to `print()`. They have `knit_print()` methods. A
-subset of the indicators that lost the classes or the threshold is a table
-like any other data frame.
+subset of rows of the indicators, or one that lost the classes, the threshold
+or the geometry, is a table like any other data frame. Without the geometry
+the indicators now also print as a data frame in the console, where a count of
+the classes printed as if its rows were locations. A table of parameters
+without the columns of the template prints as a data frame, where it stopped
+with an error.
 
 ## Cross validation
 
