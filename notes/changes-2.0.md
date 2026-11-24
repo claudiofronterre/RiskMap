@@ -1272,6 +1272,32 @@ panel is a ggplot and several are a patchwork in two columns. It used to print
 the panels itself and return the list of them invisibly, so a figure could not
 be saved or changed before it was drawn.
 
+- `check_fit()` measures its evidence on other maxima from the estimate. When the
+check for other maxima had kept another candidate than the first fit, or had
+compared them on four times as many draws, "Largest exact lower bound", "Limit
+with independent location effects" and the short scales were above the first fit
+on the first draws, although they said above the estimate. In one fit without a
+maximum the limit was given as 4.3 above the estimate and is 1.3 above it. In the
+panel `"screen"` the gate is 0.25 below the first fit where another replaced it,
+and the subtitle says "first fit" where the fit was repeated, also when an exact
+bound repeated it behind a closed gate. The finding of an exact alarm no longer
+says "at another spatial scale", since the bound can be that of the limit with
+independent location effects. The warning of a fit that is numerically one of
+independent location effects no longer gives a variance, which was that of the
+limit and not of the estimate. Estimates are unchanged.
+
+- `summary()` of the checks says "not assessed" where the likelihood was not
+compared with the limit of independent location effects, instead of "no", and
+answers the question at any scale when the fit recorded both log-likelihoods. It was answered
+only for a scale below the shortest of the screen. A fit near the limit at a
+scale longer than the spacing stays `OK`, and its finding says that the fitted
+likelihood is not clearly above the limit. The status of every other fit is
+unchanged.
+
+- The panel `"screen"` of the checks names the limit with independent location
+effects in the legend, instead of beside its line, where the name could overprint
+the estimate or the bounds.
+
 - Certified MCML no longer stops with "the optimiser returned non-finite
 parameter values" when the search for the conditional mode of the latent
 effects goes wrong. Each search starts from the mode found at the parameter

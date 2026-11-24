@@ -420,9 +420,9 @@ fit_check_maxima <- function(optimizer, units = NULL,
   if (isTRUE(optimizer$mcml_maxima_alarm)) {
     return(fit_check_row(
       name, "PROBLEM",
-      paste0("An exact lower bound on the likelihood at another spatial scale ",
-             "is above the likelihood of the estimate, so the estimate is not ",
-             "the maximum likelihood estimate."),
+      paste0("An exact lower bound on the likelihood is above the likelihood ",
+             "of the estimate, so the estimate is not the maximum likelihood ",
+             "estimate."),
       paste0("Inspect the profile likelihood", profile, ".")
     ))
   }
@@ -536,6 +536,10 @@ fit_check_variances <- function(optimizer) {
 ##' Whether the data determine the spatial scale
 ##'
 ##' NULL with the spatial variance at zero, where there is no scale to check.
+##' A fit near the limit with independent location effects
+##' (`assess_near_limit()`) is `SUSPICIOUS` where the fit recorded it, below the
+##' shortest scale of the screen. At a longer scale the finding says it and
+##' the status stays as it is, since the computation is not in doubt.
 ##' `profile` completes the fix (`describe_profile_pointer()`).
 ##' @noRd
 fit_check_spatial_scale <- function(object, optimizer,
@@ -564,11 +568,15 @@ fit_check_spatial_scale <- function(object, optimizer,
   value <- paste0(signif(stats::coef(object)$phi, 3), " ", units)
   scale <- paste0("The scale of ", value)
   small <- isTRUE(optimizer$mcml_small_scale)
-  near <- isTRUE(optimizer$mcml_near_limit)
-  if (!small && !near) {
+  near <- if (isTRUE(assess_near_limit(optimizer))) {
+    paste0(" The fitted likelihood is not clearly above the limit with ",
+           "independent location effects.")
+  }
+  if (!small && !isTRUE(optimizer$mcml_near_limit)) {
     return(fit_check_row(name, "OK", paste0(
-      scale, " is longer than the median distance between neighbouring locations."
-    ), brief = paste0(value, ", longer than the median spacing.")))
+      scale, " is longer than the median distance between neighbouring locations.",
+      near
+    ), brief = paste0(value, ", longer than the median spacing.", near)))
   }
   fit_check_row(
     name, "SUSPICIOUS",
@@ -584,8 +592,7 @@ fit_check_spatial_scale <- function(object, optimizer,
       } else {
         " is short."
       },
-      if (near) paste0(" The fitted likelihood is not clearly above the limit ",
-                       "with independent location effects.")
+      near
     ),
     paste0(
       see_profile, " Consider ",
@@ -1015,13 +1022,15 @@ format_checks <- function(x) {
 ##'   estimate, which repeats the fit from the best such scale when one comes
 ##'   within 0.25 of it (the dashed line), and the exact lower bound on the
 ##'   likelihood there, with the likelihood with independent location effects,
-##'   the limit as the scale goes to zero, as a dotted line. An exact bound
-##'   clearly above the estimate shows that the estimate is not the maximum
-##'   likelihood estimate. For a fit with the spatial variance at zero and a
-##'   nugget, the panel adds the exact bound over longer scales for each share
-##'   of the variance in a spatial effect. With the extra check `"radius"`,
-##'   the panel `"radius"` shows the error of each resampled sample of
-##'   certification draws against the
+##'   the limit as the scale goes to zero, as a dotted line. When another fit
+##'   replaced the one that was screened, the values are above that fit and
+##'   the dashed line is 0.25 below the replaced one. An exact bound clearly
+##'   above the estimate shows that the estimate is not the
+##'   maximum likelihood estimate. For a fit with the spatial variance at zero
+##'   and a nugget, the panel adds the exact bound over longer scales for each
+##'   share of the variance in a spatial effect. With the extra check
+##'   `"radius"`, the panel `"radius"` shows the error of each resampled sample
+##'   of certification draws against the
 ##'   radius the fit would use for it, the larger of its own and a
 ##'   replicate's, in standard errors, with the line where they are equal. Its
 ##'   subtitle gives the predicted rate at which the radius is exceeded, as in
@@ -1293,7 +1302,8 @@ plot_held_variance_panel <- function(slopes, multiplier = 2.58) {
 ##' From the data of the check of other maxima (`tabulate_short_scales()`,
 ##' `tabulate_spatial_shares()`), on a log scale of distance, with the
 ##' log-likelihood above that of the estimate. The dashed line at `margin`
-##' below the estimate is the gate of the screen, the margin of
+##' below the fit that was screened, which is the estimate unless another fit
+##' replaced it, is the gate of the screen, the margin of
 ##' `make_short_scale_screen()`, and the dotted line the limit with
 ##' independent location effects. The bounds by spatial share are labelled at
 ##' their right end. The vertical axis is cut a unit below the lowest of the
@@ -1320,21 +1330,29 @@ plot_screen_panel <- function(data, margin = 0.25) {
   }
   estimate <- unlist(data[startsWith(names(data), "Scale of the estimate")])
   limit <- data[["Limit with independent location effects, above the estimate"]]
+  gate <- -margin - (attr(short, "gain") %||% 0)
   panel <- ggplot2::ggplot() +
     ggplot2::geom_hline(yintercept = 0, colour = "#b7bec8")
   left <- min(table[[1L]], shares[[1L]])
   if (!is.null(short$screened)) {
     panel <- panel +
-      ggplot2::geom_hline(yintercept = -margin, linetype = "dashed",
+      ggplot2::geom_hline(yintercept = gate, linetype = "dashed",
                           colour = colours$cutoff) +
-      ggplot2::annotate("text", x = left, y = -margin, label = "gate",
+      ggplot2::annotate("text", x = left, y = gate, label = "gate",
                         hjust = 0, vjust = 1.5, size = 2.9,
                         colour = colours$cutoff)
   }
   if (length(limit) && is.finite(limit)) {
     panel <- panel +
-      ggplot2::geom_hline(yintercept = limit, linetype = "dotted",
-                          colour = colours$wald, linewidth = 0.8)
+      ggplot2::geom_hline(
+        data = data.frame(value = limit,
+                          label = "Independent location effects"),
+        ggplot2::aes(yintercept = .data$value, linetype = .data$label),
+        colour = colours$wald, linewidth = 0.8
+      ) +
+      ggplot2::scale_linetype_manual(
+        values = c("Independent location effects" = "dotted")
+      )
   }
   if (!is.null(share_lines)) {
     levels <- levels(share_lines$series)
@@ -1368,14 +1386,8 @@ plot_screen_panel <- function(data, margin = 0.25) {
       ggplot2::annotate("text", x = estimate, y = 0, label = "estimate",
                         vjust = -1, size = 3.2, colour = "#3b4350")
   }
-  if (length(limit) && is.finite(limit)) {
-    panel <- panel +
-      ggplot2::annotate("text", x = max(table[[1L]], shares[[1L]], estimate),
-                        y = limit, label = "independent location effects",
-                        hjust = 1, vjust = 1.5, size = 2.9, colour = "#3b4350")
-  }
   shown <- c(lines$value, share_lines$value, limit, 0)
-  focus <- c(0, -margin, limit, short$screened,
+  focus <- c(0, gate, limit, short$screened,
              if (is.null(short$screened)) share_lines$value)
   focus <- focus[is.finite(focus)]
   shown <- shown[is.finite(shown)]
@@ -1391,12 +1403,17 @@ plot_screen_panel <- function(data, margin = 0.25) {
       subtitle = paste(strwrap(describe_screen_outcome(data, margin),
                                width = 62L), collapse = "\n"),
       x = paste0("Spatial scale (", units, ", log scale)"),
-      y = "Log-likelihood above the estimate", colour = NULL
+      y = "Log-likelihood above the estimate", colour = NULL, linetype = NULL
     ) +
     ggplot2::coord_cartesian(ylim = c(min(focus) - 1, max(shown) + 0.12 *
                                         (max(shown) - min(focus) + 1))) +
+    ggplot2::guides(colour = ggplot2::guide_legend(order = 1),
+                    linetype = ggplot2::guide_legend(order = 2)) +
     profile_theme() +
-    ggplot2::theme(legend.position = "bottom")
+    # In two rows, since one is wider than a panel of a page with two.
+    ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
+                   legend.margin = ggplot2::margin(),
+                   legend.spacing.y = ggplot2::unit(0, "pt"))
 }
 
 ##' Columns of a table of the screen as lines to draw
@@ -1420,20 +1437,29 @@ reshape_screen_columns <- function(table, columns) {
 
 ##' What the screen of short scales and its exact alarm found, for the panel
 ##'
-##' A fit made before the bound at each scale was recorded has only the
-##' largest, which the subtitle gives.
+##' The fit that was screened is the first fit where the check for other
+##' maxima repeated it, which behind a closed gate an exact alarm did. A fit
+##' made before the bound at each scale was recorded has only the largest,
+##' which the subtitle gives.
 ##' @noRd
 describe_screen_outcome <- function(data, margin) {
   gate <- data[["Screen of short scales"]] %||% ""
   largest <- data[["Largest exact lower bound, above the estimate"]]
   short <- data[["Short scales, log-likelihood above the estimate"]]
+  repeated <- !is.null(data[["Maxima from the dispersed starts"]])
+  screened <- if (repeated) "first fit" else "estimate"
   paste0(
     switch(gate,
            closed = paste0("No short scale came within ", margin, " of the ",
-                           "estimate on the fitting draws, so the fit was not ",
-                           "repeated. "),
+                           screened, " on the fitting draws, ",
+                           if (repeated) {
+                             paste0("but an exact lower bound was above it, so ",
+                                    "the fit was repeated from that bound. ")
+                           } else {
+                             "so the fit was not repeated. "
+                           }),
            opened = paste0("A short scale came within ", margin, " of the ",
-                           "estimate on the fitting draws, so the fit was ",
+                           screened, " on the fitting draws, so the fit was ",
                            "repeated from it. "),
            ""),
     if (isTRUE(data[["Exact alarm"]])) {

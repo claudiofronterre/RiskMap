@@ -36,8 +36,9 @@ With RiskMap you can
 
 RiskMap 2.0 is not yet on CRAN, so install it from GitHub. It contains
 C++ code, which needs
-[Rtools](https://cran.r-project.org/bin/windows/Rtools/) on Windows and
-the Xcode command line tools on macOS.
+[Rtools](https://cran.r-project.org/bin/windows/Rtools/) on Windows, and
+the Xcode command line tools and [GNU
+Fortran](https://mac.r-project.org/tools/) on macOS.
 
 ``` r
 # install.packages("remotes")
