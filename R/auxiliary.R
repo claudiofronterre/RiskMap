@@ -1161,17 +1161,21 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' `boundaries` from [predict()][predict.RiskMap()] (see
 ##' [to_table.RiskMap_prediction()]).
 ##' @param digits A non-negative integer giving the number of decimal places
-##' used to display numeric results.
+##' used to display numeric results. Small values get more (see Details).
 ##' @param col_names Optional column names, replacing the default headers.
 ##' @param ... Additional arguments passed to [knitr::kable()].
 ##' @details This function creates a presentation-ready summary table from a
 ##' fitted "RiskMap" model or cross-validation results for multiple models.
 ##' Use [coef()][coef.RiskMap()] or [summary()][summary.RiskMap()] when numeric
-##' results are required for further analysis. Numeric values use fixed notation with
-##' `digits` decimal places, except when scientific notation is needed to
-##' represent very large or very small values clearly. Values that are
-##' compared share one notation: the estimate and confidence limits of a
-##' parameter, and one metric across models.
+##' results are required for further analysis.
+##'
+##' Numeric values have `digits` decimal places. Values that are compared, the
+##' estimate and confidence limits of a parameter or one metric across models,
+##' share one notation and one number of decimal places. When one of them is
+##' smaller in size than `10^(-digits)`, they get as many decimal places as
+##' the smallest needs for two significant digits. They are in scientific
+##' notation when that takes more than six decimal places, or when one of them
+##' is a million or more in size. Zeros and missing values don't count.
 ##'
 ##' The table of a fit or its summary has
 ##' - the regression coefficients with their estimates and confidence
@@ -1251,36 +1255,26 @@ to_table.default <- function(object, ...) {
 
 ##' The table of a fit or of a cross-validation, formatted for `kable()`
 ##'
-##' Numbers are in fixed notation with `digits` decimal places, or in
-##' scientific notation for a value of a million or more and for one that
-##' fixed notation would show as zero. Values that are compared share one
-##' notation, the estimate and limits of a parameter (a row of a model table,
-##' `row_names = TRUE`) or one metric across models (a column of a
-##' cross-validation table). `...` goes to [knitr::kable()].
+##' The values that are compared, and so formatted together by
+##' `format_compared_values()`, are the estimate and limits of a parameter (a
+##' row of a model table, `row_names = TRUE`) or one metric across models (a
+##' column of a cross-validation table). `...` goes to [knitr::kable()].
 ##' @noRd
 format_results_table <- function(table, row_names, digits, col_names, ...) {
   tab <- as.data.frame(table, check.names = FALSE)
   numeric_columns <- which(vapply(tab, is.numeric, logical(1)))
   values <- as.matrix(tab[numeric_columns])
-  needs_scientific <- is.finite(values) & values != 0 &
-    (abs(values) >= 1e6 | abs(values) < 10^(-digits))
-  scientific <- if (row_names) {
-    matrix(rowSums(needs_scientific) > 0, nrow(values), ncol(values))
+  out <- array("", dim(values))
+  if (row_names) {
+    for (i in seq_len(nrow(values))) {
+      out[i, ] <- format_compared_values(values[i, ], digits)
+    }
   } else {
-    matrix(colSums(needs_scientific) > 0, nrow(values), ncol(values),
-           byrow = TRUE)
+    for (j in seq_len(ncol(values))) {
+      out[, j] <- format_compared_values(values[, j], digits)
+    }
   }
-  for (j in seq_along(numeric_columns)) {
-    x <- values[, j]
-    out <- formatC(x, format = "f", digits = as.integer(digits))
-    use_scientific <- scientific[, j] & is.finite(x)
-    out[use_scientific] <- formatC(
-      x[use_scientific],
-      format = "e",
-      digits = as.integer(digits)
-    )
-    tab[[numeric_columns[j]]] <- out
-  }
+  for (j in seq_along(numeric_columns)) tab[[numeric_columns[j]]] <- out[, j]
 
   dots <- list(...)
   if (!is.null(col_names)) {
@@ -1296,6 +1290,29 @@ format_results_table <- function(table, row_names, digits, col_names, ...) {
       c("l", rep("r", ncol(tab) - 1L))
 
   do.call(kable, c(list(x = tab), dots))
+}
+
+##' Values that are compared, in one notation with one number of decimals
+##'
+##' They have `digits` decimal places. When a value is below `10^(-digits)` in
+##' size, the decimals are those that show two significant digits of the
+##' smallest, and scientific notation replaces more than six. A value of a
+##' million or more has scientific notation too. Zeros and values that are not
+##' finite don't count.
+##' @noRd
+format_compared_values <- function(x, digits) {
+  digits <- as.integer(digits)
+  sizes <- abs(x[is.finite(x) & x != 0])
+  decimals <- digits
+  if (any(sizes < 10^(-digits))) {
+    # The exponent of the rounded value, since 0.000996 is 0.0010
+    exponent <- sub(".*e", "", formatC(min(sizes), format = "e", digits = 1L))
+    decimals <- 1L - as.integer(exponent)
+  }
+  if (any(sizes >= 1e6) || (decimals > digits && decimals > 6L)) {
+    return(formatC(x, format = "e", digits = digits))
+  }
+  formatC(x, format = "f", digits = decimals)
 }
 
 ##' @title Summarize Cross-Validation Scores for Spatial RiskMap Models
