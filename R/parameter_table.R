@@ -979,6 +979,11 @@ print.riskmap_parameters <- function(x, ...) {
   invisible(x)
 }
 
+# As for knit_print.RiskMap_extrapolation(), so that a document that prints
+# data frames as tables shows the template for `start_pars`.
+##' @exportS3Method knitr::knit_print
+knit_print.riskmap_parameters <- function(x, ...) knitr::normal_print(x)
+
 ##' Read the values at which `fixed_pars` holds parameters
 ##'
 ##' With the names and structure of `start_pars` (`read_start_pars()`), on the

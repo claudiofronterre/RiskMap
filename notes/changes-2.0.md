@@ -1602,6 +1602,12 @@ to check the spelling.
 - `print()` and `plot()` of the indicators of `assess_extrapolation()` stop on
 an argument they don't use. A subset that lost the classes or the threshold
 still prints as an sf object and passes its arguments, such as `n`, to sf.
+- The indicators of `assess_extrapolation()` and the table of
+`glgpm_parameters()`, which are data frames, print as they do in the console
+in R Markdown and Quarto documents whose `df-print` option shows data frames
+as tables, without a call to `print()`. They have `knit_print()` methods. A
+subset of the indicators that lost the classes or the threshold is a table
+like any other data frame.
 
 ## Cross validation
 

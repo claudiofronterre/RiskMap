@@ -327,14 +327,27 @@ extrapolation_sampling_variance <- function(object, parameters) {
 ##' @method print RiskMap_extrapolation
 ##' @export
 print.RiskMap_extrapolation <- function(x, ...) {
-  threshold <- attr(x, "spatial_threshold", exact = TRUE)
   # A subset that lost the classes or their thresholds prints as an sf object.
-  if (!is.factor(x[["extrapolation"]]) || !is.numeric(threshold)) {
-    return(NextMethod())
-  }
+  if (!has_extrapolation_classes(x)) return(NextMethod())
   check_dots_unused(...)
+  threshold <- attr(x, "spatial_threshold", exact = TRUE)
   out_print(format_extrapolation(x, threshold))
   invisible(x)
+}
+
+# R Markdown and Quarto render data frames through knit_print(), so without a
+# method the `df-print` option of a document would replace the print method.
+##' @exportS3Method knitr::knit_print
+knit_print.RiskMap_extrapolation <- function(x, ...) {
+  if (!has_extrapolation_classes(x)) return(NextMethod())
+  knitr::normal_print(x)
+}
+
+#' Whether indicators of extrapolation kept their classes and thresholds
+#' @noRd
+has_extrapolation_classes <- function(x) {
+  is.factor(x[["extrapolation"]]) &&
+    is.numeric(attr(x, "spatial_threshold", exact = TRUE))
 }
 
 #' The lines that print indicators of extrapolation
