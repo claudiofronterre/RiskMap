@@ -1750,9 +1750,11 @@ checked.
 - `control_sim` parameters have been renamed to `control_mcmc`.
 - `to_table()` now returns a directly renderable `knitr_kable` table, with an
   explicit `digits` argument that preserves trailing zeroes. This replaces the
-  previous `xtable` return value. Values that are compared share one
-  notation: when a value needs scientific notation, so do the estimate and
-  limits of the same parameter, or the same metric for the other models.
+  previous `xtable` return value. The estimate and limits of a parameter, or
+  one metric for all the models, share one notation and one number of decimal
+  places. When one of them is below `10^(-digits)`, they get as many decimals
+  as the smallest needs for two significant digits. Scientific notation is for
+  more than six decimals and for a value of a million or more.
 - `summary()` of a model with a nugget gave the wrong confidence interval for
   the nugget variance: its standard error was that of the logarithm of
   tau2 / sigma2^2 instead of tau2. The interval now uses the delta method for

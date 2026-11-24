@@ -64,38 +64,94 @@ test_that("to_table formats cross-validation summaries directly", {
   expect_match(rendered, "CRPS", fixed = TRUE)
 })
 
-test_that("to_table uses scientific notation only when fixed notation is unsuitable", {
-  object <- table_test_model()
-  object$reg_coef[1, 1] <- 1e100
-  object$reg_coef[2, 1] <- 1e-8
-  table <- to_table(object, digits = 3, format = "pipe")
-  rendered <- paste(as.character(table), collapse = "\n")
+# The cells of the row with this name, after the name itself
+table_test_cells <- function(object, name, digits = 3) {
+  rows <- as.character(to_table(object, digits = digits, format = "pipe"))
+  cells <- strsplit(rows[startsWith(rows, paste0("|", name))], "|",
+                    fixed = TRUE)[[1]]
+  trimws(cells[-(1:2)])
+}
 
-  expect_match(rendered, "1.000e+100", fixed = TRUE)
-  expect_match(rendered, "1.000e-08", fixed = TRUE)
-  expect_match(rendered, "2.500", fixed = TRUE)
+# Those of the row of `x` with this estimate and limits
+table_test_row <- function(values, digits = 3) {
+  object <- table_test_model()
+  object$reg_coef[2, 1:3] <- values
+  table_test_cells(object, "x ", digits)
+}
+
+test_that("to_table uses scientific notation only when fixed notation is unsuitable", {
+  expect_identical(table_test_row(c(1e100, 1.5, 2)),
+                   c("1.000e+100", "1.500e+00", "2.000e+00"))
+  expect_identical(table_test_row(c(1e6, 1.5, 2)),
+                   c("1.000e+06", "1.500e+00", "2.000e+00"))
+  expect_identical(table_test_row(c(999999, 1.5, 2)),
+                   c("999999.000", "1.500", "2.000"))
+  # 1.993e-08 takes nine decimals and 2.5e-06 seven, but 2.5e-05 six
+  expect_identical(table_test_row(c(1.993e-8, 0, 0.5)),
+                   c("1.993e-08", "0.000e+00", "5.000e-01"))
+  expect_identical(table_test_row(c(2.5e-6, 0.1, 0.5)),
+                   c("2.500e-06", "1.000e-01", "5.000e-01"))
+  expect_identical(table_test_row(c(2.5e-5, 0.1, 0.5)),
+                   c("0.000025", "0.100000", "0.500000"))
+  # The limit doesn't apply to the decimals that are asked for
+  expect_identical(table_test_row(c(0.25, 1e-8, 0.5), digits = 8),
+                   c("0.25000000", "0.00000001", "0.50000000"))
+  expect_identical(table_test_row(c(0.25, 1e-9, 0.5), digits = 8),
+                   c("2.50000000e-01", "1.00000000e-09", "5.00000000e-01"))
+  # A value of a million or more decides, whatever the smallest is
+  expect_identical(table_test_row(c(2e6, 0.0004, 0.5)),
+                   c("2.000e+06", "4.000e-04", "5.000e-01"))
 })
 
-test_that("to_table shows values that are compared in one notation", {
-  # The estimate and limits of a parameter share a row
-  object <- table_test_model()
-  object$reg_coef[2, 1:3] <- c(-0.0022, -0.0042, -0.00025)
-  rows <- as.character(to_table(object, digits = 3, format = "pipe"))
-  expect_match(rows[grepl("^\\|x ", rows)],
-               "-2.200e-03.*-4.200e-03.*-2.500e-04")
-  expect_match(rows[grepl("Intercept", rows)], "0.490.*0.400.*0.600")
+test_that("to_table gives small values two significant digits", {
+  expect_identical(table_test_row(c(-0.002243, -0.004232, -0.0002506)),
+                   c("-0.00224", "-0.00423", "-0.00025"))
+  # All the values keep the decimals of the smallest, which isn't a zero
+  expect_identical(table_test_row(c(0, -0.00042, 12.3)),
+                   c("0.00000", "-0.00042", "12.30000"))
+  expect_identical(table_test_row(c(0.00042, NA, Inf)),
+                   c("0.00042", "NA", "Inf"))
+  # A value that rounds up across a power of ten keeps two digits
+  expect_identical(table_test_row(c(0.000996, 0.5, 0.75)),
+                   c("0.0010", "0.5000", "0.7500"))
+  expect_identical(table_test_row(c(0.0000996, 0.5, 0.75)),
+                   c("0.00010", "0.50000", "0.75000"))
+  expect_identical(table_test_row(c(9.96e-6, 0.5, 0.75)),
+                   c("0.000010", "0.500000", "0.750000"))
+  # The smallest value that `digits` decimals show with a digit that isn't 0
+  expect_identical(table_test_row(c(0.001, 0.5, 0.75)),
+                   c("0.001", "0.500", "0.750"))
+  expect_identical(table_test_row(c(0.49, 2, 3), digits = 0),
+                   c("0.49", "2.00", "3.00"))
+  # Zeros and missing values change nothing by themselves
+  expect_identical(table_test_row(c(0, NA, 0.5)), c("0.000", "NA", "0.500"))
+  expect_identical(table_test_row(c(NA_real_, NA, NA)), c("NA", "NA", "NA"))
+})
 
-  # One metric is compared across models down a column
+test_that("to_table changes only the rows that need it", {
+  object <- table_test_model()
+  for (small in c(-0.0002506, 1.993e-8, 1e100)) {
+    object$reg_coef[2, 1] <- small
+    expect_identical(table_test_cells(object, "(Intercept)"),
+                     c("0.490", "0.400", "0.600"))
+    expect_identical(table_test_cells(object, "Spatial process var."),
+                     c("2.000", "1.500", "2.500"))
+  }
+})
+
+test_that("to_table shows one metric of a cross-validation in one notation", {
   cv <- structure(
-    matrix(c(0.49, 0.0004, 0.25, 0.3), nrow = 2,
-           dimnames = list(c("model_a", "model_b"), c("crps", "scrps"))),
+    matrix(c(0.49, 0.0004, 0.25, 0.3, 0.5, 1e-8), nrow = 2,
+           dimnames = list(c("model_a", "model_b"),
+                           c("crps", "scrps", "pit_area"))),
     class = c("summary.RiskMap_cross_validation", "matrix", "array")
   )
-  rendered <- paste(as.character(to_table(cv, digits = 3, format = "pipe")),
-                    collapse = "\n")
-  expect_match(rendered, "4.900e-01", fixed = TRUE)
-  expect_match(rendered, "4.000e-04", fixed = TRUE)
-  expect_match(rendered, "0.250", fixed = TRUE)
+  rows <- as.character(to_table(cv, digits = 3, format = "pipe"))
+  cells <- strsplit(rows[grepl("^\\|model", rows)], "|", fixed = TRUE)
+  expect_identical(trimws(cells[[1]][-1]),
+                   c("model_a", "0.49000", "0.250", "5.000e-01"))
+  expect_identical(trimws(cells[[2]][-1]),
+                   c("model_b", "0.00040", "0.300", "1.000e-08"))
 })
 
 test_that("to_table validates its inputs", {
