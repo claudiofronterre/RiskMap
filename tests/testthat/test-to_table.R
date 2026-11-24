@@ -64,13 +64,19 @@ test_that("to_table formats cross-validation summaries directly", {
   expect_match(rendered, "CRPS", fixed = TRUE)
 })
 
-# The cells of the row of `x` with this estimate and limits
+# The cells of the row with this name, after the name itself
+table_test_cells <- function(object, name, digits = 3) {
+  rows <- as.character(to_table(object, digits = digits, format = "pipe"))
+  cells <- strsplit(rows[startsWith(rows, paste0("|", name))], "|",
+                    fixed = TRUE)[[1]]
+  trimws(cells[-(1:2)])
+}
+
+# Those of the row of `x` with this estimate and limits
 table_test_row <- function(values, digits = 3) {
   object <- table_test_model()
   object$reg_coef[2, 1:3] <- values
-  rows <- as.character(to_table(object, digits = digits, format = "pipe"))
-  cells <- strsplit(rows[grepl("^\\|x ", rows)], "|", fixed = TRUE)[[1]]
-  trimws(cells[-(1:2)])
+  table_test_cells(object, "x ", digits)
 }
 
 test_that("to_table uses scientific notation only when fixed notation is unsuitable", {
@@ -95,12 +101,6 @@ test_that("to_table uses scientific notation only when fixed notation is unsuita
   # A value of a million or more decides, whatever the smallest is
   expect_identical(table_test_row(c(2e6, 0.0004, 0.5)),
                    c("2.000e+06", "4.000e-04", "5.000e-01"))
-
-  # Only the row that needs it changes
-  object <- table_test_model()
-  object$reg_coef[2, 1] <- 1e-8
-  rows <- as.character(to_table(object, digits = 3, format = "pipe"))
-  expect_match(rows[grepl("Intercept", rows)], "0.490.*0.400.*0.600")
 })
 
 test_that("to_table gives small values two significant digits", {
@@ -126,6 +126,17 @@ test_that("to_table gives small values two significant digits", {
   # Zeros and missing values change nothing by themselves
   expect_identical(table_test_row(c(0, NA, 0.5)), c("0.000", "NA", "0.500"))
   expect_identical(table_test_row(c(NA_real_, NA, NA)), c("NA", "NA", "NA"))
+})
+
+test_that("to_table changes only the rows that need it", {
+  object <- table_test_model()
+  for (small in c(-0.0002506, 1.993e-8, 1e100)) {
+    object$reg_coef[2, 1] <- small
+    expect_identical(table_test_cells(object, "(Intercept)"),
+                     c("0.490", "0.400", "0.600"))
+    expect_identical(table_test_cells(object, "Spatial process var."),
+                     c("2.000", "1.500", "2.500"))
+  }
 })
 
 test_that("to_table shows one metric of a cross-validation in one notation", {
