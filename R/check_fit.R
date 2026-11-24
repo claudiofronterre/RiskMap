@@ -1022,10 +1022,10 @@ format_checks <- function(x) {
 ##'   estimate, which repeats the fit from the best such scale when one comes
 ##'   within 0.25 of it (the dashed line), and the exact lower bound on the
 ##'   likelihood there, with the likelihood with independent location effects,
-##'   the limit as the scale goes to zero, as a dotted line. When a separate
-##'   maximum replaced the fit that was screened, the values are above that
-##'   maximum and the dashed line is 0.25 below the replaced fit. An exact
-##'   bound clearly above the estimate shows that the estimate is not the
+##'   the limit as the scale goes to zero, as a dotted line. When another fit
+##'   replaced the one that was screened, the values are above that fit and
+##'   the dashed line is 0.25 below the replaced one. An exact bound clearly
+##'   above the estimate shows that the estimate is not the
 ##'   maximum likelihood estimate. For a fit with the spatial variance at zero
 ##'   and a nugget, the panel adds the exact bound over longer scales for each
 ##'   share of the variance in a spatial effect. With the extra check
@@ -1302,8 +1302,8 @@ plot_held_variance_panel <- function(slopes, multiplier = 2.58) {
 ##' From the data of the check of other maxima (`tabulate_short_scales()`,
 ##' `tabulate_spatial_shares()`), on a log scale of distance, with the
 ##' log-likelihood above that of the estimate. The dashed line at `margin`
-##' below the fit that was screened, which is the estimate unless a separate
-##' maximum replaced it, is the gate of the screen, the margin of
+##' below the fit that was screened, which is the estimate unless another fit
+##' replaced it, is the gate of the screen, the margin of
 ##' `make_short_scale_screen()`, and the dotted line the limit with
 ##' independent location effects. The bounds by spatial share are labelled at
 ##' their right end. The vertical axis is cut a unit below the lowest of the
@@ -1437,19 +1437,27 @@ reshape_screen_columns <- function(table, columns) {
 
 ##' What the screen of short scales and its exact alarm found, for the panel
 ##'
-##' A fit made before the bound at each scale was recorded has only the
-##' largest, which the subtitle gives.
+##' The fit that was screened is the first fit where the check for other
+##' maxima repeated it, which behind a closed gate an exact alarm did. A fit
+##' made before the bound at each scale was recorded has only the largest,
+##' which the subtitle gives.
 ##' @noRd
 describe_screen_outcome <- function(data, margin) {
   gate <- data[["Screen of short scales"]] %||% ""
   largest <- data[["Largest exact lower bound, above the estimate"]]
   short <- data[["Short scales, log-likelihood above the estimate"]]
-  screened <- if (is.null(attr(short, "gain"))) "estimate" else "first fit"
+  repeated <- !is.null(data[["Maxima from the dispersed starts"]])
+  screened <- if (repeated) "first fit" else "estimate"
   paste0(
     switch(gate,
            closed = paste0("No short scale came within ", margin, " of the ",
-                           screened, " on the fitting draws, so the fit was ",
-                           "not repeated. "),
+                           screened, " on the fitting draws, ",
+                           if (repeated) {
+                             paste0("but an exact lower bound was above it, so ",
+                                    "the fit was repeated from that bound. ")
+                           } else {
+                             "so the fit was not repeated. "
+                           }),
            opened = paste0("A short scale came within ", margin, " of the ",
                            screened, " on the fitting draws, so the fit was ",
                            "repeated from it. "),

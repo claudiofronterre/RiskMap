@@ -763,7 +763,8 @@ test_that("the evidence is measured from the estimate that replaced the fit", {
   maxima <- data.frame(
     log_likelihood = c(-100, -97, -97), maximum = c(2L, 1L, 1L),
     independent_log_likelihood = c(-100.1, -97.6, NA),
-    independent_se = c(0.4, 0, NA), chosen = c(FALSE, TRUE, FALSE),
+    independent_se = c(0.4, 0, NA), independent_draws = c(5000L, 5000L, NA),
+    chosen = c(FALSE, TRUE, FALSE),
     start = c("fitted", "small variance, short scale",
               "large variance, short scale"), log_phi = log(c(4, 1, 1))
   )
@@ -798,18 +799,30 @@ test_that("the evidence is measured from the estimate that replaced the fit", {
   expect_contains(heights, -3.25)
   expect_match(gsub("\n", " ", ggplot2::get_labs(panel)$subtitle),
                "came within 0.25 of the first fit on the fitting draws")
-  # Without a replacement, or with a better point of the same maximum, the
-  # values are above the first fit's, as recorded.
-  same <- transform(maxima, maximum = 1L)
-  for (check in list(same, transform(maxima, chosen = c(TRUE, FALSE, FALSE)))) {
-    kept <- evidence(check)
-    expect_equal(kept[[largest]], 3.5)
-    expect_equal(kept[[limit]], 3.5)
-    expect_equal(kept[[short]]$exact_bound, c(3.1, -0.9))
-    expect_equal(kept[[short]]$screened, c(-0.2, -5))
-    expect_null(attr(kept[[short]], "gain"))
-    expect_match(gsub("\n", " ", ggplot2::get_labs(
-      plot_screen_panel(kept))$subtitle), "0.25 of the estimate")
+  # The first fit kept on the bank that decided, which can be the enlarged one.
+  first <- transform(maxima, chosen = c(TRUE, FALSE, FALSE),
+                     independent_log_likelihood = c(-99.1, -99.3, NA),
+                     independent_draws = c(20000L, 20000L, NA))
+  kept <- evidence(first)
+  expect_equal(kept[[largest]], 2.5)
+  expect_equal(kept[[limit]], 2.5)
+  expect_equal(kept[[short]]$exact_bound, c(2.1, -1.9))
+  expect_equal(kept[[short]]$screened, c(-0.2, -5))
+  # A better point of the first fit's maximum, compared with another maximum.
+  better <- evidence(transform(maxima, maximum = c(1L, 1L, 2L)))
+  expect_equal(better[[limit]], 1)
+  expect_equal(better[[short]]$screened, c(-3.2, -8))
+  # With a single maximum there was nothing to compare, and the values are
+  # above the first fit's, as recorded.
+  single <- transform(maxima, maximum = 1L, independent_log_likelihood = NA_real_,
+                      independent_draws = NA_integer_)
+  for (check in list(single, NULL)) {
+    same <- evidence(check)
+    expect_equal(same[[largest]], 3.5)
+    expect_equal(same[[limit]], 3.5)
+    expect_equal(same[[short]]$exact_bound, c(3.1, -0.9))
+    expect_equal(same[[short]]$screened, c(-0.2, -5))
+    expect_null(attr(same[[short]], "gain"))
   }
   # The bounds by spatial share are above the estimate too.
   shares <- list(
@@ -818,8 +831,27 @@ test_that("the evidence is measured from the estimate that replaced the fit", {
   )
   expect_equal(tabulate_spatial_shares(shares, "km")[["10%"]], 0.6)
   expect_equal(tabulate_spatial_shares(shares, "km",
-                                       find_replacement(maxima))[["10%"]], 1.6)
-  expect_null(find_replacement(NULL))
+                                       find_kept_maximum(maxima))[["10%"]], 1.6)
+  expect_null(find_kept_maximum(NULL))
+})
+
+test_that("the screen panel says why the fit was repeated", {
+  said <- function(gate, starts = NULL) {
+    describe_screen_outcome(list(
+      "Screen of short scales" = gate, "Exact alarm" = FALSE,
+      "Maxima from the dispersed starts" =
+        if (!is.null(starts)) data.frame(start = starts)
+    ), 0.25)
+  }
+  expect_match(said("closed"),
+               "0.25 of the estimate on the fitting draws, so the fit was not repeated")
+  # An exact alarm repeats the fit behind a closed gate.
+  alarm <- said("closed", c("fitted", "exact alarm"))
+  expect_match(alarm, "0.25 of the first fit on the fitting draws, but an exact")
+  expect_match(alarm, "so the fit was repeated from that bound")
+  expect_no_match(alarm, "not repeated")
+  expect_match(said("opened", c("fitted", "short-scale screen")),
+               "0.25 of the first fit on the fitting draws, so the fit was repeated")
 })
 
 test_that("nearness to the limit of independent effects is assessed at any scale", {
@@ -868,15 +900,42 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   expect_no_match(find_check(fit_with(above), "Spatial scale")$finding, sentence)
   expect_match(printed(summary(check_fit(fit_with(above)))),
                paste(question, "no "))
+  # Below the shortest screened scale the fit has judged it, on the bank that
+  # decided between its maxima, so its answer stands.
+  candidates <- function(log_phi, chosen, draws = 5000L) {
+    data.frame(
+      log_likelihood = c(-100, -97), maximum = c(2L, 1L),
+      independent_log_likelihood = c(-100.03, -97), independent_se = c(0.4, 0),
+      independent_draws = draws, chosen = chosen,
+      start = c("fitted", "exact alarm"), log_phi = log_phi
+    )
+  }
+  with_candidates <- function(check, budget = 5000L, ...) {
+    fit <- fit_with(...)
+    attr(fit, "optimizer")$mcml_maxima_check <- check
+    attr(fit, "optimizer")$mcml_history <- list(list(validation_budget = budget))
+    fit
+  }
+  screened <- utils::modifyList(near, list(
+    alarm = list(bounds = data.frame(log_phi = c(0, 1), bound = -200, error = 0))
+  ))
+  for (kept in 1:2) {
+    judged <- with_candidates(candidates(c(-1, -1), 1:2 == kept, 20000L),
+                              screen = screened)
+    expect_false(answer(judged))
+  }
+  # At a longer scale it is judged on the bank of the recorded standard error.
+  longer <- candidates(c(2, 3), c(TRUE, FALSE))
+  expect_true(answer(with_candidates(longer, screen = screened)))
+  # A refit of the same maximum, with no other, is judged as the first fit.
+  same <- transform(candidates(c(2, 2), c(FALSE, TRUE)), maximum = 1L,
+                    independent_log_likelihood = NA_real_,
+                    independent_draws = NA_integer_)
+  expect_true(answer(with_candidates(same, screen = screened)))
   # Not assessed without the limit, the comparison or its standard error, with
-  # a penalty, or when the estimate is at a separate maximum.
+  # a penalty, for a numerically independent fit, when the estimate is at a
+  # separate maximum, or when the enlarged bank decided.
   without <- function(...) utils::modifyList(near, list(...))
-  replaced <- data.frame(
-    log_likelihood = c(-100, -97), maximum = c(2L, 1L),
-    independent_log_likelihood = c(-100, -97), independent_se = c(0.4, 0),
-    chosen = c(FALSE, TRUE), start = c("fitted", "exact alarm"),
-    log_phi = c(0, 1)
-  )
   unassessed <- list(
     fit_with(screen = NULL),
     fit_with(list(gate = "unavailable", reason = "held coefficients")),
@@ -888,9 +947,10 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   )
   penalised <- fit_with()
   attr(penalised, "optimizer")$mcml_pc_prior <- TRUE
-  separate <- fit_with()
-  attr(separate, "optimizer")$mcml_maxima_check <- replaced
-  for (fit in c(unassessed, list(penalised, separate))) {
+  separate <- with_candidates(candidates(c(2, 3), c(FALSE, TRUE)))
+  enlarged <- with_candidates(candidates(c(2, 3), c(TRUE, FALSE), 20000L))
+  unknown <- with_candidates(longer, budget = NULL)
+  for (fit in c(unassessed, list(penalised, separate, enlarged, unknown))) {
     expect_identical(answer(fit), NA)
     expect_no_match(find_check(fit, "Spatial scale")$finding, sentence)
     expect_match(printed(summary(check_fit(fit))),
@@ -898,6 +958,9 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   }
   expect_identical(assess_near_limit(list(
     mcml_boundary = "spatial variance (sigma2)", mcml_maxima_screen = near
+  )), NA)
+  expect_identical(assess_near_limit(list(
+    mcml_numerically_independent = TRUE, mcml_maxima_screen = near
   )), NA)
 })
 

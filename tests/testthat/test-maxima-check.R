@@ -203,7 +203,7 @@ test_that("an exact alarm forces a search and persists if it finds nothing", {
   expect_true(checked$screen$alarm$persists)
 })
 
-test_that("a short scale not clearly above the limit is kept with a warning", {
+test_that("a short scale not clearly above the limit is kept and recorded", {
   # The likelihood rises towards log(3) as the scale goes to zero, the exact
   # limit is 0.001 above that, and the optimiser stops on the flat approach
   # before reaching the limit.
