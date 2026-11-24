@@ -23,17 +23,19 @@ log-likelihood estimated on the fitting draws above that of the
 estimate, which repeats the fit from the best such scale when one comes
 within 0.25 of it (the dashed line), and the exact lower bound on the
 likelihood there, with the likelihood with independent location effects,
-the limit as the scale goes to zero, as a dotted line. An exact bound
-clearly above the estimate shows that the estimate is not the maximum
-likelihood estimate. For a fit with the spatial variance at zero and a
-nugget, the panel adds the exact bound over longer scales for each share
-of the variance in a spatial effect. With the extra check `"radius"`,
-the panel `"radius"` shows the error of each resampled sample of
-certification draws against the radius the fit would use for it, the
-larger of its own and a replicate's, in standard errors, with the line
-where they are equal. Its subtitle gives the predicted rate at which the
-radius is exceeded, as in the row of the check, and the share of samples
-whose error exceeds the radius, as in
+the limit as the scale goes to zero, as a dotted line. When another fit
+replaced the one that was screened, the values are above that fit and
+the dashed line is 0.25 below the replaced one. An exact bound clearly
+above the estimate shows that the estimate is not the maximum likelihood
+estimate. For a fit with the spatial variance at zero and a nugget, the
+panel adds the exact bound over longer scales for each share of the
+variance in a spatial effect. With the extra check `"radius"`, the panel
+`"radius"` shows the error of each resampled sample of certification
+draws against the radius the fit would use for it, the larger of its own
+and a replicate's, in standard errors, with the line where they are
+equal. Its subtitle gives the predicted rate at which the radius is
+exceeded, as in the row of the check, and the share of samples whose
+error exceeds the radius, as in
 [`summary.RiskMap_check()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.md),
 from many more pairs of samples than the panel shows. With the extra
 check `"profile"`, each profiled parameter has a panel of its profile
@@ -100,7 +102,7 @@ profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
                     seed = 1, messages = FALSE)
 checked <- check_fit(fit, extra = "radius", profile = profiles)
 #> ℹ Computing the predictions of how often the radius of the bound is too small,
-#>   which should take about 4 seconds, from the 2 seconds the fit took.
+#>   which should take about 2 seconds, from the 1 second the fit took.
 plot_check(checked)
 
 plot_check(checked,
