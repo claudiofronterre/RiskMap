@@ -3,6 +3,8 @@
 S3method("[",RiskMap_grid)
 S3method(coef,RiskMap)
 S3method(fitted,RiskMap)
+S3method(knitr::knit_print,RiskMap_extrapolation)
+S3method(knitr::knit_print,riskmap_parameters)
 S3method(logLik,RiskMap)
 S3method(nobs,RiskMap)
 S3method(plot,RiskMap_bootstrap)

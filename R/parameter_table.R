@@ -955,6 +955,8 @@ glgpm_parameters <- function(formula, data, family, fixed_pars = NULL,
 ##' @rdname glgpm_parameters
 ##' @export
 print.riskmap_parameters <- function(x, ...) {
+  # A subset without the columns of the template prints as a data frame.
+  if (!has_parameter_columns(x)) return(NextMethod())
   check_dots_unused(...)
   rows <- as.data.frame(unclass(x), stringsAsFactors = FALSE)
   estimated <- rows[is.na(rows$held), , drop = FALSE]
@@ -977,6 +979,20 @@ print.riskmap_parameters <- function(x, ...) {
     paste0("list(", paste(template, collapse = ", "), ")")
   ))
   invisible(x)
+}
+
+# As for knit_print.RiskMap_extrapolation(), so that a document that prints
+# data frames as tables shows the template for `start_pars`.
+##' @exportS3Method knitr::knit_print
+knit_print.riskmap_parameters <- function(x, ...) {
+  if (!has_parameter_columns(x)) return(NextMethod())
+  knitr::normal_print(x)
+}
+
+#' Whether a table of parameters kept the columns that its print uses
+#' @noRd
+has_parameter_columns <- function(x) {
+  all(c("name", "element", "held") %in% names(x))
 }
 
 ##' Read the values at which `fixed_pars` holds parameters

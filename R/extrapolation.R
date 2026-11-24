@@ -323,18 +323,41 @@ extrapolation_sampling_variance <- function(object, parameters) {
 ##'   returning `x` invisibly.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored. A subset that lost the classes or the threshold prints
-##'   as an `sf` object, and the arguments go to its print method.
+##'   as an `sf` object, or as a data frame if it lost the geometry, and the
+##'   arguments go to its print method.
 ##' @method print RiskMap_extrapolation
 ##' @export
 print.RiskMap_extrapolation <- function(x, ...) {
-  threshold <- attr(x, "spatial_threshold", exact = TRUE)
-  # A subset that lost the classes or their thresholds prints as an sf object.
-  if (!is.factor(x[["extrapolation"]]) || !is.numeric(threshold)) {
-    return(NextMethod())
-  }
+  # A subset that lost the classes or their thresholds prints as an sf object,
+  # and one without its geometry as a data frame.
+  if (!has_extrapolation_classes(x)) return(NextMethod())
   check_dots_unused(...)
+  threshold <- attr(x, "spatial_threshold", exact = TRUE)
   out_print(format_extrapolation(x, threshold))
   invisible(x)
+}
+
+# R Markdown and Quarto render data frames through knit_print(), so without a
+# method the `df-print` option of a document would replace the print method.
+# sf puts its own class first in a subset of rows, which prints as an sf object
+# and is a table here.
+##' @exportS3Method knitr::knit_print
+knit_print.RiskMap_extrapolation <- function(x, ...) {
+  if (!identical(class(x)[1L], "RiskMap_extrapolation") ||
+        !has_extrapolation_classes(x)) {
+    return(NextMethod())
+  }
+  knitr::normal_print(x)
+}
+
+#' Whether indicators of extrapolation kept their classes and thresholds
+#'
+#' Without the geometry, the rows need not be locations, as in a table that
+#' counts the classes.
+#' @noRd
+has_extrapolation_classes <- function(x) {
+  inherits(x, "sf") && is.factor(x[["extrapolation"]]) &&
+    is.numeric(attr(x, "spatial_threshold", exact = TRUE))
 }
 
 #' The lines that print indicators of extrapolation

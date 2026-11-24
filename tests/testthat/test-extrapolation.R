@@ -249,6 +249,32 @@ test_that("a Gaussian share is the kriging variance with the records averaged", 
                expected, tolerance = 1e-8)
 })
 
+test_that("documents that print data frames as tables show the print", {
+  # Stands for the methods that R Markdown and Quarto use for data frames.
+  knit_print.data.frame <- function(x, ...) cat("a table\n")
+  expect_output(knitr::knit_print(data.frame(x = 1)), "a table")
+  extrapolation <- assess_extrapolation(binomial_model, binomial_data,
+                                        spatial_threshold = 0.5)
+  expect_identical(capture.output(knitr::knit_print(extrapolation)),
+                   capture.output(print(extrapolation)))
+  # A subset is a table like any other.
+  expect_output(knitr::knit_print(extrapolation[, "covariates_outside"]),
+                "a table")
+  expect_output(knitr::knit_print(extrapolation[1:2, ]), "a table")
+  # So is a table without the geometry, whose rows need not be locations.
+  rows <- st_drop_geometry(extrapolation)
+  expect_output(knitr::knit_print(rows), "a table")
+  expect_identical(capture.output(print(rows)),
+                   capture.output(print(as.data.frame(unclass(rows)))))
+  listed <- glgpm_parameters(y ~ cov + gp(), data = binomial_data,
+                             family = "binomial")
+  expect_identical(capture.output(knitr::knit_print(listed)),
+                   capture.output(print(listed)))
+  some <- listed[, c("label", "start")]
+  expect_output(knitr::knit_print(some), "a table")
+  expect_output(print(some), "distance_quantile")
+})
+
 test_that("the print of indicators states the classes and the thresholds", {
   # A longer scale than the fixture's, so that the threshold is below 1
   binomial_model$estimate$phi <- log(4)
