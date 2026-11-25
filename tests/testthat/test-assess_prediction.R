@@ -84,6 +84,13 @@ test_that("the former arguments of assess_prediction() say what replaces them", 
     expect_input_error(do.call(assess_prediction, call), name,
                        former[[name]][[2]])
   }
+  # The former name of `models`, without any of the present arguments.
+  expect_input_error(assess_prediction(object = list(fit), method = "cluster"),
+                     "object", "It is now `models`")
+  # Arguments with the same advice give it once.
+  message <- tryCatch(assess(fit, method = "cluster", fold = 3),
+                      error = conditionMessage)
+  expect_length(gregexpr("Make the test sets", message)[[1]], 1L)
   # Also when test_sets is given, and a misspelt argument too.
   expect_input_error(assess(fit, list(1:2), keep_par_fixed = TRUE),
                      "keep_par_fixed", "`refit`")
@@ -225,6 +232,22 @@ test_that("a Gaussian prediction without spread has the absolute error", {
   expect_identical(out$scores$pit_upper, c(0, 1, 0))
 })
 
+test_that("a Gaussian prediction that isn't finite is a failure", {
+  data <- line_data(y = c(0, 0.5, -1, 0), x1 = 1:4)
+  fit <- make_assess_prediction_fit(data, "x1")
+  draws <- matrix(rnorm(40), 4)
+  draws[2, 3] <- Inf
+  local_mocked_bindings(predict_test_set = mock_draws(draws))
+  expect_warning(out <- assess(fit, list(1, 2:3)), "1 of 2 test-set")
+  expect_identical(out$failures$test_set, 2L)
+  expect_match(out$failures$message, "at 1 test observation isn't finite")
+  expect_identical(is.na(out$scores$CRPS), c(FALSE, TRUE, TRUE))
+  # One draw has no standard deviation.
+  local_mocked_bindings(predict_test_set = mock_draws(matrix(0, 4, 1)))
+  expect_warning(out <- assess(fit, list(1, 2:3)), "2 of 2 test-set")
+  expect_match(out$failures$message[2], "at 2 test observations isn't finite")
+})
+
 test_that("a sharper calibrated prediction has the lower scores (#230)", {
   fit <- make_assess_prediction_fit(line_data(y = c(0, 0), x1 = 1:2), "x1")
   scores_with <- function(spread) {
@@ -306,6 +329,8 @@ test_that("only the observations that every model can use are scored", {
     "1 observation with missing values"
   )
   expect_identical(out$scores$row, c(2L, 2L))
+  expect_input_error(assess(make_assess_prediction_fit(data, "x1"), list(3)),
+                     "test_sets", "no test observation without missing values")
   # A test set can be left without observations.
   expect_warning(
     out <- assess(make_assess_prediction_fit(data, "x1"), list(1:2, 3)),

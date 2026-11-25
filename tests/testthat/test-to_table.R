@@ -33,7 +33,8 @@ table_test_cv <- function(crps = c(0.49, 0.25), reference = NULL) {
     out$SCRPS_se <- c(0, 0.01)
   }
   structure(out, class = c("summary.RiskMap_cross_validation", "data.frame"),
-            reference = reference, n_observations = 20L)
+            reference = reference,
+            n_observations = c(model_a = 20, model_b = 20))
 }
 
 table_test_rows <- function(...) {

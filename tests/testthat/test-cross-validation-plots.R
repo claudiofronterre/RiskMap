@@ -327,6 +327,15 @@ test_that("plot_test_sets() draws the distances from the training data", {
     elsewhere$data$distance[elsewhere$data$what == "Prediction locations"],
     p$data$distance[p$data$what == "Prediction locations"], tolerance = 1e-5
   )
+  # Two with one name would be one curve.
+  expect_input_error(plot_test_sets(list(A = loo, A = clusters),
+                                    type = "distance"), "x",
+                     "\"A\" is repeated")
+  expect_input_error(plot_test_sets(list("Prediction locations" = loo),
+                                    type = "distance", grid = grid), "x",
+                     "The curve of `grid` is called")
+  expect_input_error(plot_test_sets(list("Test sets 2" = loo, clusters),
+                                    type = "distance"), "x", "is repeated")
   # Unnamed sets have numbers.
   p <- plot_test_sets(list(loo, clusters), type = "distance")
   expect_identical(levels(p$data$what), c("Test sets 1", "Test sets 2"))

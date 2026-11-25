@@ -21,7 +21,8 @@ row for each model, named after it, and the columns \code{CRPS} and \code{SCRPS}
 \code{PIT_area}, \code{PIT_area_expected} and \code{PIT_area_limit}, and, when
 \code{reference} is given, \code{CRPS_difference}, \code{CRPS_se}, \code{SCRPS_difference} and
 \code{SCRPS_se}. Its
-attributes include \code{reference}, \code{refit}, \code{n_observations} and \code{n_failed},
+attributes include \code{reference}, \code{refit}, and for each model
+\code{n_observations}, the number of observations with scores, and \code{n_failed},
 the number of failed test-set assessments.
 }
 \description{

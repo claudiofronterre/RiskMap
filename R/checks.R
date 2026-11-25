@@ -69,7 +69,9 @@ check_dots_unused <- function(..., .hints = character(),
   )
   shown <- intersect(named, names(.hints))
   advice <- if (length(shown)) {
-    stats::setNames(unname(.hints[shown]), rep("i", length(shown)))
+    # Arguments with the same advice give it once.
+    advice <- unique(unname(.hints[shown]))
+    stats::setNames(advice, rep("i", length(advice)))
   } else if (length(named)) {
     c("i" = "Check the spelling of the argument names.")
   }

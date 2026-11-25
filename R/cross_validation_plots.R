@@ -695,6 +695,14 @@ plot_test_distances <- function(test_sets, grid, colours) {
   unnamed <- names == ""
   names[unnamed] <- if (length(test_sets) == 1L) "Test locations" else
     paste("Test sets", which(unnamed))
+  grid_name <- if (!is.null(grid)) "Prediction locations"
+  repeated <- unique(c(grid_name, names)[duplicated(c(grid_name, names))])
+  if (length(repeated)) {
+    hint <- if (any(repeated %in% grid_name)) {
+      "The curve of {.arg grid} is called {.val {grid_name}}."
+    }
+    abort_input(c("The names of {.arg x} must differ, and {.val {repeated}} {?is/are} repeated.", "i" = hint), arg = "x")
+  }
   units <- unique(vapply(test_sets, `[[`, character(1), "distance_units"))
   if (length(units) > 1L) {
     abort_input("The test sets in {.arg x} must use the same units of distance, not {.val {units}}.", arg = "x")
@@ -713,7 +721,7 @@ plot_test_distances <- function(test_sets, grid, colours) {
   }, test_sets, names)
   if (!is.null(grid)) {
     pieces <- c(list(cumulative(grid_distances(test_sets[[1L]], grid),
-                                "Prediction locations")), pieces)
+                                grid_name)), pieces)
   }
   data <- do.call(rbind, unname(pieces))
   levels <- unique(data$what)

@@ -415,8 +415,8 @@ test_that("the summary of a cross-validation averages over the observations", {
   expect_identical(scores$PIT_area, c(0.04, 0.05))
   expect_identical(scores$PIT_area_expected, c(0.03, 0.031))
   expect_identical(scores$PIT_area_limit, c(0.06, 0.07))
-  expect_identical(attr(scores, "n_observations"), 4L)
-  expect_identical(attr(scores, "n_failed"), 0L)
+  expect_equal(attr(scores, "n_observations"), c(model_a = 4, model_b = 4))
+  expect_identical(attr(scores, "n_failed"), c(model_a = 0L, model_b = 0L))
   expect_false(attr(scores, "refit"))
   expect_null(attr(scores, "reference"))
 })
@@ -461,12 +461,18 @@ test_that("the summary of a cross-validation leaves out failed test sets", {
   difference <- c(0.2 - 0.6, 0.3 - 0.1, 0.4 - 0.3)
   expect_equal(scores["model_a", "CRPS_difference"], mean(difference))
   expect_equal(scores["model_a", "CRPS_se"], sd(difference) / sqrt(3))
-  expect_identical(attr(scores, "n_failed"), 1L)
+  expect_identical(attr(scores, "n_failed"), c(model_a = 1L, model_b = 0L))
+  # The models have scores for different numbers of observations.
+  expect_equal(attr(scores, "n_observations"), c(model_a = 3, model_b = 4))
   printed <- squish(capture.output(print(scores)))
+  expect_match(printed, "Scores over 3 to 4 test observations", fixed = TRUE)
+  expect_match(printed, "Model Scored CRPS", fixed = TRUE)
+  expect_match(printed, "model_a 3 ", fixed = TRUE)
+  expect_no_match(capture.output(print(scores["model_b", ])), "Scored")
   expect_match(printed, "Parameters are re-estimated in each training set.",
                fixed = TRUE)
   expect_match(printed,
-               "1 test-set assessment failed, and its scores are missing.",
+               "1 test-set assessment of model_a failed, and its scores are missing.",
                fixed = TRUE)
 
   # Nothing was scored, printed as NA and not NaN.
@@ -474,15 +480,24 @@ test_that("the summary of a cross-validation leaves out failed test sets", {
   scores <- summary(failed, reference = "model_b")
   expect_identical(scores$CRPS, c(NA_real_, NA_real_))
   expect_identical(cv_summary_table(scores, 4L)$CRPS, c("NA", "NA"))
+  expect_output(print(scores), "Scores over 0 test observations")
   expect_identical(cv_summary_table(scores, 4L)[["CRPS difference"]],
                    c("NA", ""))
+})
+
+test_that("the note on the limit of the area needs a limit", {
+  without <- build_cross_validation()
+  expect_output(print(summary(without)), "PIT area of a correct model")
+  without$calibration$area$PIT_area_limit <- NA_real_
+  printed <- capture.output(print(summary(without)))
+  expect_no_match(printed, "PIT area of a correct model")
 })
 
 test_that("the summary of a cross-validation by assess_prediction() is finite", {
   scores <- summary(cross_validation, reference = "model_a")
   expect_identical(row.names(scores), c("model_a", "model_b"))
   expect_true(all(is.finite(as.matrix(as.data.frame(unclass(scores))))))
-  expect_identical(attr(scores, "n_observations"), 10L)
+  expect_equal(attr(scores, "n_observations"), c(model_a = 10, model_b = 10))
 })
 
 test_that("print() of a cross-validation gives the averages, not the raw list", {

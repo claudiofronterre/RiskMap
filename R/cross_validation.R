@@ -227,9 +227,9 @@ assess_prediction <- function(models,
                               seed = NULL,
                               messages = getOption("RiskMap.messages", TRUE),
                               ...) {
-  check_supplied(models)
-  # Before `test_sets`, which a call with the former arguments doesn't have.
+  # First, since a call with the former arguments has none of these.
   check_dots_unused(..., .hints = former_assessment_arguments())
+  check_supplied(models)
   check_supplied(test_sets)
   models <- read_assessed_models(models)
   check_logical(refit)
@@ -242,6 +242,10 @@ assess_prediction <- function(models,
   warn_shared_locations(models, test_sets)
   if (messages) inform_assessment(models, n_sets, refit)
   complete_rows <- complete_model_rows(models)
+  tested <- unique(unlist(lapply(test_sets$sets, `[[`, "test")))
+  if (!any(complete_rows[tested])) {
+    abort_input("{.arg test_sets} has no test observation without missing values in the model variables.", arg = "test_sets")
+  }
   if (!all(complete_rows)) {
     riskmap_warn("{sum(!complete_rows)} observation{?s} with missing values in the model variables {?is/are} not used as test observations.")
   }
@@ -592,6 +596,10 @@ measurement_noise <- function(fit, n_draws, seed) {
 score_gaussian <- function(y, outcomes) {
   mean <- rowMeans(outcomes)
   sd <- sqrt(rowSums((outcomes - mean)^2) / (ncol(outcomes) - 1))
+  unusable <- sum(!is.finite(mean) | !is.finite(sd))
+  if (unusable) {
+    riskmap_abort("The predictive distribution at {unusable} test observation{?s} isn't finite.")
+  }
   spread <- sd > 0
   z <- ifelse(spread, (y - mean) / sd, 0)
   # The CRPS of a point mass is the absolute error
@@ -670,7 +678,8 @@ scaled_crps <- function(crps, expected) {
 ##'   `PIT_area`, `PIT_area_expected` and `PIT_area_limit`, and, when
 ##'   `reference` is given, `CRPS_difference`, `CRPS_se`, `SCRPS_difference` and
 ##'   `SCRPS_se`. Its
-##'   attributes include `reference`, `refit`, `n_observations` and `n_failed`,
+##'   attributes include `reference`, `refit`, and for each model
+##'   `n_observations`, the number of observations with scores, and `n_failed`,
 ##'   the number of failed test-set assessments.
 ##'
 ##' @seealso [assess_prediction()], and [to_table()] for a table to render.
@@ -709,8 +718,10 @@ summary.RiskMap_cross_validation <- function(object, reference = NULL, ...) {
   row.names(out) <- models
   attr(out, "reference") <- reference
   attr(out, "refit") <- object$refit
-  attr(out, "n_observations") <- nrow(scores$CRPS)
-  attr(out, "n_failed") <- nrow(object$failures)
+  attr(out, "n_observations") <- colSums(is.finite(scores$CRPS))
+  attr(out, "n_failed") <- vapply(models, function(model) {
+    sum(object$failures$model == model)
+  }, integer(1))
   attr(out, "counts") <- all(families_are_discrete(object$family))
   class(out) <- c("summary.RiskMap_cross_validation", "data.frame")
   out
@@ -755,7 +766,8 @@ observation_scores <- function(object, score) {
                   values <- values[is.finite(values)]
                   if (length(values)) mean(values) else NA_real_
                 })
-  matrix(out, nrow = length(rows), dimnames = list(rows, models))
+  matrix(out, nrow = length(rows), ncol = length(models),
+         dimnames = list(rows, models))
 }
 
 ##' Column means of the scores there are
@@ -816,6 +828,8 @@ format_cv_summary <- function(x) {
 }
 
 ##' How the parameters were set and how many assessments failed
+##'
+##' @param n_failed The number of failed assessments of each model, named.
 ##' @noRd
 format_cv_settings <- function(refit, n_failed, before = NULL) {
   parameters <- if (isTRUE(refit)) {
@@ -823,10 +837,12 @@ format_cv_settings <- function(refit, n_failed, before = NULL) {
   } else if (isFALSE(refit)) {
     "Parameters are fixed at the estimates from all the data."
   }
-  failed <- if (isTRUE(n_failed > 0)) {
-    c("!" = paste0(n_failed, " test-set assessment",
-                   if (n_failed == 1L) " failed, and its scores are" else
-                     "s failed, and their scores are", " missing."))
+  failed <- if (any(n_failed > 0)) {
+    total <- sum(n_failed)
+    of <- paste(names(n_failed)[n_failed > 0], collapse = ", ")
+    c("!" = paste0(total, " test-set assessment", if (total > 1L) "s", " of ", of,
+                   " failed, and ", if (total > 1L) "their" else "its",
+                   " scores are missing."))
   }
   sentences <- c(before, parameters)
   c(if (length(sentences)) out_text(paste(sentences, collapse = " ")),
@@ -842,16 +858,19 @@ format_cv_averages <- function(x) {
     paste0("Lower is better for the CRPS and the SCRPS. The CRPS is in the ",
            "units of the response", if (isTRUE(counts)) ", which are counts",
            "."),
-    "The PIT area of a correct model is below the limit with a probability of 95%.",
+    if (any(is.finite(x$PIT_area_limit))) {
+      "The PIT area of a correct model is below the limit with a probability of 95%."
+    },
     if (!is.null(reference)) {
       paste0("Differences are from ", reference, ", and negative ones are in ",
              "favour of the other model. Their standard errors, in brackets, ",
              "treat the observations as independent.")
     }
   )
-  n_observations <- attr(x, "n_observations")
-  heading <- paste0("Scores over ", format_count(n_observations),
-                    " test observation", if (n_observations != 1L) "s")
+  scored <- range(attr(x, "n_observations")[row.names(x)])
+  heading <- paste0("Scores over ",
+                    paste(format_count(unique(scored)), collapse = " to "),
+                    " test observation", if (scored[2L] != 1L) "s")
   c(out_heading(heading),
     out_capture(print(cv_summary_table(x, digits = 4L), row.names = FALSE,
                       right = TRUE)),
@@ -871,6 +890,9 @@ cv_summary_table <- function(x, digits) {
     ifelse(is.finite(values), format_compared_values(values, digits), "NA")
   }
   columns <- list(Model = row.names(x))
+  # The models can have scores for different observations.
+  scored <- attr(x, "n_observations")[row.names(x)]
+  if (length(unique(scored)) > 1L) columns$Scored <- format_count(scored)
   for (score in c("CRPS", "SCRPS")) {
     columns[[score]] <- blank_missing(values[[score]])
     if (is.null(reference)) next
@@ -949,7 +971,7 @@ format_cross_validation <- function(x) {
     " draws the calibration curves or maps the scores."
   )
   c(out_rule("Cross-validation"),
-    format_cv_settings(x$refit, nrow(x$failures), before = setting),
+    format_cv_settings(x$refit, attr(scores, "n_failed"), before = setting),
     "",
     format_cv_averages(scores),
     "",
