@@ -1644,11 +1644,15 @@ were drawn from a singular covariance with a diagonal jitter, which warned. The
 draws at the other locations of such a prediction change with the seed held,
 and predictions at distinct locations don't.
 - A prediction with `parameter_uncertainty = TRUE` keeps the estimate of a
-variance, a scale or a size whose logarithm has a standard error above 10. A
-Gaussian fit lets a variance estimated at zero drift on the log scale, with a
-standard error of thousands, so that half of the draws of a nugget estimated at
-zero were infinite and the prediction warned or stopped. With a spatial variance
-at zero, the nugget is drawn by its own variance.
+variance, a scale or a size whose logarithm has a standard error above 3, and
+draws the others given it. A Gaussian fit lets a variance estimated at zero drift
+on the log scale, with a standard error of thousands, so that half of the draws
+of a nugget estimated at zero were infinite and the prediction warned or stopped.
+With standard errors between 3 and 10 the draws reached millions without a
+warning. With a spatial variance at zero, the nugget is drawn by its own
+variance. A warning names the parameters that keep their estimates, unless they
+are variances below a hundredth of the total, or the scale of such a spatial
+variance, and a fit with none to draw stops. The limit of 3 is provisional.
 - A level of a random effect that isn't in the data of the fit stops a
 prediction with `include = "random_effects"`, as before, and the help says so.
 The engine behind it draws the effect of such a level from its distribution,
