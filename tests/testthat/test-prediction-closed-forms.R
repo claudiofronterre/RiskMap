@@ -454,7 +454,7 @@ test_that("predict() without newdata gives each record its location's effect", {
     }
   }
 
-  # With `standardise`, and with parameter uncertainty
+  # With `standardise`
   standardised <- predict(fit, standardise = data.frame(z = c(0, 1)), seed = 1,
                           messages = FALSE)
   profiles <- rowMeans(vapply(c(0, 1), function(z) {
@@ -462,6 +462,42 @@ test_that("predict() without newdata gives each record its location's effect", {
     colMeans(exp(with_z))
   }, numeric(nrow(data))))
   expect_equal(standardised$predictions$response_mean, profiles)
+})
+
+test_that("predict() without newdata follows the records at every draw", {
+  skip_on_cran()
+  data <- make_records()$data
+  data <- data[sample(nrow(data)), ]
+  data$counts <- rpois(nrow(data), exp(1 + (data$y - mean(data$y)) / 2))
+  covariance <- list(sigma2 = 1, phi = 20)
+  fits <- list(
+    glgpm(y ~ z + gp(), data = data, family = "gaussian",
+          fixed_pars = c(covariance, sigma2_me = 0.25), messages = FALSE),
+    suppressWarnings(glgpm(
+      counts ~ z + gp(), data = data, family = "poisson", denominator = NULL,
+      fixed_pars = covariance, seed = 3, messages = FALSE,
+      control_mcmc = set_control_mcmc(n_draws = 60, burnin = 100, thin = 1)
+    ))
+  )
+  for (fit in fits) {
+    prediction <- expect_no_warning(predict(
+      fit, parameter_uncertainty = TRUE, parameter_draws = 3, seed = 1,
+      keep_samples = TRUE, messages = FALSE
+    ))
+    samples <- prediction$samples
+    expect_identical(nrow(samples$spatial), nrow(data))
+    first <- match(fit$ID_coords, fit$ID_coords)
+    expect_identical(samples$spatial, samples$spatial[first, ])
+    # The coefficients differ between the draws, and the records of a location
+    # in their covariate.
+    expect_identical(nrow(samples$fixed), nrow(data))
+    each <- ncol(samples$fixed) / 3
+    slopes <- apply(samples$fixed[, c(1, 1 + each, 1 + 2 * each)], 2,
+                    function(fixed) coef(lm(fixed ~ data$z))[[2]])
+    expect_length(unique(round(slopes, 10)), 3L)
+    expect_equal(prediction$predictions$link_mean,
+                 rowMeans(samples$fixed + samples$spatial))
+  }
 })
 
 test_that("Gaussian predictions without newdata follow the records", {
@@ -616,6 +652,49 @@ test_that("a Gaussian variance estimated at zero keeps its estimate", {
   }
 })
 
+test_that("the other parameters are drawn given those that are kept", {
+  fit <- suppressWarnings(glgpm(
+    y ~ z + gp(nugget = TRUE), data = make_records()$data, family = "gaussian",
+    messages = FALSE
+  ))
+  # A nugget near zero with a wide likelihood, correlated with the spatial
+  # variance and scale, on the scale with the variance of the nugget
+  fit$estimate$sigma2 <- log(0.8)
+  fit$estimate$nu2 <- log(0.004 / 0.8)
+  names_flat <- names(unlist(fit$estimate))
+  set.seed(1)
+  root <- diag(c(0.2, 0.1, 0.4, 0.6, 12, 0.3))
+  root[5, 3] <- 1.5
+  root[5, 4] <- 1.2
+  root[5, 1] <- 0.4
+  reported <- crossprod(root)
+  dimnames(reported) <- list(names_flat, names_flat)
+  to_working <- diag(6)
+  dimnames(to_working) <- dimnames(reported)
+  to_working["nu2", "sigma2"] <- -1
+  fit$covariance <- to_working %*% reported %*% t(to_working)
+  conditional <- solve(solve(reported)[-5, -5])
+  expect_gt(reported["sigma2", "sigma2"], 5 * conditional[3, 3])
+  set.seed(2)
+  draws <- expect_no_warning(RiskMap:::draw_parameter_values(fit, 20000))
+  expect_equal(draws[, "nu2"] + draws[, "sigma2"], rep(log(0.004), 20000))
+  expect_equal(unname(cov(draws[, -5])), unname(conditional), tolerance = 0.05)
+
+  # A spatial variance and a nugget that only their sum determines
+  reported <- diag(c(0.04, 0.01, 1e6, 1e6, 1e6, 0.09))
+  reported[3, 5] <- reported[5, 3] <- -1e6
+  dimnames(reported) <- list(names_flat, names_flat)
+  conditional <- RiskMap:::conditional_covariance_of(
+    reported, !names_flat %in% c("sigma2", "phi", "nu2")
+  )
+  expect_equal(unname(conditional), diag(c(0.04, 0.01, 0.09)))
+  fit$estimate$nu2 <- 0
+  fit$covariance <- to_working %*% reported %*% t(to_working)
+  expect_warning(RiskMap:::draw_parameter_values(fit, 10),
+                 "don't determine `sigma2`, `phi`, and `tau2`",
+                 class = "riskmap_warning_fit")
+})
+
 test_that("a spatial variance at zero leaves the nugget its uncertainty", {
   fit <- suppressWarnings(glgpm(
     y ~ z + gp(nugget = TRUE), data = make_records()$data, family = "gaussian",
@@ -634,7 +713,8 @@ test_that("a spatial variance at zero leaves the nugget its uncertainty", {
   to_working["nu2", "sigma2"] <- -1
   fit$covariance <- to_working %*% reported %*% t(to_working)
   set.seed(2)
-  draws <- RiskMap:::draw_parameter_values(fit, 4000)
+  # The spatial variance is zero for the prediction, so there is no warning.
+  draws <- expect_no_warning(RiskMap:::draw_parameter_values(fit, 4000))
   expect_equal(draws[, "sigma2"], rep(log(1e-8), 4000))
   expect_equal(draws[, "phi"], rep(fit$estimate$phi, 4000))
   log_tau2 <- draws[, "nu2"] + draws[, "sigma2"]

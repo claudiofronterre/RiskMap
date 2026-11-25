@@ -228,9 +228,10 @@ burn-in iterations, then thinning by 10). The total number of predictive
 draws equals that of plug-in prediction, 2,000 by default. Parameters
 without a finite positive variance, such as those held at a boundary, keep
 their estimated value. So does a variance, a scale or a size whose
-logarithm has a standard error above 10, as a variance of a Gaussian model
-estimated at zero has. The log-likelihood at zero is then within about 0.01
-of its maximum, so draws on the log scale would be arbitrary. When the
+logarithm has a standard error above 3, as a variance of a Gaussian model
+estimated at zero has, because draws on the log scale would span more than
+five orders of magnitude. The other parameters are then drawn given it, and
+a warning names it unless it is a variance close to zero. When the
 covariance matrix of the estimates is not
 available, an error is returned; refitting with
 \code{set_control_mcml(pc_prior = TRUE)} usually resolves this. The location

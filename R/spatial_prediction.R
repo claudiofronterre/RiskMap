@@ -139,9 +139,10 @@
 ##' draws equals that of plug-in prediction, 2,000 by default. Parameters
 ##' without a finite positive variance, such as those held at a boundary, keep
 ##' their estimated value. So does a variance, a scale or a size whose
-##' logarithm has a standard error above 10, as a variance of a Gaussian model
-##' estimated at zero has. The log-likelihood at zero is then within about 0.01
-##' of its maximum, so draws on the log scale would be arbitrary. When the
+##' logarithm has a standard error above 3, as a variance of a Gaussian model
+##' estimated at zero has, because draws on the log scale would span more than
+##' five orders of magnitude. The other parameters are then drawn given it, and
+##' a warning names it unless it is a variance close to zero. When the
 ##' covariance matrix of the estimates is not
 ##' available, an error is returned; refitting with
 ##' `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
@@ -1417,12 +1418,17 @@ draw_parameter_values <- function(object, n_draws) {
                   byrow = TRUE, dimnames = list(NULL, names(estimate)))
   undetermined <- undetermined_parameters(object, block)
   kept <- !undetermined$parameters
-  if (!any(kept)) return(draws)
-  # With some parameters kept at their estimates, the others are drawn with
-  # the variance of the nugget in place of its ratio to the spatial variance,
-  # so that a spatial variance estimated at zero leaves the nugget its own
-  # uncertainty.
-  if (!all(kept)) block <- undetermined$covariance[kept, kept, drop = FALSE]
+  if (!any(kept)) {
+    riskmap_abort("The data don't determine any of the estimated parameters, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit")
+  }
+  # With some parameters kept at their estimates, the others are drawn given
+  # them, with the variance of the nugget in place of its ratio to the spatial
+  # variance, so that a spatial variance estimated at zero leaves the nugget
+  # its own uncertainty.
+  if (!all(kept)) {
+    warn_undetermined(object, names(estimate)[free][!kept])
+    block <- conditional_covariance_of(undetermined$covariance, kept)
+  }
   root <- tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
   if (is.null(root)) failure()
   moves <- matrix(0, nrow = n_draws, ncol = length(free))
@@ -1435,13 +1441,14 @@ draw_parameter_values <- function(object, n_draws) {
 #' The parameters that the data don't determine
 #'
 #' Those of the covariance, the random effects and the family whose logarithm
-#' has a standard error above 10, the nugget by its variance. A Gaussian fit
+#' has a standard error above 3, the nugget by its variance. A Gaussian fit
 #' lets the logarithm of a variance estimated at zero drift along an almost
 #' flat likelihood, with a standard error of thousands, where a count fit
-#' holds it. The information on the logarithm is then below 0.01, which is
-#' about the log-likelihood that a variance of zero loses, and draws from a
-#' normal distribution on the log scale would be arbitrary. So would draws of
-#' the scale where the likelihood is flat in it.
+#' holds it. The information on the logarithm is then below 1/9, about the
+#' log-likelihood that a variance of zero loses, and the draws of a normal
+#' distribution on the log scale would span more than five orders of
+#' magnitude. So would draws of the scale where the likelihood is flat in it.
+#' The limit of 3 is a provisional choice. The book's fits are all below 1.
 #' @param covariance The covariance of the free parameters of the fit, on the
 #'   scale on which it is estimated.
 #' @return A list with `parameters`, `TRUE` for each undetermined one, the
@@ -1456,8 +1463,52 @@ undetermined_parameters <- function(object, covariance) {
   reported <- jacobian %*% covariance %*% t(jacobian)
   reported <- (reported + t(reported)) / 2
   list(parameters = rows$block[free] != "coefficients" &
-         diag(reported) > 100,
+         diag(reported) > 3^2,
        jacobian = jacobian, covariance = reported)
+}
+
+#' The covariance of the parameters `kept` given the others
+#'
+#' The others can have enormous variances and be confounded with each other,
+#' so their block is inverted on the scale of their correlations, without the
+#' directions in which it is singular.
+#' @noRd
+conditional_covariance_of <- function(covariance, kept) {
+  scale <- sqrt(diag(covariance)[!kept])
+  correlation <- covariance[!kept, !kept, drop = FALSE] / outer(scale, scale)
+  decomposition <- eigen(correlation, symmetric = TRUE)
+  used <- decomposition$values > 1e-10 * max(decomposition$values)
+  cross <- sweep(covariance[kept, !kept, drop = FALSE], 2L, scale, "/") %*%
+    decomposition$vectors[, used, drop = FALSE]
+  covariance[kept, kept, drop = FALSE] -
+    cross %*% (t(cross) / decomposition$values[used])
+}
+
+#' Warn that parameters keep their estimates when parameters are drawn
+#'
+#' Not for a variance below a hundredth of the total, which is zero for the
+#' prediction, nor for the scale of such a spatial variance or a parameter of
+#' the family at its limit, as no warning is given for those the fit holds
+#' there. The others have an uncertainty that the prediction leaves out.
+#' @param names The parameters, as the estimate names them.
+#' @noRd
+warn_undetermined <- function(object, names) {
+  table <- fit_parameter_table(object)
+  rows <- vector_rows(table)
+  rows <- rows[match(names, rows$stored), , drop = FALSE]
+  values <- unlist(coef(object))
+  variances <- values[grepl("^(sigma2|tau2|sigma2_me|sigma2_re\\..*)$",
+                            names(values))]
+  negligible <- names(variances)[variances < 0.01 * sum(variances)]
+  if ("sigma2" %in% negligible) negligible <- c(negligible, "phi")
+  named <- setdiff(
+    rows$reported[rows$block != "family" | rows$name == "sigma2_me"],
+    negligible
+  )
+  if (length(named)) {
+    riskmap_warn(c("The data don't determine {.code {named}}, so {?it keeps its estimate/they keep their estimates} and the prediction leaves out {?its/their} uncertainty.", "i" = "The standard {cli::qty(length(named))}error{?s} on the log scale {?is/are} above 3."), class = "riskmap_warning_fit")
+  }
+  invisible(NULL)
 }
 
 #' Conditional samples of the latent effects at given parameter values
