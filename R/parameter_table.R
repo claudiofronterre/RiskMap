@@ -766,7 +766,7 @@ apply_given_start <- function(table, start, given) {
 ##' have always called it. With them, `nlminb()` works on the free subvector,
 ##' the held values fill the rest, and the information and covariance are
 ##' those of the free parameters, the covariance with NA rows and columns for
-##' the held ones.
+##' the held ones. With `messages`, a progress step moves at each evaluation.
 ##' @return A list with the `fit` of `nlminb()` (its `par` the whole working
 ##'   vector), the `information` and its root, and the `covariance`.
 ##' @noRd
@@ -782,11 +782,24 @@ optimise_gaussian <- function(start, objective, gradient, hessian, held,
                 root = NULL,
                 covariance = matrix(NA_real_, length(start), length(start))))
   }
+  progress_step("Maximising the likelihood", messages)
+  # The optimiser evaluates one of the three again and again.
+  moving <- function(evaluate) {
+    force(evaluate)
+    function(x) {
+      progress_spin()
+      evaluate(x)
+    }
+  }
+  objective <- moving(objective)
+  gradient <- moving(gradient)
+  hessian <- moving(hessian)
   if (!length(held)) {
     fit <- nlminb(start, objective, function(x) -gradient(x),
-                  function(x) -hessian(x), control = list(trace = 1 * messages))
+                  function(x) -hessian(x))
     information <- -hessian(fit$par)
     root <- factor_covariance(information, "observed information matrix")
+    progress_step_done(messages)
     return(list(fit = fit, information = information, root = root,
                 covariance = chol2inv(root)))
   }
@@ -798,13 +811,13 @@ optimise_gaussian <- function(start, objective, gradient, hessian, held,
   }
   fit <- nlminb(start[free], function(z) objective(fill(z)),
                 function(z) -gradient(fill(z))[free],
-                function(z) -hessian(fill(z))[free, free, drop = FALSE],
-                control = list(trace = 1 * messages))
+                function(z) -hessian(fill(z))[free, free, drop = FALSE])
   fit$par <- fill(fit$par)
   information <- -hessian(fit$par)[free, free, drop = FALSE]
   root <- factor_covariance(information, "observed information matrix")
   covariance <- matrix(NA_real_, length(start), length(start))
   covariance[free, free] <- chol2inv(root)
+  progress_step_done(messages)
   list(fit = fit, information = information, root = root,
        covariance = covariance)
 }

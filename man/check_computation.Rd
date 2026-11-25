@@ -28,8 +28,8 @@ several, passed to \code{\link[=profile.RiskMap]{profile.RiskMap()}}, whose resu
 any number of cores.}
 
 \item{messages}{Logical, whether to say how long the extra checks should
-take before they start.
-Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
+take before they start, and to show their progress as described in
+\link{riskmap_progress}. Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 }
 \value{
 An object of class \code{"RiskMap_check"}, a list with:

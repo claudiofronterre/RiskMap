@@ -285,3 +285,68 @@ test_that("each evaluation of the Monte Carlo likelihood moves the spinner", {
   engine$evaluate(c(-0.3, log(0.8), 0), bank)
   expect_identical(moves, 2L)
 })
+
+test_that("a Gaussian fit shows a step that moves, and no trace", {
+  fit <- function() {
+    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian", messages = TRUE,
+          start_pars = list(sigma2 = 1, phi = 10))
+  }
+  local_terminal()
+  expect_silent(printed <- capture.output(frames <- step_frames(fit())))
+  expect_identical(printed, character())
+  frames <- grep("Maximising the likelihood", frames, value = TRUE)
+  expect_match(frames[1L], "^i Maximising the likelihood$")
+  expect_match(frames[2L], paste0(spinner_frame, "Maximising the likelihood ",
+                                  time_so_far))
+  expect_match(frames[length(frames)],
+               paste0("^v Maximising the likelihood ", time_so_far))
+
+  # A log gets a line at the start and another at the end, and nothing is shown
+  # where progress is hidden or nothing is maximised.
+  withr::local_options(cli.dynamic = FALSE)
+  lines <- grep("Maximising", capture_messages(fit()), value = TRUE)
+  expect_length(lines, 2L)
+  held <- capture_messages(
+    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = as.list(coef(gaussian_intercept_model)), messages = TRUE)
+  )
+  expect_no_match(held, "Maximising")
+  withr::local_options(RiskMap.progress = FALSE)
+  expect_no_match(capture_messages(fit()), "Maximising")
+})
+
+test_that("the spinner doesn't change a Gaussian fit", {
+  fit <- function(...) {
+    fit <- suppressMessages(
+      glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data,
+            family = "gaussian", ...)
+    )
+    fit[c("estimate", "covariance", "log_lik")]
+  }
+  held <- list(sigma2_me = 0)
+  still <- fit(fixed_pars = held, messages = FALSE)
+  local_terminal()
+  expect_identical(fit(fixed_pars = held, messages = TRUE), still)
+})
+
+test_that("check_computation() shows the progress of its extra checks", {
+  skip_on_cran()
+  withr::local_options(RiskMap.progress = TRUE, cli.dynamic = FALSE,
+                       cli.progress_show_after = 0)
+  lines <- trimws(capture_messages(
+    check_computation(gaussian_intercept_model, extra = "profile",
+                      messages = TRUE)
+  ))
+  expect_match(lines, "^Profiling the likelihood.*%", all = FALSE)
+  expect_no_message(
+    check_computation(gaussian_intercept_model, extra = "profile",
+                      messages = FALSE)
+  )
+  lines <- trimws(capture_messages(
+    check_computation(binomial_model, extra = "radius", messages = TRUE)
+  ))
+  lines <- grep("^(i )?Predicting how often the radius|Predicting how often",
+                lines, value = TRUE)
+  expect_length(lines, 2L)
+  expect_match(lines[2L], "too small \\[")
+})

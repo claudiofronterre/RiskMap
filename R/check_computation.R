@@ -85,8 +85,8 @@
 ##'   several, passed to [profile.RiskMap()], whose results are the same on
 ##'   any number of cores.
 ##' @param messages Logical, whether to say how long the extra checks should
-##'   take before they start.
-##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
+##'   take before they start, and to show their progress as described in
+##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @return An object of class `"RiskMap_check"`, a list with:
 ##' \item{checks}{A data frame with one row per check, those that need a look
 ##' first, and the columns `check`, `status` (`"PROBLEM"`, `"SUSPICIOUS"` or

@@ -76,7 +76,7 @@ run_extra_checks <- function(object, extra, profile = NULL, messages = TRUE,
   }
   for (name in extra) {
     result <- if (is.na(obstacles[[name]])) {
-      tryCatch(run_extra_check(name, object, profile, cores),
+      tryCatch(run_extra_check(name, object, profile, cores, messages),
                error = function(error) error)
     }
     reason <- if (!is.na(obstacles[[name]])) {
@@ -117,9 +117,16 @@ find_extra_check_obstacle <- function(name, object) {
 
 ##' Run one extra check, giving its row and data
 ##' @noRd
-run_extra_check <- function(name, object, profile = NULL, cores = 1L) {
-  switch(name, profile = run_profile_check(object, profile, cores),
-         radius = fit_check_radius(object))
+run_extra_check <- function(name, object, profile = NULL, cores = 1L,
+                            messages = FALSE) {
+  if (name == "profile") {
+    return(run_profile_check(object, profile, cores, messages))
+  }
+  progress_step("Predicting how often the radius of the bound is too small",
+                messages)
+  result <- fit_check_radius(object)
+  progress_step_done(messages)
+  result
 }
 
 ##' The seed of an extra check, a stream of its own after the seed of the fit
@@ -201,14 +208,16 @@ format_check_time <- function(seconds) {
 ##'
 ##' The profiles are of every covariance parameter of the fit, with the
 ##' default settings of `profile.RiskMap()` and its bank drawn from the
-##' stream 9600 after the seed of the fit.
+##' stream 9600 after the seed of the fit. Their messages are shown only with
+##' their progress.
 ##' @noRd
-run_profile_check <- function(object, profile = NULL, cores = 1L) {
+run_profile_check <- function(object, profile = NULL, cores = 1L,
+                              messages = FALSE) {
   if (is.null(profile)) {
     profile <- profile.RiskMap(
       object, parameters = list_covariance_parameters(object),
       seed = make_extra_check_seed(object$seed, 9600L) %||% 1L,
-      cores = cores, messages = FALSE
+      cores = cores, messages = progress_enabled(messages)
     )
   }
   advice <- if (!fit_is_exact(object)) {
