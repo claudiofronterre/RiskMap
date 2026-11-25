@@ -144,16 +144,16 @@ test_that("the traits of the negative binomial family give its closed forms", {
   expect_error(traits$simulate(means, units_m, NULL),
                class = "riskmap_error_internal")
   expect_identical(traits$fitted_mean(means, units_m), units_m * means)
-  # The support reaches the draws, the response and the 0.999 quantile.
-  draws <- c(0, 2, 30)
-  expect_identical(traits$score_support(draws, 4, 2, means, parameters), 0:30)
-  expect_identical(traits$score_support(draws, 41, 2, means, parameters),
-                   0:41)
-  rates <- c(20, 30, 40)
-  quantile <- qnbinom(0.999, size = 1.5, mu = mean(2 * rates))
-  expect_gt(quantile, 41)
-  expect_identical(traits$score_support(draws, 4, 2, rates, parameters),
-                   0:quantile)
+  # The counts scored reach the response and a count that the largest mean
+  # exceeds with a probability of at most 10^-10.
+  limit <- qnbinom(1e-10, size = 1.5, mu = 2 * 3, lower.tail = FALSE)
+  expect_identical(traits$score_limit(4, 2, means, parameters), limit)
+  expect_identical(traits$score_limit(limit + 5, 2, means, parameters),
+                   limit + 5)
+  expect_identical(traits$distribution_function(4, means, 2, parameters),
+                   pnbinom(4, size = 1.5, mu = 2 * means))
+  expect_error(traits$distribution_function(4, means, 2, NULL),
+               class = "riskmap_error_internal")
   expect_true(traits$validate(c(0, 5), c(0.5, 2)))
   expect_input_error(traits$validate(c(0, 1.5), c(1, 1)), "data",
                      "whole numbers")

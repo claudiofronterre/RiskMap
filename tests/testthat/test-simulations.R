@@ -280,15 +280,15 @@ test_that("assess_simulation validates area boundaries", {
 
 test_that("assessment refits use fitted templates without reusing estimates #108", {
   simulated <- binomial_data
-  simulated$y <- rev(binomial_data$y)
-  simulated$units_m <- rev(binomial_data$denominator)
-  formula <- update(binomial_model$formula, y ~ .)
+  simulated$.riskmap_response <- rev(binomial_data$y)
+  simulated$.riskmap_denominator <- rev(binomial_data$denominator)
+  formula <- update(binomial_model$formula, .riskmap_response ~ .)
   args <- assessment_refit_args(binomial_model, formula, simulated, control_mcmc)
 
   expect_identical(args$formula, formula)
   expect_identical(args$family, "binomial")
   expect_identical(args$data, simulated)
-  expect_identical(args$denominator, quote(units_m))
+  expect_identical(args$denominator, quote(.riskmap_denominator))
   expect_identical(args$control_mcmc, control_mcmc)
   expect_false("start_pars" %in% names(args))
   expect_false("estimate" %in% names(args))

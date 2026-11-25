@@ -1,0 +1,419 @@
+# The scores of binomial, Poisson and negative binomial predictions, from their
+# distribution function averaged over the draws of the mean.
+
+# F at every count, and the scores by their definitions as sums over the counts.
+every_count <- function(family, y, units_m, means, parameters, limit) {
+  distribution <- switch(
+    family,
+    binomial = function(k) pbinom(k, units_m, means),
+    poisson = function(k) ppois(k, units_m * means),
+    negative_binomial = function(k) {
+      pnbinom(k, size = parameters$theta, mu = units_m * means)
+    }
+  )
+  values <- vapply(0:limit, function(k) mean(distribution(k)), numeric(1))
+  list(values = values, crps = sum((values - (0:limit >= y))^2),
+       expected = sum(values * (1 - values)))
+}
+
+scaled_crps <- function(crps, expected) {
+  0.5 * (1 + crps / expected + log(2 * expected))
+}
+
+# A list with a family, its parameters, denominator, observed count and draws of
+# the mean.
+count_case <- function(family, y, units_m, means, parameters = NULL) {
+  list(family = family, y = y, units_m = units_m, means = means,
+       parameters = parameters)
+}
+
+score_case <- function(case, ...) {
+  count_distribution(case$y, case$units_m, case$means, case$parameters,
+                     family_traits(case$family), ...)
+}
+
+set.seed(20)
+small_cases <- list(
+  binomial = count_case("binomial", 4, 20, plogis(rnorm(300, -1, 0.8))),
+  no_events = count_case("binomial", 0, 20, plogis(rnorm(300, -4, 0.8))),
+  one_trial = count_case("binomial", 1, 1, plogis(rnorm(300, -1, 0.8))),
+  one_trial_none = count_case("binomial", 0, 1, plogis(rnorm(300, -1, 0.8))),
+  poisson = count_case("poisson", 4, 2.5, exp(rnorm(300, 0, 0.4))),
+  zero_count = count_case("poisson", 0, 0.3, exp(rnorm(300, 0, 0.4))),
+  negative_binomial = count_case("negative_binomial", 3, 0.8,
+                                 exp(rnorm(300, 0, 0.4)), list(theta = 4))
+)
+
+test_that("scores of small counts are the sums over every count", {
+  for (case in small_cases) {
+    distribution <- score_case(case)
+    limit <- max(distribution$counts)
+    expect_lte(limit, 100)
+    expect_identical(distribution$counts, as.numeric(-1:limit))
+    direct <- every_count(case$family, case$y, case$units_m, case$means,
+                          case$parameters, limit)
+    expect_equal(distribution$values, c(0, direct$values), tolerance = 1e-14)
+    expect_equal(count_crps(case$y, distribution), direct$crps,
+                 tolerance = 1e-14)
+    expect_equal(count_expected_crps(distribution), direct$expected,
+                 tolerance = 1e-14)
+    # The counts beyond the largest one have nearly no probability.
+    expect_lt(1 - direct$values[limit + 1], 1e-9)
+  }
+})
+
+test_that("scores of counts agree with sets of simulated counts", {
+  skip_on_cran()
+  set.seed(21)
+  cases <- small_cases[c("binomial", "poisson", "negative_binomial")]
+  for (case in cases) {
+    traits <- family_traits(case$family)
+    distribution <- score_case(case)
+    # One count for each draw of the mean, many times, as the scores were
+    # computed before. The mean over many sets of the distribution function is
+    # F, and the mean of the CRPS exceeds that of F by the variance of the
+    # simulated distribution function.
+    simulated <- replicate(2000, {
+      traits$simulate(case$means, rep(case$units_m, length(case$means)),
+                      case$parameters)
+    })
+    expect_equal(mean(simulated <= case$y),
+                 count_distribution_at(distribution, case$y),
+                 tolerance = 0.01)
+    # The CRPS as E|X - y| - E|X - X'| / 2, and the expected one as the latter.
+    other <- replicate(2000, {
+      traits$simulate(case$means, rep(case$units_m, length(case$means)),
+                      case$parameters)
+    })
+    # Two independent draws from F have draws of the mean chosen at random.
+    spread <- mean(abs(sample(simulated) - sample(other))) / 2
+    expect_equal(count_expected_crps(distribution), spread, tolerance = 0.01)
+    expect_equal(count_crps(case$y, distribution),
+                 mean(abs(simulated - case$y)) - spread, tolerance = 0.02)
+  }
+})
+
+test_that("large counts are scored as at every count", {
+  skip_on_cran()
+  set.seed(22)
+  draws <- 200
+  cases <- list(
+    trials = count_case("binomial", 300, 1000, plogis(rnorm(draws, -1, 0.8))),
+    many_trials = count_case("binomial", 900, 20000,
+                             plogis(rnorm(draws, -3, 0.3))),
+    equal_means = count_case("poisson", 9900, 1, rep(1e4, draws)),
+    close_means = count_case("poisson", 9900, 2,
+                             5000 * exp(rnorm(draws, 0, 0.002))),
+    spread_means = count_case("poisson", 700, 1, 1000 * exp(rnorm(draws))),
+    # Half of the draws have a mean of 0.1 and the others one of 10^5, and one
+    # draw has a mean far from the rest.
+    two_means = count_case("poisson", 60, 1,
+                           rep(c(0.1, 1e5), each = draws / 2)),
+    one_large_mean = count_case("poisson", 1, 1,
+                                c(rep(0.1, draws - 1), 1e5)),
+    wide_means = count_case("poisson", 5, 1, exp(rnorm(draws, 2, 3))),
+    heavy_tail = count_case("negative_binomial", 60, 1,
+                            500 * exp(rnorm(draws, 0, 0.5)), list(theta = 0.5))
+  )
+  for (name in names(cases)) {
+    case <- cases[[name]]
+    distribution <- score_case(case)
+    limit <- max(distribution$counts)
+    expect_gt(limit, 900)
+    expect_lt(length(distribution$counts), 2000)
+    expect_true(all(c(-1:100, case$y - 1, case$y) %in% distribution$counts))
+    expect_false(is.unsorted(distribution$values))
+    direct <- every_count(case$family, case$y, case$units_m, case$means,
+                          case$parameters, limit)
+    crps <- count_crps(case$y, distribution)
+    expected <- count_expected_crps(distribution)
+    expect_equal(crps, direct$crps, tolerance = 5e-5, label = name)
+    expect_equal(expected, direct$expected, tolerance = 2e-4, label = name)
+    expect_equal(scaled_crps(crps, expected),
+                 scaled_crps(direct$crps, direct$expected), tolerance = 5e-5,
+                 label = name)
+    # F is exact at y - 1 and y, from which the PIT comes.
+    expect_equal(count_distribution_at(distribution, case$y - 1:0),
+                 direct$values[case$y + 0:1], tolerance = 1e-12)
+  }
+})
+
+test_that("the sum over a cell is that of the line through its ends", {
+  counts <- c(-1, 0, 1, 9, 10, 40)
+  values <- c(0, 0.1, 0.15, 0.6, 0.7, 1)
+  distribution <- list(counts = counts, values = values)
+  line <- approx(counts, values, xout = 0:40)$y
+  expect_equal(count_crps(10, distribution),
+               sum((line - (0:40 >= 10))^2), tolerance = 1e-14)
+  expect_equal(count_expected_crps(distribution), sum(line * (1 - line)),
+               tolerance = 1e-14)
+  expect_equal(count_distribution_at(distribution, c(-3, -1, 0, 5, 40, 90)),
+               c(0, 0, 0.1, 0.375, 1, 1))
+  # The smallest whole count that reaches each probability.
+  probability <- c(1e-9, 0.1, 0.1 + 1e-9, 0.15, 0.2, 0.6, 0.65, 0.7, 0.713, 1)
+  expect_identical(count_quantile(distribution, probability),
+                   vapply(probability, function(p) {
+                     as.numeric((0:40)[line >= p - 1e-15][1])
+                   }, numeric(1)))
+  # A probability that the distribution does not reach.
+  distribution$values[6] <- 1 - 1e-11
+  expect_identical(count_quantile(distribution, 1 - 1e-13), 40)
+})
+
+test_that("an observed count beyond the predicted ones is scored", {
+  for (case in list(
+    count_case("poisson", 60, 1, c(0.4, 0.6)),
+    count_case("poisson", 5000, 1, c(0.4, 0.6)),
+    count_case("negative_binomial", 500, 1, c(0.4, 0.6), list(theta = 3))
+  )) {
+    distribution <- score_case(case)
+    expect_identical(max(distribution$counts), case$y)
+    direct <- every_count(case$family, case$y, case$units_m, case$means,
+                          case$parameters, case$y)
+    expect_equal(count_crps(case$y, distribution), direct$crps,
+                 tolerance = 1e-10)
+    expect_gt(direct$crps, case$y - 10)
+    expect_equal(count_distribution_at(distribution, case$y - 1), 1)
+  }
+})
+
+test_that("a mean at the limit of its range is scored", {
+  traits <- family_traits("binomial")
+  # A prevalence of one, or of zero, in every draw is a point mass, whose CRPS
+  # is the absolute error.
+  for (trials in c(1, 10, 1e5)) {
+    for (prevalence in c(0, 1)) {
+      distribution <- count_distribution(1, trials, rep(prevalence, 5), NULL,
+                                         traits)
+      expect_identical(count_crps(1, distribution),
+                       abs(1 - trials * prevalence))
+      expect_identical(count_expected_crps(distribution), 0)
+    }
+  }
+  distribution <- count_distribution(2, 4, c(0, 1), NULL, traits)
+  expect_identical(distribution$values, c(0, 0.5, 0.5, 0.5, 0.5, 1))
+  expect_identical(count_crps(2, distribution), 1)
+  zero <- count_distribution(3, 1, c(0, 0), NULL, family_traits("poisson"))
+  expect_identical(count_crps(3, zero), 3)
+})
+
+test_that("counts too large to be told apart stop, and those below are scored", {
+  traits <- family_traits("poisson")
+  large <- count_distribution(3, 1, c(1, 1e15), NULL, traits)
+  expect_equal(count_crps(3, large), 1e15 / 4, tolerance = 1e-3)
+  for (mean in c(1e16, 1e30, 1e180, 1e308)) {
+    expect_no_warning(expect_error(
+      count_distribution(5, 1, c(1, 1, mean), NULL, traits),
+      "too large to be scored", class = "riskmap_error"
+    ))
+    expect_no_warning(expect_error(
+      count_distribution(5, 1, c(1, 1, mean), list(theta = 0.5),
+                         family_traits("negative_binomial")),
+      "too large to be scored", class = "riskmap_error"
+    ))
+  }
+})
+
+test_that("draws of the mean that can't be scored stop", {
+  means <- rbind(c(0.2, 0.3), c(0.4, 0.5), c(0.6, 0.7))
+  binomial <- family_traits("binomial")
+  poisson <- family_traits("poisson")
+  expect_true(check_count_means(means, c(5, 1, 2), binomial))
+  expect_true(check_count_means(1000 * means, c(5, 1, 2), poisson))
+  for (wrong in c(NaN, NA, Inf, -0.1, 1.1)) {
+    means[2, 1] <- wrong
+    expect_error(check_count_means(means, c(5, 1, 2), binomial),
+                 "1 draw of the mean at 1 test observation isn't finite",
+                 class = "riskmap_error")
+  }
+  means[3, ] <- NaN
+  expect_error(check_count_means(means, c(5, 1, 2), binomial),
+               "3 draws of the mean at 2 test observations aren't finite")
+  # An expected count that overflows.
+  expect_error(check_count_means(matrix(1e308, 1, 2), 10, poisson),
+               "2 draws of the mean at 1 test observation aren't finite")
+  # A denominator that isn't a number of trials.
+  for (trials in c(2.5, 250.5)) {
+    expect_no_warning(expect_error(
+      count_distribution(1, trials, c(0.2, 0.3), NULL, binomial),
+      "must be whole numbers", class = "riskmap_error"
+    ))
+  }
+})
+
+# A fit and a mocked prediction whose draws of the linear predictor are given.
+count_fit <- function(family, y, units_m, parameters = NULL,
+                      inverse = family_traits(family)$inverse_link) {
+  n <- length(y)
+  data <- st_sf(y = y, x1 = seq_len(n),
+                geometry = st_sfc(lapply(seq_len(n), function(i) {
+                  st_point(c(1000 * i, 0))
+                }), crs = 32637))
+  fit <- list(
+    formula = y ~ x1, data = data, input_crs = st_crs(data), family = family,
+    estimate = list(beta = c(0, 0), sigma2 = 0, phi = 0),
+    D = matrix(1, nrow = n, ncol = 2), re = list(), cov_offset = NULL,
+    nugget = "none", fixed_pars = parameters,
+    sst = FALSE, units_m = units_m, y = y, ID_coords = seq_len(n),
+    coords = st_coordinates(data), distance_units = "m",
+    call = list(denominator = quote(units_m)),
+    link_function = list(inv = inverse, name = "custom")
+  )
+  class(fit) <- "RiskMap"
+  fit
+}
+
+mock_draws <- function(draws) {
+  function(object, newdata, ...) {
+    structure(list(
+      predictions = transform(newdata, fixed = 0, offset = 0),
+      samples = list(spatial = draws[newdata$x1, , drop = FALSE])
+    ), class = "RiskMap_prediction")
+  }
+}
+
+test_that("assess_prediction() scores counts by the average distribution function", {
+  set.seed(23)
+  draws <- matrix(rnorm(4 * 500, -0.5, 0.7), 4)
+  local_mocked_bindings(predict.RiskMap = mock_draws(draws))
+  cases <- list(
+    binomial = list(units_m = c(10, 1, 1, 30), y = c(3, 1, 0, 30),
+                    parameters = NULL, mean = plogis),
+    poisson = list(units_m = c(1, 2, 0.5, 4), y = c(0, 9, 1, 3),
+                   parameters = NULL, mean = exp),
+    negative_binomial = list(units_m = c(1, 2, 0.5, 4), y = c(0, 9, 1, 3),
+                             parameters = list(theta = 1.5), mean = exp)
+  )
+  u <- seq(0, 1, length.out = 1000)
+  for (family in names(cases)) {
+    case <- cases[[family]]
+    fit <- count_fit(family, case$y, case$units_m, case$parameters)
+    out <- assess_prediction(list(m = fit), method = "user",
+                             user_split = list(2:4), messages = FALSE)
+    direct <- lapply(2:4, function(i) {
+      every_count(family, case$y[i], case$units_m[i], case$mean(draws[i, ]),
+                  case$parameters,
+                  if (family == "binomial") case$units_m[i] else 2000)
+    })
+    crps <- vapply(direct, `[[`, numeric(1), "crps")
+    expected <- vapply(direct, `[[`, numeric(1), "expected")
+    metric <- out$model$m$metric
+    expect_equal(metric$CRPS[[1]], crps, tolerance = 1e-7, label = family)
+    expect_equal(metric$SCRPS[[1]], scaled_crps(crps, expected),
+                 tolerance = 1e-5, label = family)
+    curves <- vapply(1:3, function(i) {
+      values <- c(0, direct[[i]]$values)[case$y[i + 1] + 1:2]
+      pmin(pmax((u - values[1]) / diff(values), 0), 1)
+    }, numeric(1000))
+    expect_equal(out$model$m$AnPIT[[1]], rowMeans(curves), tolerance = 1e-6,
+                 label = family)
+    expect_equal(out$model$m$PIT_area, .anpit_area(rowMeans(curves), u),
+                 tolerance = 1e-6, label = family)
+  }
+})
+
+test_that("a rare event has a SCRPS", {
+  # The prevalence is 10^-6 in every draw, so a count simulated for each draw
+  # is 0 in every one of them, a distribution without spread.
+  local_mocked_bindings(
+    predict.RiskMap = mock_draws(matrix(qlogis(1e-6), 2, 100))
+  )
+  out <- assess_prediction(list(m = count_fit("binomial", c(0, 0), c(10, 10))),
+                           method = "user", user_split = list(2),
+                           messages = FALSE)
+  values <- pbinom(0:10, 10, 1e-6)
+  crps <- sum((values - 1)^2)
+  expected <- sum(values * (1 - values))
+  expect_equal(out$model$m$metric$CRPS[[1]], crps)
+  expect_equal(out$model$m$metric$SCRPS[[1]], scaled_crps(crps, expected))
+})
+
+test_that("a test set with a draw of the mean that isn't finite is a failure", {
+  draws <- matrix(0, 3, 50)
+  draws[2, 7] <- 800
+  # exp(800) is infinite, and the custom link returns no number above 100,
+  # draws that a simulated count would have left out.
+  broken <- function(eta) ifelse(eta > 100, NaN, plogis(eta))
+  fits <- list(poisson = count_fit("poisson", c(1, 2, 3), rep(1, 3)),
+               negative_binomial = count_fit("negative_binomial", c(1, 2, 3),
+                                             rep(1, 3), list(theta = 2)),
+               binomial = count_fit("binomial", c(1, 2, 3), rep(5, 3),
+                                    inverse = broken))
+  local_mocked_bindings(predict.RiskMap = mock_draws(draws))
+  for (name in names(fits)) {
+    expect_no_warning(expect_warning(
+      out <- assess_prediction(fits[name], method = "user",
+                               user_split = list(1:2, 3), messages = FALSE),
+      "1 of 2 test-set assessments failed"
+    ))
+    expect_identical(out$failures$test_set, 1L)
+    expect_match(out$failures$message,
+                 "1 draw of the mean at 1 test observation isn't finite")
+    expect_identical(out$model[[name]]$metric$CRPS[[1]], c(NA_real_, NA_real_))
+    expect_true(is.finite(out$model[[name]]$metric$CRPS[[2]]))
+    expect_true(is.finite(out$model[[name]]$PIT_area))
+  }
+})
+
+test_that("a fit has the same count scores alone and in any position of a list", {
+  skip_on_cran()
+  fit_family <- function(family, data, ...) {
+    suppressWarnings(glgpm(
+      y ~ gp(), data = data, family = family, denominator = denominator,
+      control_mcmc = control_mcmc, seed = fixture_seed,
+      control_mcml = fixture_control_mcml, messages = FALSE, ...
+    ))
+  }
+  fits <- list(
+    binomial = fit_family("binomial", binomial_data),
+    poisson = fit_family("poisson", poisson_data),
+    negative_binomial = fit_family(negative_binomial(), poisson_data,
+                                   fixed_pars = list(theta = 2))
+  )
+  assess <- function(models, seed = fixture_seed) {
+    assess_prediction(models, method = "user",
+                      user_split = list(1:3, c(2, 5:7)),
+                      control_mcmc = control_mcmc, seed = seed,
+                      messages = FALSE)
+  }
+  for (name in names(fits)) {
+    fit <- fits[[name]]
+    set.seed(24)
+    state <- .Random.seed
+    pair <- assess(list(a = fit, b = fit))
+    expect_identical(.Random.seed, state)
+    expect_identical(pair$model$a, pair$model$b, label = name)
+    alone <- assess(list(a = fit))
+    expect_identical(alone$model$a, pair$model$a, label = name)
+    expect_identical(nrow(alone$failures), 0L)
+    # Without a seed only the seeds of the test sets come from the session, so
+    # its state does not depend on the number of models.
+    set.seed(24)
+    assess(list(a = fit), seed = NULL)
+    state <- .Random.seed
+    set.seed(24)
+    assess(list(a = fit, b = fit), seed = NULL)
+    expect_identical(.Random.seed, state)
+  }
+})
+
+test_that("the expected PIT_area uses the averaged distribution functions", {
+  skip_on_cran()
+  set.seed(25)
+  u <- seq(0, 1, length.out = 1000)
+  traits <- family_traits("poisson")
+  # Forty observations with large counts, scored on a grid and at every count.
+  means <- 400 * exp(matrix(rnorm(40 * 100, 0, 0.5), 40))
+  observed <- rpois(40, means[, 1])
+  sets <- function(tolerance) {
+    values <- lapply(1:40, function(i) {
+      count_distribution(observed[i], 1, means[i, ], NULL, traits, tolerance)
+    })
+    list(list(rows = 1:40, values = values))
+  }
+  set.seed(26)
+  on_grid <- expected_pit_area(sets(1e-4), TRUE, u)
+  set.seed(26)
+  at_every_count <- expected_pit_area(sets(0), TRUE, u)
+  expect_equal(on_grid, at_every_count, tolerance = 1e-3)
+})
