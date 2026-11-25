@@ -781,8 +781,8 @@ simulation_model <- function(object) {
   attr(model, "distance_scale") <- attr(object, "distance_scale") %||%
     attr(model, "distance_scale")
   model$denominator <- denominator
-  simulation_inputs(model, model$data, TRUE, "data", original = TRUE)
   model$original_denominator <- object$units_m
+  simulation_inputs(model, model$data, TRUE, "data", original = TRUE)
   model$original_offset <- object$cov_offset
   model$custom_link <- identical(object$link_function$name, "custom")
   model
@@ -867,11 +867,12 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
   whole <- family_traits(model$family)$whole_denominator
   if (response && (!is.numeric(den) || length(den) != nrow(data) ||
       any(!is.finite(den)) || any(den < 0) ||
-      (whole && any(den != floor(den))))) {
+      (whole && !all(is_whole(den))))) {
     arg <- simulation_location_arg(label)
     kind <- if (whole) "whole numbers" else "numbers"
     abort_input("The denominators in {.arg {arg}} must be finite non-negative {kind}.", arg = arg)
   }
+  if (response && whole) den <- round(den)
   list(fixed = as.numeric(design %*% model$parameters$beta) + offset,
        denominator = den)
 }

@@ -1303,25 +1303,35 @@ format_compared_values <- function(x, digits) {
 ##'
 ##' @description
 ##' Checks that binomial data only consists of zero or positive integers and that if
-##' den is provided that all values of y are less than or equal to it.
-##' Some tolerance is provided for floating point errors
+##' den is provided that it only consists of positive integers, and that all
+##' values of y are less than or equal to it. `is_whole()` gives the tolerance,
+##' so both have to be rounded before they are used.
 ##'
 ##' @param y the data to check
 ##' @param den the denominator
 ##' @return TRUE if valid, raise an error if not
 ##' @noRd
 check_binomial <- function(y, den){
-  tolerance <- sqrt(.Machine$double.eps)
-  valid <- all(y >= 0) & all(abs(y - round(y)) < tolerance)
-  if (!valid) {
+  if (!all(is_whole(y)) || !all(round(y) >= 0)) {
     abort_input("The responses of a binomial model must be non-negative whole numbers.", arg = "data")
   }
 
-  if (!is.null(den) && !all(den >= y)) {
-    abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")
+  if (!is.null(den)) {
+    if (!all(is_whole(den)) || !all(round(den) > 0)) {
+      abort_input(c("The denominators of a binomial model must be positive whole numbers.", "i" = "Check or remove the rows where they aren't."), arg = "denominator")
+    }
+    if (!all(round(den) >= round(y))) {
+      abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")
+    }
   }
 
   invisible(TRUE)
+}
+
+##' Which numbers are finite and whole, with a tolerance for floating point errors
+##' @noRd
+is_whole <- function(x, tolerance = sqrt(.Machine$double.eps)) {
+  is.finite(x) & abs(x - round(x)) < tolerance
 }
 
 #' @title check_data
