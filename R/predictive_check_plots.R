@@ -68,7 +68,7 @@ plot_predictive_check <- function(x, type = NULL, model = NULL,
   check_plot_object(x, "RiskMap_predictive_check", "plot_predictive_check",
                     "assess_fit")
   check_dots_unused(...)
-  type <- check_drawn_type(type, x$types)
+  type <- check_drawn_type(type, x)
   models <- names(x$family)
   check_assessed_model(model, models, "model", several = TRUE)
   check_colour(colour)
@@ -87,13 +87,13 @@ plot.RiskMap_predictive_check <- function(x, ...) plot_predictive_check(x, ...)
 
 ##' What to draw of a predictive check, by default the first thing it has
 ##'
-##' @param types What the check has, of what can be drawn.
+##' @param x The check.
 ##' @noRd
-check_drawn_type <- function(type, types, call = rlang::caller_env()) {
-  if (is.null(type)) return(types[1L])
+check_drawn_type <- function(type, x, call = rlang::caller_env()) {
+  if (is.null(type)) return(c(drawn_types(x), x$types)[1L])
   type <- match_choice(type, c("statistic", "distribution", "variogram"),
                        call = call)
-  if (!type %in% types) {
+  if (!type %in% x$types) {
     missing <- if (type == "statistic") "statistics that are numbers" else
       paste("the", type)
     abort_input(c("{.arg x} doesn't have {missing} to draw.", "i" = "{.arg statistics} of {.fn assess_fit} says what is calculated."), arg = "type", call = call)
@@ -299,7 +299,10 @@ distribution_steps <- function(distribution) {
 ##' @noRd
 plot_check_variogram <- function(x, models, colours) {
   if (is.null(x$variogram)) {
-    abort_input(c("{.arg x} has no variogram, because no pair of locations is in a distance class.", "i" = "Give the distance classes in {.arg breaks} of {.fn assess_fit}."), arg = "x")
+    hint <- if (is.null(x$breaks)) {
+      c("i" = "Give the distance classes in {.arg breaks} of {.fn assess_fit}.")
+    }
+    abort_input(c("{.arg x} has no variogram, because {missing_variogram(x$breaks)}.", hint), arg = "x")
   }
   variogram <- rows_of_models(x$variogram, models)
   if (!nrow(variogram)) {

@@ -36,8 +36,9 @@ observed one, and where there are many of them it can be 1, or near 1, for a
 value that isn't unusual. See \code{\link[=assess_fit]{assess_fit()}}.
 
 The printed summary also says in how many distance classes the observed
-variogram is outside its joint envelope, and where the observed distribution
-is.
+variogram is outside its joint envelope, where the observed distribution is,
+and, for binomial models, whether the prevalences are those of observations or
+of locations.
 }
 \seealso{
 \code{\link[=assess_fit]{assess_fit()}}, and \code{\link[=to_table]{to_table()}} for a table to render.

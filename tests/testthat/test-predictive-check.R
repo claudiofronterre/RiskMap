@@ -115,6 +115,26 @@ test_that("a model whose covariates leave no residuals has no variogram", {
                  "as many coefficients")
   expect_null(alone$variogram)
   expect_output(print(alone), "inside|outside")
+  expect_input_error(plot(alone, type = "variogram"), "x", "leave no residuals")
+
+  # Asked for alone, there is nothing to draw.
+  expect_warning(only <- assess_fit(fit, "variogram", nsim = 19, seed = 1),
+                 "as many coefficients")
+  printed <- gsub("\\s+", " ", paste(capture.output(print(only)), collapse = " "))
+  expect_match(printed, "There is no variogram, because the covariates leave no residuals")
+  expect_no_match(printed, "draws")
+  expect_output(print(summary(only)), "There is no variogram")
+  expect_input_error(plot(only), "x", "leave no residuals")
+  # With another curve, that one is drawn.
+  expect_warning(
+    both <- assess_fit(fit, c("distribution", "variogram"), nsim = 19, seed = 1),
+    "as many coefficients"
+  )
+  expect_match(plot(both)$labels$y, "at or below")
+
+  # What isn't asked for isn't calculated, so nothing warns that it is missing.
+  expect_no_warning(assess_fit(fit, "sd", nsim = 19, seed = 1))
+  expect_no_warning(assess_fit(fit, "distribution", nsim = 19, seed = 1))
 })
 
 test_that("nearly collinear covariates are all taken out of the residuals", {
@@ -262,6 +282,18 @@ test_that("binomial observations are added up only if they are individuals", {
   expect_identical(assess_fit(binary_twice, nsim = 19, seed = 1)$unit, "location")
   expect_identical(assess_fit(individuals, nsim = 19, seed = 1)$unit, "location")
   expect_identical(checked$unit, "observation")
+
+  # The output says which.
+  printed <- function(x) {
+    gsub("\\s+", " ", paste(capture.output(print(summary(x))), collapse = " "))
+  }
+  expect_match(printed(check), "The prevalences are those of the observations.")
+  by_location <- assess_fit(binary_twice, nsim = 19, seed = 1)
+  expect_match(printed(by_location), paste("The prevalences are those of the",
+                                           "locations, because every denominator"))
+  expect_no_match(printed(checked), "prevalences")
+  expect_no_match(printed(assess_fit(binary_twice, "variogram", nsim = 19,
+                                     seed = 1)), "prevalences are")
 })
 
 test_that("the distribution is the empirical one, with its joint envelope", {
@@ -415,8 +447,7 @@ test_that("the distribution and the variogram are calculated if asked for", {
   expect_identical(mixed$variogram, checked$variogram)
   expect_null(run(function(data) c(a = 1))$variogram)
 
-  # What isn't asked for isn't needed.
-  expect_no_warning(run("sd"))
+  # The distance classes are those of the variogram.
   expect_input_error(run("sd", breaks = c(0, 5)), "breaks", "doesn't include")
   expect_identical(run("variogram", breaks = c(0, 5))$breaks, c(0, 5))
   expect_input_error(run(list(v = "variogram")), "statistics", "another name")
@@ -442,6 +473,23 @@ test_that("statistics that can't be used are errors", {
                      "\"sd\" is repeated")
   expect_input_error(run(list(function(data) 1, function(data) 2)), "statistics",
                      "repeated")
+  # The labels of those given by name can't be repeated either.
+  expect_input_error(run(list("mean", Mean = function(data) 1)), "statistics",
+                     "\"Mean\" is repeated")
+  expect_input_error(run(list("sd", function(data) c(SD = 1, Mean = 2))),
+                     "statistics", "\"SD\" is repeated")
+  expect_input_error(run(list("mean", Mean = "sd")), "statistics",
+                     "\"Mean\" is repeated")
+  # Before the simulated datasets are described.
+  calls <- 0
+  counted <- function(data) {
+    calls <<- calls + 1
+    c(a = 1)
+  }
+  expect_input_error(run(list(counted, counted)), "statistics", "\"a\" is repeated")
+  expect_identical(calls, 2)
+  expect_input_error(run(list("sd", "sd", counted)), "statistics", "repeated")
+  expect_identical(calls, 2)
   expect_input_error(run(function(data) c(1, 2)), "statistics", "named numbers")
   expect_input_error(run(function(data) c(a = "x")), "statistics", "named numbers")
   expect_input_error(run(function(data) data.frame(a = 1:2)), "statistics")
@@ -636,7 +684,10 @@ test_that("few locations have no variogram, or one class of it", {
   expect_null(check$variogram)
   expect_output(print(check), "2\\s+locations")
   expect_input_error(plot_predictive_check(check, type = "variogram"), "x",
-                     "no variogram")
+                     "no variogram, because no pair")
+  only <- suppressWarnings(assess_fit(fit, "variogram", nsim = 19, seed = 1))
+  expect_output(print(only), "There is no variogram, because no pair")
+  expect_input_error(plot(only), "x", "no pair")
   one_class <- assess_fit(fit, breaks = c(0, 1e3), nsim = 19, seed = 1)
   expect_identical(nrow(one_class$variogram), 1L)
   expect_no_message(ggplot2::ggplotGrob(
