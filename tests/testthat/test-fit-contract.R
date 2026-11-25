@@ -151,6 +151,8 @@ test_that("every result records the version of RiskMap that made it", {
   stamped(predict(gaussian_intercept_model, grid, boundaries = areal,
                   aggregate = "mean", messages = FALSE))
   stamped(cross_validation)
+  stamped(cross_validation$test_sets)
+  stamped(create_test_sets(gaussian_data))
   stamped(simulation)
   stamped(simulation$model)
   stamped(variogram(gaussian_data, "y", n_permutations = 19, seed = 1,
@@ -180,6 +182,10 @@ test_that("to_table() has a method for each object it tabulates", {
                    to_table(summary(gaussian_model), digits = 2))
   expect_identical(to_table(cross_validation, digits = 2),
                    to_table(summary(cross_validation), digits = 2))
+  expect_identical(
+    to_table(cross_validation, reference = "model_a"),
+    to_table(summary(cross_validation, reference = "model_a"))
+  )
   expect_input_error(to_table(list(a = 1)), "object")
   expect_error(to_table(1), "RiskMap_cross_validation")
 })

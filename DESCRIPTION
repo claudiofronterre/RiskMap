@@ -49,8 +49,6 @@ Suggests:
     ggspatial,
     jsonlite,
     RhpcBLASctl,
-    spatialEco,
-    spatialsample,
     testthat (>= 3.0.0),
     withr
 License: MIT + file LICENSE

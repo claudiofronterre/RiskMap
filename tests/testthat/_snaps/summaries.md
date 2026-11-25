@@ -173,27 +173,40 @@
         errors may not hold. Refit with a larger `max_draws` in `set_control_mcml()`.
       ! 2 checks need a look. See `check_fit()`.
 
-# print.summary.RiskMap_cross_validation formats scores by model
+# print() of the summary of a cross-validation formats its scores
 
     Code
       print(scores)
     Output
       -- Cross-validation scores -----------------------------------------------------
+      Parameters are fixed at the estimates from all the data.
       
-      Scores over all test observations
-         Model   CRPS  SCRPS PIT_area PIT_area_expected
-       model_a 0.3000 0.8000   0.0400            0.0300
-       model_b 0.4500 0.9500   0.0500            0.0310
-      i Lower is better for every score. The CRPS is in the units of the response,
-        counts for binomial, Poisson and negative binomial models. PIT_area_expected
-        is the PIT_area of a perfectly calibrated model on these test observations.
+      Scores over 4 test observations
+         Model   CRPS   SCRPS PIT area  Limit
+       model_a 0.3750 -0.6500   0.0400 0.0600
+       model_b 0.3250 -0.5000   0.0500 0.0700
+      i Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
+        response.
+      i The PIT area of a correct model is below the limit with a probability of 95%.
+
+---
+
+    Code
+      print(compared)
+    Output
+      -- Cross-validation scores -----------------------------------------------------
+      Parameters are fixed at the estimates from all the data.
       
-      By test set
-         Model Test set   CRPS  SCRPS
-       model_a        1 0.2500 0.7500
-       model_a        2 0.3500 0.8500
-       model_b        1 0.4000 0.9000
-       model_b        2 0.5000 1.0000
+      Scores over 4 test observations
+         Model   CRPS  CRPS difference   SCRPS SCRPS difference PIT area  Limit
+       model_a 0.3750                  -0.6500                    0.0400 0.0600
+       model_b 0.3250 -0.0500 (0.1500) -0.5000 +0.1500 (0.2179)   0.0500 0.0700
+      i Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
+        response.
+      i The PIT area of a correct model is below the limit with a probability of 95%.
+      i Differences are from model_a, and negative ones are in favour of the other
+        model. Their standard errors, in brackets, treat the observations as
+        independent.
 
 # print.summary.RiskMap_assess_simulation formats one spatial scale
 

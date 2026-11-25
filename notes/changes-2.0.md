@@ -1841,6 +1841,84 @@ weights. The result holds `objective$location` and `objective$area` instead of
 `pred_objective$grid` and `pred_objective$area`, and so does its `summary()`.
 - The print and summary methods of both assessments stop on an argument they
 don't use.
+- `create_test_sets()` makes the test sets of a cross-validation, for an `sf`
+object or a fit, and `plot_test_sets()` maps them or draws the distances of the
+test locations from their training data, with those of a prediction grid. The
+methods are `"leave_one_out"`, one location in each test set, `"random"`,
+`"cluster"`, k-means on the projected coordinates with 20 starts, and
+`"spaced"`, the former `"regularized"`, locations at least `min_dist` apart, in
+the units of the model, drawn by a sampler that stops only when no location is
+left. Records at one location are always together, `"random"` and `"cluster"`
+take `repeats`, and data in longitude and latitude are projected as in
+`glgpm()`. The clusters are those of k-means on the coordinates, where
+spatialsample clustered a matrix of distances, so they differ from the former
+ones. With `"regularized"` a test set could stop short of `size` locations
+although more were available, and `size = 1` gave more than one.
+- `assess_prediction()` takes `models`, `test_sets`, `refit`, `control_mcmc`,
+`seed` and `messages`. `models` is a fit or a list of fits, and `test_sets` comes
+from `create_test_sets()` or is a list of row numbers or of lists with `train`
+and `test`, so the splits of other packages can be used. `refit = TRUE` replaces
+`keep_par_fixed = FALSE`, and all metrics are always computed. The former
+arguments `method`, `fold`, `min_dist`, `size`, `iter`, `plot_fold`,
+`user_split`, `metrics` and `keep_par_fixed` stop and say what replaces them.
+Models with different responses or denominators are refused, since their scores
+can't be compared, and were scored before.
+- `assess_prediction()` predicts each test set jointly, with the nugget and the
+random effects, which were left out of the predictions and of the scores of
+models with `re()` terms. A level that the training data don't have is drawn
+from the distribution of the random effect. In a Gaussian example the mean CRPS
+is 0.6535, where the exact one is 0.6544 and the former one was 0.7394. The
+scores of models without `re()` terms are those of before within Monte Carlo
+error, since the draws differ. The seeds of the test sets are those of before.
+With 1,000 training locations and 2,000 draws, a test set of 2,000 locations takes
+23 seconds for a binomial model, as before, and 1.6 for a Gaussian one (1.1), and
+4,000 locations 4.8 (2.2), with the same memory.
+- The reference for calibration is simulated from draws of the joint predictive
+distribution of each test set, 999 times, or as many as there are predictive draws.
+`PIT_area_expected` is the mean of the areas of these curves, and the new
+`PIT_area_limit` their order statistic that a correct model is below with a
+probability of 95%. The band is the joint envelope of the curves and of that of the
+data (`global_rank_envelope()`, as in `variogram()`), and so is that of the
+histograms. The observations were simulated independently before, which made the
+reference too small with clusters, where the errors of a test set go together. With
+one test set and the parameters at their true values (100 locations in a square of
+side 100, range 20, 60 for training, 500 or 1,000 datasets, all four families), a
+correct model is above the limit in 4.4 to 6.0% of the datasets, its curve leaves the
+band in 4.5 to 5.8% and its bars in 2.4 to 5.8%. The former band, for each level
+separately, is left somewhere by 15 to 28% of the curves (5% for one binomial trial).
+Test sets are independent of each other in the reference, so it is cautious with
+several of them. With five or ten clusters a correct model is above the limit in 0 to
+2.0% of the datasets and leaves the band in 0 to 3.8%, and with random or leave-one-out
+test sets in none and at most 0.3%. In simulations
+with ranges of 5 and 20, the area of a correct model is 0.76 to 0.98 times the
+expected one with clusters, for Gaussian, binomial, Poisson and negative binomial
+data, 0.80 and 0.90 when the clusters are repeated three times, 0.74 with random test
+sets, 0.67 with leave-one-out and 0.60 with leave-one-out and one binomial trial. An
+observation in several test sets has one uniform, its randomised PIT value in the
+first of them.
+- The result of `assess_prediction()` is a list with `scores`, a data frame with
+a row for each model and test observation (`model`, `test_set`, `row`, `CRPS`,
+`SCRPS`, `pit_lower`, `pit_upper`), `calibration`, with the areas, the
+calibration curves with the 95% band of a correct model and the simulated curves
+on 101 levels, `test_sets`, `refit`, `family` and `failures`. It held nested lists
+for each model, metric and test set.
+- `summary()` of a cross-validation is a data frame with a row for each model.
+Observations in several test sets count once, with the average of their scores.
+With `reference` it gives the differences of the scores from those of a model,
+with standard errors that treat the observations as independent. The scores of
+each test set are no longer printed. `to_table()` takes `reference` too.
+- `plot_cross_validation()` takes `type`, `"calibration"` or `"score"`, `style`,
+`"curve"` or `"histogram"`, `score`, `reference`, `model`, `bins` and `colour`,
+instead of `metric`, `pit_mode`, `pit_test_set`, `combine_pit` and `model`. Each model
+has a calibration panel with the 95% joint band of a correct model and the area with
+its limit, and the histogram is the nonrandomised one of Czado, Gneiting and Held
+(2009). With `reference`, the maps show differences of scores on a diverging scale,
+green where they are better and orange where they are worse, which readers with red
+and green deficiencies can tell apart. The scales of the maps end at the 98th
+percentile.
+- The plots of assessments are green (`#00857F` and paler versions of it) by default,
+and their `colour` argument changes it.
+- spatialEco and spatialsample are no longer suggested.
 
 ## Simulations
 
@@ -1989,7 +2067,7 @@ from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
 `riskmap_version`, a list with the `version` of RiskMap that made it, as a
 `package_version`, and `sha`, the `RemoteSha` of its DESCRIPTION when RiskMap
 was installed from GitHub and `NA` otherwise. Fits, predictions, profiles,
-bootstraps, checks, cross-validations, simulation assessments, simulations,
+bootstraps, checks, test sets, cross-validations, simulation assessments, simulations,
 simulation models, variograms and extrapolations have it. It is not printed,
 and an object without it was made before RiskMap stamped its results, by an
 earlier version or an early development build of 2.0.0, so that code which

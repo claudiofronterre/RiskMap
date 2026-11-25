@@ -1,3 +1,28 @@
+# The draws of the linear predictor, from the parts that a prediction keeps.
+prediction_link_samples <- function(prediction, include_fixed = TRUE,
+                                    include_offset = TRUE) {
+  samples <- prediction$samples
+  link <- samples$spatial
+  if (include_fixed) {
+    # With parameter uncertainty the fixed effects differ between draws.
+    link <- if (is.null(samples$fixed)) {
+      sweep(link, 1L, prediction$predictions$fixed, `+`)
+    } else {
+      link + samples$fixed
+    }
+  }
+  if (include_offset) {
+    link <- sweep(link, 1L, prediction$predictions$offset, `+`)
+  }
+  if (!is.null(samples$random_effects)) {
+    link <- link + samples$random_effects
+  }
+  if (!is.null(samples$nugget)) {
+    link <- link + samples$nugget
+  }
+  link
+}
+
 test_that("predict.RiskMap keeps prediction data and summaries aligned", {
   prediction_control <- set_control_mcmc(
     n_draws = 10, burnin = 20, thin = 2
