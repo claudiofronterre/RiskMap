@@ -150,6 +150,7 @@
 <div class="section level4">
 <h4 id="prediction-2-0-0">Prediction<a class="anchor" aria-label="anchor" href="#prediction-2-0-0"></a></h4>
 <ul><li>A single <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> method predicts at new locations or over the areas given in <code>boundaries</code>, with exceedance probabilities, population weights, standardisation and, if asked, the uncertainty of the estimated parameters. <code><a href="../reference/plot_prediction.html">plot_prediction()</a></code> maps the predictions, <code><a href="../reference/to_table.html">to_table()</a></code> tabulates them, and <code><a href="../reference/assess_extrapolation.html">assess_extrapolation()</a></code> shows where they go beyond the data.</li>
+<li>Predictions of Gaussian models with <code><a href="../reference/re.html">re()</a></code> terms no longer depend on the labels of the groups, and joint predictions that include the random effects have the right covariance between them and the spatial process.</li>
 <li>The covariates of the prediction grid <code>tz_covariates</code> now match those of <code>tz_malaria</code>. EVI, temperature, night-time light and precipitation come from the same rasters, so temperature is missing at 2 points and precipitation at 1, and ITN is a percentage with <code>NA</code> for missing values, where it was a proportion with -9999. The help pages give the source and units of each covariate, and population density is not in thousands, as they said.</li>
 </ul></div>
 <div class="section level4">

@@ -43,7 +43,7 @@ predict(
 
   An `sf` object with point geometries and the variables needed by the
   fitted model. When `NULL`, predictions are made at the observed
-  locations.
+  locations, with one row for each record of the data.
 
 - boundaries:
 
@@ -84,7 +84,12 @@ predict(
   `"random_effects"`, for conditional predictions at known groups, and
   `"nugget"`, for a new realization of observation-level predictive
   variation at locations supplied through `newdata`. Fixed effects, the
-  spatial process and any offset are always returned separately.
+  spatial process and any offset are always returned separately. A level
+  of a random effect that isn't in the data of the fit stops a
+  prediction that includes `"random_effects"`, and doesn't matter to one
+  that doesn't. The nugget is one value for each location, so with joint
+  draws rows of `newdata` at the same location share it, as they share
+  the spatial process.
 
 - transform:
 
@@ -211,10 +216,10 @@ A `RiskMap_prediction` object containing:
 
   `NULL` when `keep_samples = FALSE`; otherwise a list containing
   spatial samples and any requested random-effect or nugget samples for
-  location-level prediction, and, with parameter uncertainty, the
-  fixed-effect contribution of each draw (`fixed`). For polygon
-  aggregation it is nested first by aggregation and then by component,
-  with one matrix row per polygon.
+  location-level prediction, with one row for each row of `predictions`,
+  and, with parameter uncertainty, the fixed-effect contribution of each
+  draw (`fixed`). For polygon aggregation it is nested first by
+  aggregation and then by component, with one matrix row per polygon.
 
 - include:
 
@@ -322,8 +327,13 @@ from a draw of that approximation and using the step size tuned at the
 estimate (100 burn-in iterations, then thinning by 10). The total number
 of predictive draws equals that of plug-in prediction, 2,000 by default.
 Parameters without a finite positive variance, such as those held at a
-boundary, keep their estimated value. When the covariance matrix of the
-estimates is not available, an error is returned; refitting with
+boundary, keep their estimated value. So does a variance, a scale or a
+size whose logarithm has a standard error above 3, as a variance of a
+Gaussian model estimated at zero has, because draws on the log scale
+would span more than five orders of magnitude. The other parameters are
+then drawn given it, and a warning names it unless it is a variance
+close to zero. When the covariance matrix of the estimates is not
+available, an error is returned; refitting with
 `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
 column `fixed` then reports the average fixed-effect contribution.
 
@@ -456,11 +466,11 @@ uncertain_prediction$predictions
 #> # A tibble: 5 × 17
 #>       y region  province pop_dens ID_loc           geometry fixed offset
 #> * <dbl> <fct>   <fct>       <dbl>  <int>        <POINT [m]> <dbl>  <dbl>
-#> 1  6.74 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0
-#> 2  8.56 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0
-#> 3  8.05 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0
-#> 4  7.53 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0
-#> 5  7.16 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0
+#> 1  6.74 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0
+#> 2  8.56 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0
+#> 3  8.05 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0
+#> 4  7.53 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0
+#> 5  7.16 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0
 #> # ℹ 9 more variables: spatial_mean <dbl>, spatial_lower <dbl>,
 #> #   spatial_upper <dbl>, link_mean <dbl>, link_lower <dbl>, link_upper <dbl>,
 #> #   response_mean <dbl>, response_lower <dbl>, response_upper <dbl>
@@ -503,30 +513,28 @@ areal_prediction <- predict(
   aggregate = "mean",
   messages = FALSE
 )
-#> Warning: The conditional prediction covariance of 2 of 2 blocks needed a diagonal
-#> jitter, of up to 1e-12, to be factorised.
 areal_prediction$boundary_summary
 #>    boundary_id aggregate quantity  summary threshold       value
 #> 1            1      mean    fixed estimate        NA 10.30974195
 #> 2            1      mean   offset estimate        NA  0.00000000
-#> 3            1      mean  spatial     mean        NA -0.35471526
-#> 4            1      mean  spatial    lower        NA -0.51968593
-#> 5            1      mean  spatial    upper        NA -0.18867707
-#> 6            1      mean     link     mean        NA  9.95502669
-#> 7            1      mean     link    lower        NA  9.79005602
-#> 8            1      mean     link    upper        NA 10.12106488
-#> 9            1      mean response     mean        NA  9.95502669
-#> 10           1      mean response    lower        NA  9.79005602
-#> 11           1      mean response    upper        NA 10.12106488
+#> 3            1      mean  spatial     mean        NA -0.35136242
+#> 4            1      mean  spatial    lower        NA -0.52306038
+#> 5            1      mean  spatial    upper        NA -0.18226369
+#> 6            1      mean     link     mean        NA  9.95837952
+#> 7            1      mean     link    lower        NA  9.78668156
+#> 8            1      mean     link    upper        NA 10.12747826
+#> 9            1      mean response     mean        NA  9.95837952
+#> 10           1      mean response    lower        NA  9.78668156
+#> 11           1      mean response    upper        NA 10.12747826
 #> 12           2      mean    fixed estimate        NA  9.36720129
 #> 13           2      mean   offset estimate        NA  0.00000000
-#> 14           2      mean  spatial     mean        NA  0.24133178
-#> 15           2      mean  spatial    lower        NA  0.02930872
-#> 16           2      mean  spatial    upper        NA  0.44443061
-#> 17           2      mean     link     mean        NA  9.60853307
-#> 18           2      mean     link    lower        NA  9.39651000
-#> 19           2      mean     link    upper        NA  9.81163189
-#> 20           2      mean response     mean        NA  9.60853307
-#> 21           2      mean response    lower        NA  9.39651000
-#> 22           2      mean response    upper        NA  9.81163189
+#> 14           2      mean  spatial     mean        NA  0.23741769
+#> 15           2      mean  spatial    lower        NA  0.04597042
+#> 16           2      mean  spatial    upper        NA  0.43421385
+#> 17           2      mean     link     mean        NA  9.60461897
+#> 18           2      mean     link    lower        NA  9.41317170
+#> 19           2      mean     link    upper        NA  9.80141514
+#> 20           2      mean response     mean        NA  9.60461897
+#> 21           2      mean response    lower        NA  9.41317170
+#> 22           2      mean response    upper        NA  9.80141514
 ```

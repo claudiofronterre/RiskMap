@@ -102,8 +102,6 @@ prediction <- predict(fit, newdata = example_data, boundaries = areas,
                       aggregate = "mean",
                       summaries = c("mean", "lower", "upper"),
                       messages = FALSE)
-#> Warning: The conditional prediction covariance of 2 of 2 blocks needed a diagonal
-#> jitter, of up to 1e-12, to be factorised.
 to_table(prediction)
 #> 
 #> 

@@ -108,6 +108,11 @@ in the source repository.
   tabulates them, and
   [`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
   shows where they go beyond the data.
+- Predictions of Gaussian models with
+  [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
+  terms no longer depend on the labels of the groups, and joint
+  predictions that include the random effects have the right covariance
+  between them and the spatial process.
 - The covariates of the prediction grid `tz_covariates` now match those
   of `tz_malaria`. EVI, temperature, night-time light and precipitation
   come from the same rasters, so temperature is missing at 2 points and

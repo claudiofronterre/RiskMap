@@ -164,8 +164,6 @@ fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
 areas <- sf::st_sf(geometry = sf::st_make_grid(example_data, n = c(2, 1)))
 prediction <- predict(fit, newdata = example_data, boundaries = areas,
                       aggregate = "mean", messages = FALSE)
-#> Warning: The conditional prediction covariance of 2 of 2 blocks needed a diagonal
-#> jitter, of up to 1e-12, to be factorised.
 plot_prediction(prediction)
 
 plot_prediction(prediction, spatial_scale = "both")

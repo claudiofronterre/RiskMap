@@ -89,7 +89,7 @@ keeping their rows aligned.</p>
 <dt id="arg-newdata">newdata<a class="anchor" aria-label="anchor" href="#arg-newdata"></a></dt>
 <dd><p>An <code>sf</code> object with point geometries and the variables needed
 by the fitted model. When <code>NULL</code>, predictions are made at the observed
-locations.</p></dd>
+locations, with one row for each record of the data.</p></dd>
 
 
 <dt id="arg-boundaries">boundaries<a class="anchor" aria-label="anchor" href="#arg-boundaries"></a></dt>
@@ -129,7 +129,12 @@ to add to the complete linear predictor and response. Supported values are
 <code>"random_effects"</code>, for conditional predictions at known groups, and
 <code>"nugget"</code>, for a new realization of observation-level predictive
 variation at locations supplied through <code>newdata</code>. Fixed effects, the
-spatial process and any offset are always returned separately.</p></dd>
+spatial process and any offset are always returned separately. A level of
+a random effect that isn't in the data of the fit stops a prediction that
+includes <code>"random_effects"</code>, and doesn't matter to one that doesn't. The
+nugget is one value for each location, so with joint draws rows of
+<code>newdata</code> at the same location share it, as they share the spatial
+process.</p></dd>
 
 
 <dt id="arg-transform">transform<a class="anchor" aria-label="anchor" href="#arg-transform"></a></dt>
@@ -249,7 +254,8 @@ is the row number of the corresponding polygon in <code>boundaries</code>.</p></
 <dt>samples</dt>
 <dd><p><code>NULL</code> when <code>keep_samples = FALSE</code>; otherwise a list
 containing spatial samples and any requested random-effect or nugget
-samples for location-level prediction, and, with parameter
+samples for location-level prediction, with one row for each row of
+<code>predictions</code>, and, with parameter
 uncertainty, the fixed-effect contribution of each draw (<code>fixed</code>).
 For polygon aggregation it is nested first by aggregation and then by
 component, with one matrix row per polygon.</p></dd>
@@ -344,7 +350,12 @@ of that approximation and using the step size tuned at the estimate (100
 burn-in iterations, then thinning by 10). The total number of predictive
 draws equals that of plug-in prediction, 2,000 by default. Parameters
 without a finite positive variance, such as those held at a boundary, keep
-their estimated value. When the covariance matrix of the estimates is not
+their estimated value. So does a variance, a scale or a size whose
+logarithm has a standard error above 3, as a variance of a Gaussian model
+estimated at zero has, because draws on the log scale would span more than
+five orders of magnitude. The other parameters are then drawn given it, and
+a warning names it unless it is a variance close to zero. When the
+covariance matrix of the estimates is not
 available, an error is returned; refitting with
 <code>set_control_mcml(pc_prior = TRUE)</code> usually resolves this. The location
 column <code>fixed</code> then reports the average fixed-effect contribution.</p>
@@ -463,11 +474,11 @@ shows where predictions go beyond the data, and
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 5 × 17</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       y region  province pop_dens ID_loc           geometry fixed offset</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">*</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>       <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;int&gt;</span>        <span style="color: #949494; font-style: italic;">&lt;POINT [m]&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span>  6.74 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span>  8.56 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span>  8.05 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span>  7.53 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span>  7.16 Toscana Pisa         536.      1 (165557.8 4845668)  8.88      0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span>  6.74 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span>  8.56 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span>  8.05 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">4</span>  7.53 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">5</span>  7.16 Toscana Pisa         536.      1 (165557.8 4845668)  8.50      0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 9 more variables: spatial_mean &lt;dbl&gt;, spatial_lower &lt;dbl&gt;,</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;">#   spatial_upper &lt;dbl&gt;, link_mean &lt;dbl&gt;, link_lower &lt;dbl&gt;, link_upper &lt;dbl&gt;,</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;">#   response_mean &lt;dbl&gt;, response_lower &lt;dbl&gt;, response_upper &lt;dbl&gt;</span></span>
@@ -510,32 +521,30 @@ shows where predictions go beyond the data, and
 <span class="r-in"><span>  aggregate <span class="op">=</span> <span class="st">"mean"</span>,</span></span>
 <span class="r-in"><span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>The conditional prediction covariance of 2 of 2 blocks needed a diagonal</span>
-<span class="r-wrn co"><span class="r-pr">#&gt;</span> jitter, of up to 1e-12, to be factorised.</span>
 <span class="r-in"><span><span class="va">areal_prediction</span><span class="op">$</span><span class="va">boundary_summary</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    boundary_id aggregate quantity  summary threshold       value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1            1      mean    fixed estimate        NA 10.30974195</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2            1      mean   offset estimate        NA  0.00000000</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3            1      mean  spatial     mean        NA -0.35471526</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 4            1      mean  spatial    lower        NA -0.51968593</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 5            1      mean  spatial    upper        NA -0.18867707</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 6            1      mean     link     mean        NA  9.95502669</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 7            1      mean     link    lower        NA  9.79005602</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 8            1      mean     link    upper        NA 10.12106488</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 9            1      mean response     mean        NA  9.95502669</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 10           1      mean response    lower        NA  9.79005602</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 11           1      mean response    upper        NA 10.12106488</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3            1      mean  spatial     mean        NA -0.35136242</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4            1      mean  spatial    lower        NA -0.52306038</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5            1      mean  spatial    upper        NA -0.18226369</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6            1      mean     link     mean        NA  9.95837952</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 7            1      mean     link    lower        NA  9.78668156</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 8            1      mean     link    upper        NA 10.12747826</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 9            1      mean response     mean        NA  9.95837952</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 10           1      mean response    lower        NA  9.78668156</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 11           1      mean response    upper        NA 10.12747826</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 12           2      mean    fixed estimate        NA  9.36720129</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 13           2      mean   offset estimate        NA  0.00000000</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 14           2      mean  spatial     mean        NA  0.24133178</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 15           2      mean  spatial    lower        NA  0.02930872</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 16           2      mean  spatial    upper        NA  0.44443061</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 17           2      mean     link     mean        NA  9.60853307</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 18           2      mean     link    lower        NA  9.39651000</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 19           2      mean     link    upper        NA  9.81163189</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 20           2      mean response     mean        NA  9.60853307</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 21           2      mean response    lower        NA  9.39651000</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 22           2      mean response    upper        NA  9.81163189</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 14           2      mean  spatial     mean        NA  0.23741769</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 15           2      mean  spatial    lower        NA  0.04597042</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 16           2      mean  spatial    upper        NA  0.43421385</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 17           2      mean     link     mean        NA  9.60461897</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 18           2      mean     link    lower        NA  9.41317170</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 19           2      mean     link    upper        NA  9.80141514</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 20           2      mean response     mean        NA  9.60461897</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 21           2      mean response    lower        NA  9.41317170</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 22           2      mean response    upper        NA  9.80141514</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
