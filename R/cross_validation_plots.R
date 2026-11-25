@@ -443,21 +443,12 @@ difference_fill_scale <- function(values, score, reference) {
     text
   }
   scale_fill_gradientn(
-    colours = difference_colours(),
+    colours = prediction_role_palette("signed"),
     limits = c(-limit, limit), breaks = c(-1, -0.5, 0, 0.5, 1) * limit,
     labels = labels, oob = scales::oob_squish,
     name = paste0("Difference in ", score, " from ", reference),
     guide = score_colourbar(210)
   )
-}
-
-##' The colours of differences, green where they are better and orange where
-##' they are worse
-##' @noRd
-difference_colours <- function() {
-  grDevices::colorRampPalette(
-    c("#00857F", "#7DBFB9", "#EFEBE4", "#E5A878", "#C05A1E")
-  )(256L)
 }
 
 ##' Numbers of a legend, with a minus sign instead of a hyphen
