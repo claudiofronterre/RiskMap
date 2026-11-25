@@ -120,7 +120,7 @@ perfect calibration.}
 }
 \item{keep_par_fixed}{The value of \code{keep_par_fixed}.}
 \item{failures}{A data frame with one row for each model and test set
-whose refit or prediction failed, with columns \code{model}, \code{test_set} and
+whose refit, prediction or scores failed, with columns \code{model}, \code{test_set} and
 \code{message}. The scores of these test sets are \code{NA}.}
 }
 }
@@ -157,6 +157,24 @@ distribution \eqn{F}. This is the negative of the scaled CRPS of Bolin and
 Wallin (2023), whose scores are higher for better predictions, so that the
 CRPS and the SCRPS share one orientation. The SCRPS can be negative.
 
+The predictive distribution of a binomial, Poisson or negative binomial
+count \eqn{Y} is the distribution of the family given the mean, averaged
+over the \eqn{J} draws of the mean from its own predictive distribution,
+\deqn{F(k) = \frac{1}{J} \sum_{j=1}^{J} P(Y \le k \mid \mu_j), \quad
+  k = 0, 1, 2, \ldots}
+Here \eqn{\mu_j} is the \eqn{j}th draw of the prevalence or rate, and
+\eqn{P(Y \le k \mid \mu_j)} also depends on the denominator and, for a
+negative binomial model, on its size. The scores come from \eqn{F}, with
+\deqn{\mathrm{CRPS}(F, y) = \sum_{k \ge 0} [F(k) - 1(k \ge y)]^2, \quad
+  c = \sum_{k \ge 0} F(k) [1 - F(k)],}
+and so does the calibration curve, from \eqn{F(y - 1)} and \eqn{F(y)}. The
+scores of counts have no random step beyond the draws of the mean, as no
+counts are simulated for them. A model therefore gets the same scores
+whatever its position in \code{models}. Where counts above 100 are predicted,
+\eqn{F} is computed on a grid of counts and is linear in between. The grid
+is fine enough for a relative error of about \eqn{10^{-4}} or less in the
+CRPS and in \eqn{c}.
+
 \code{PIT_area} is the area between the calibration curve and the diagonal,
 from 0 for a perfectly calibrated curve to at most 0.5. It is computed
 once, from the curve of all test observations together, which is the
@@ -170,7 +188,8 @@ sets is simulated once and scored under each, as the observed value is. A
 \code{PIT_area} well above \code{PIT_area_expected} points to miscalibration.
 
 A failed refit or prediction does not stop the assessment: the scores of
-that test set are missing and a warning reports the failures. Test
+that test set are missing and a warning reports the failures. So are those
+of a test set of counts in which a draw of the mean is not finite. Test
 observations with missing values in a variable used by any of the models
 are left out. The predictive distributions of the test observations do not
 yet include random effects, so the scores of models with \code{re()} terms are

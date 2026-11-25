@@ -14,6 +14,9 @@
 ##' - the score and curvature of the mode search, the `terms()` of the family
 ##'   object, agree with central differences of the log-likelihood and of the
 ##'   score, with a relative `tolerance`,
+##' - the family's distribution function, `distribution_function()`, is the
+##'   sum or integral of the density, and the counts that are scored leave out
+##'   nearly no probability (`check_family_distribution()`),
 ##' - and the draws of `simulate()`, on a fixed seed, have the mean and
 ##'   variance of the family's density, to within five standard errors.
 ##'
@@ -39,13 +42,14 @@
 ##' records are those of the binomial kernel (`engine_records()`) with the
 ##' terms they leave out (`log_likelihood_constant()`), at the size in
 ##' `parameters`. The Gaussian family is exact, with no kernel, so only its
-##' mean and simulator are checked, at the measurement error variance in
-##' `parameters`. `linkf` is a link of `make_inverse_link_functions()`, NULL
-##' for the family's own inverse link (`inverse_link`). The derivatives of the
-##' built-in links are exact, which the `tolerance` of 10^-6 suits. Those of a
-##' link given as a function come from `Deriv` or from numerical differences,
-##' whose second derivative is accurate only to about 10^-6, so `check_fit()`
-##' reads only `convex_at` for such a link.
+##' mean, distribution function and simulator are checked, at the measurement
+##' error variance in `parameters`. `linkf` is a link of
+##' `make_inverse_link_functions()`, NULL for the family's own inverse link
+##' (`inverse_link`). The derivatives of the built-in links are exact, which
+##' the `tolerance` of 10^-6 suits. Those of a link given as a function come
+##' from `Deriv` or from numerical differences, whose second derivative is
+##' accurate only to about 10^-6, so `check_fit()` reads only `convex_at` for
+##' such a link.
 ##'
 ##' Returns a list with `problems`, a sentence for each check that fails,
 ##' empty if none does, and `convex_at`, NULL or the linear predictor at
@@ -81,8 +85,9 @@ check_family <- function(family, linkf = NULL, parameters = NULL,
       }
     }
   }
-  problems <- c(problems, check_family_simulator(traits, inverse,
-                                                 parameters, draws))
+  problems <- c(problems,
+                check_family_distribution(traits, inverse, parameters),
+                check_family_simulator(traits, inverse, parameters, draws))
   list(problems = problems, convex_at = convex_at)
 }
 
@@ -230,13 +235,57 @@ find_convex_point <- function(traits, eta, log_likelihood, used, inverse, y,
   eta[middle][convex][which.max(second[convex])]
 }
 
+##' The check of a family's distribution function in `check_family()`
+##'
+##' At linear predictors of -1, 0 and 1, with 20 trials or an exposure of 2,
+##' `distribution_function()` is compared with the cumulative sum of the
+##' density over the counts of a discrete family, up to the largest that is
+##' scored (`score_limit()`), where it must be within 10^-9 of one, and with the
+##' integral of the density up to three points for a continuous one. Returns a
+##' sentence for each linear predictor where they differ by more than 10^-8 or
+##' where the counts scored leave out more probability.
+##' @noRd
+check_family_distribution <- function(traits, inverse, parameters) {
+  units_m <- if (traits$whole_denominator) 20 else 2
+  problems <- character()
+  for (eta in c(-1, 0, 1)) {
+    mean <- inverse(eta)
+    density <- function(y) {
+      exp(traits$log_density(y, mean, units_m, parameters))
+    }
+    if (traits$discrete) {
+      at <- 0:traits$score_limit(0, units_m, mean, parameters)
+      expected <- cumsum(density(at))
+    } else {
+      at <- mean + c(-1, 0, 2)
+      expected <- vapply(at, function(y) {
+        stats::integrate(density, -Inf, y, rel.tol = 1e-10)$value
+      }, numeric(1))
+    }
+    distribution <- traits$distribution_function(at, mean, units_m, parameters)
+    where <- paste0(" at a linear predictor of ", eta, ".")
+    if (!isTRUE(max(abs(distribution - expected)) < 1e-8)) {
+      problems <- c(problems, paste0(
+        "The distribution function is not the sum or integral of the density",
+        where
+      ))
+    }
+    if (traits$discrete && !isTRUE(1 - max(distribution) < 1e-9)) {
+      problems <- c(problems, paste0(
+        "The counts that are scored leave out some probability", where
+      ))
+    }
+  }
+  problems
+}
+
 ##' The check of a family's simulator in `check_family()`
 ##'
 ##' At linear predictors of -1, 0 and 1, with 20 trials or an exposure of 2,
 ##' `draws` responses from `simulate()` on a fixed seed are compared with the
 ##' mean and variance of the family's density, found by summing it over the
-##' support of a discrete family (`score_support()`) and by integrating it for
-##' a continuous one. Returns a sentence for each linear predictor where
+##' counts of a discrete family (`score_limit()`) and by integrating it for a
+##' continuous one. Returns a sentence for each linear predictor where
 ##' either is more than five standard errors away. The random number state of
 ##' the session is left as it was.
 ##' @noRd
@@ -251,7 +300,7 @@ check_family_simulator <- function(traits, inverse, parameters, draws) {
     simulated <- traits$simulate(rep(mean, draws), rep(units_m, draws),
                                  parameters)
     moments <- if (traits$discrete) {
-      support <- traits$score_support(simulated, 0, units_m, mean, parameters)
+      support <- 0:traits$score_limit(0, units_m, mean, parameters)
       weights <- exp(traits$log_density(support, mean, units_m, parameters))
       centred <- support - sum(support * weights)
       c(sum(support * weights), sum(centred^2 * weights),

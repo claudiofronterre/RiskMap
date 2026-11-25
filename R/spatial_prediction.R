@@ -2704,9 +2704,9 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 #'
 #' @param predictive A list with one element for each scored test set, each
 #'   holding `rows`, the observation of each test point, and `values`, its
-#'   predictive distributions: a list of distribution functions over 0, 1, ...
-#'   for a discrete family, or the means `mean` and standard deviations `sd`
-#'   of the Gaussian predictive distributions.
+#'   predictive distributions, a list of those of `count_distribution()` for a
+#'   discrete family, or the means `mean` and standard deviations `sd` of the
+#'   Gaussian predictive distributions.
 #' @param discrete Whether the family is discrete.
 #' @param u The probability levels at which the curves are evaluated.
 #' @param n_replicates The number of simulated sets of observations.
@@ -2721,20 +2721,18 @@ expected_pit_area <- function(predictive, discrete, u, n_replicates = 200L) {
                     n_replicates, length(distinct))
   n_points <- length(rows)
   if (discrete) {
-    cdf <- unlist(lapply(predictive, `[[`, "values"), recursive = FALSE)
+    distributions <- unlist(lapply(predictive, `[[`, "values"),
+                            recursive = FALSE)
     # The count whose distribution function first reaches the uniform draw
     counts <- vapply(seq_along(distinct), function(k) {
-      findInterval(uniform[, k], cdf[[first[k]]], left.open = TRUE)
+      count_quantile(distributions[[first[k]]], uniform[, k])
     }, numeric(n_replicates))
     counts <- matrix(counts, n_replicates)
     curves <- matrix(0, n_replicates, length(u))
     for (e in seq_len(n_points)) {
-      Fk <- cdf[[e]]
       y <- counts[, row_index[e]]
-      # F(y - 1), which is 0 for a count of 0, and F(y), both beyond the
-      # support taken as its last value
-      below <- c(0, Fk)[pmin(y, length(Fk)) + 1L]
-      at <- Fk[pmin(y + 1, length(Fk))]
+      below <- count_distribution_at(distributions[[e]], y - 1)
+      at <- count_distribution_at(distributions[[e]], y)
       width <- at - below
       value <- pmin(pmax(outer(-below, u, `+`) / width, 0), 1)
       step <- !(width > 0)
@@ -2904,7 +2902,7 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'   }
 ##'   \item{keep_par_fixed}{The value of `keep_par_fixed`.}
 ##'   \item{failures}{A data frame with one row for each model and test set
-##'   whose refit or prediction failed, with columns `model`, `test_set` and
+##'   whose refit, prediction or scores failed, with columns `model`, `test_set` and
 ##'   `message`. The scores of these test sets are `NA`.}
 ##' }
 ##'
@@ -2920,6 +2918,24 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' Wallin (2023), whose scores are higher for better predictions, so that the
 ##' CRPS and the SCRPS share one orientation. The SCRPS can be negative.
 ##'
+##' The predictive distribution of a binomial, Poisson or negative binomial
+##' count \eqn{Y} is the distribution of the family given the mean, averaged
+##' over the \eqn{J} draws of the mean from its own predictive distribution,
+##' \deqn{F(k) = \frac{1}{J} \sum_{j=1}^{J} P(Y \le k \mid \mu_j), \quad
+##'   k = 0, 1, 2, \ldots}
+##' Here \eqn{\mu_j} is the \eqn{j}th draw of the prevalence or rate, and
+##' \eqn{P(Y \le k \mid \mu_j)} also depends on the denominator and, for a
+##' negative binomial model, on its size. The scores come from \eqn{F}, with
+##' \deqn{\mathrm{CRPS}(F, y) = \sum_{k \ge 0} [F(k) - 1(k \ge y)]^2, \quad
+##'   c = \sum_{k \ge 0} F(k) [1 - F(k)],}
+##' and so does the calibration curve, from \eqn{F(y - 1)} and \eqn{F(y)}. The
+##' scores of counts have no random step beyond the draws of the mean, as no
+##' counts are simulated for them. A model therefore gets the same scores
+##' whatever its position in `models`. Where counts above 100 are predicted,
+##' \eqn{F} is computed on a grid of counts and is linear in between. The grid
+##' is fine enough for a relative error of about \eqn{10^{-4}} or less in the
+##' CRPS and in \eqn{c}.
+##'
 ##' `PIT_area` is the area between the calibration curve and the diagonal,
 ##' from 0 for a perfectly calibrated curve to at most 0.5. It is computed
 ##' once, from the curve of all test observations together, which is the
@@ -2933,7 +2949,8 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' `PIT_area` well above `PIT_area_expected` points to miscalibration.
 ##'
 ##' A failed refit or prediction does not stop the assessment: the scores of
-##' that test set are missing and a warning reports the failures. Test
+##' that test set are missing and a warning reports the failures. So are those
+##' of a test set of counts in which a draw of the mean is not finite. Test
 ##' observations with missing values in a variable used by any of the models
 ##' are left out. The predictive distributions of the test observations do not
 ##' yet include random effects, so the scores of models with `re()` terms are
@@ -3038,12 +3055,6 @@ assess_prediction <- function(models,
     z <- (y - mu) / sigma
     2 * dnorm(z) + z * (2 * pnorm(z) - 1) - 1 / sqrt(pi)
   }
-  crps_discrete <- function(y, Fk) {
-    k <- seq_along(Fk) - 1
-    sum((Fk - as.numeric(k >= y))^2)
-  }
-  # E_{Y ~ F} CRPS(F, Y) = sum_k F(k) (1 - F(k)), which equals E|X - X'| / 2
-  exp_crps_discrete <- function(Fk) sum(Fk * (1 - Fk))
   # The negative of the SCRPS of Bolin and Wallin (2023), so that lower is
   # better as for the CRPS, undefined for a degenerate predictive
   scrps <- function(crps, exp_crps) {
@@ -3051,9 +3062,9 @@ assess_prediction <- function(models,
   }
   u_val <- seq(0, 1, length.out = 1000)
   # Nonrandomized PIT curve of one discrete observation (Czado et al., 2009)
-  npit_curve <- function(y, Fk) {
-    F_below <- if (y == 0) 0 else Fk[y]
-    F_at <- Fk[y + 1]
+  npit_curve <- function(y, distribution) {
+    F_below <- count_distribution_at(distribution, y - 1)
+    F_at <- count_distribution_at(distribution, y)
     if (F_at > F_below) {
       pmin(pmax((u_val - F_below) / (F_at - F_below), 0), 1)
     } else {
@@ -3495,7 +3506,6 @@ assess_prediction <- function(models,
       mu_samp <- linkfun(eta_samp)
 
       n_pred <- nrow(eta_samp)
-      n_draw <- ncol(eta_samp)
       crps_i   <- numeric(n_pred)
       y_crps_i <- numeric(n_pred)
       scrps_i  <- numeric(n_pred)
@@ -3505,11 +3515,12 @@ assess_prediction <- function(models,
         sd_i <- numeric(n_pred)
       } else {
         anpit_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
-        cdf_i <- vector("list", n_pred)
+        distribution_i <- vector("list", n_pred)
       }
 
       units_m_i <- fit0$units_m[out_id_i]
       y_i       <- fit0$y      [out_id_i]
+      if (traits$discrete) check_count_means(mu_samp, units_m_i, traits)
 
       for (j in seq_len(n_pred)) {
         if (!traits$discrete) {
@@ -3528,16 +3539,13 @@ assess_prediction <- function(models,
             pit_i[j]    <- as.numeric(y_i[j] >= mu_j)
           }
         } else {
-          y_samp  <- traits$simulate(mu_samp[j, ], units_m_i[j],
-                                     family_values)
-          support <- traits$score_support(y_samp, y_i[j], units_m_i[j],
-                                          mu_samp[j, ], family_values)
-          pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
-          Fk <- cumsum(pk)
-          crps_i[j]   <- crps_discrete(y_i[j], Fk)
-          y_crps_i[j] <- exp_crps_discrete(Fk)
-          anpit_i[, j] <- npit_curve(y_i[j], Fk)
-          cdf_i[[j]] <- Fk
+          distribution <- count_distribution(y_i[j], units_m_i[j],
+                                             mu_samp[j, ], family_values,
+                                             traits)
+          crps_i[j]   <- count_crps(y_i[j], distribution)
+          y_crps_i[j] <- count_expected_crps(distribution)
+          anpit_i[, j] <- npit_curve(y_i[j], distribution)
+          distribution_i[[j]] <- distribution
         }
         scrps_i[j] <- scrps(crps_i[j], y_crps_i[j])
       }
@@ -3547,7 +3555,7 @@ assess_prediction <- function(models,
              predictive = list(mean = mean_i, sd = sd_i))
       } else {
         list(CRPS = crps_i, y_CRPS = y_crps_i, SCRPS = scrps_i,
-             AnPIT = rowMeans(anpit_i), predictive = cdf_i)
+             AnPIT = rowMeans(anpit_i), predictive = distribution_i)
       }
     }
 

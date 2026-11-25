@@ -409,18 +409,25 @@ test_that("the family's simulator and scoring support take the draws of their ca
     family_traits("gaussian")$simulate(means, NULL, list(sigma2_me = 0.3)),
     expected
   )
-  draws <- c(0, 3, 9)
-  expect_identical(family_traits("binomial")$score_support(draws, 2, 10, means),
-                   0:10)
-  # Each of the three terms of the Poisson support is the largest once: the
-  # draws, the response, and the 0.999 quantile of the mean rate.
+  binomial <- family_traits("binomial")
   poisson <- family_traits("poisson")
-  expect_identical(poisson$score_support(draws, 4, 2, means), 0:9)
-  expect_identical(poisson$score_support(draws, 12, 2, means), 0:12)
-  rates <- c(6, 7, 8)
-  expect_gt(qpois(0.999, mean(4 * rates)), 12)
-  expect_identical(poisson$score_support(draws, 4, 4, rates),
-                   0:qpois(0.999, mean(4 * rates)))
+  expect_identical(binomial$score_limit(2, 10, means, NULL), 10)
+  # The larger of the response and of a count that the largest mean exceeds
+  # with a probability of at most 10^-10.
+  limit <- qpois(1e-10, 2 * 0.9, lower.tail = FALSE)
+  expect_identical(poisson$score_limit(4, 2, means, NULL), limit)
+  expect_identical(poisson$score_limit(limit + 5, 2, means, NULL), limit + 5)
+  expect_lte(1 - ppois(limit, 2 * 0.9), 1.1e-10)
+  # The distribution function at the mean of each draw.
+  expect_identical(binomial$distribution_function(3, means, 10, NULL),
+                   pbinom(3, 10, means))
+  expect_identical(poisson$distribution_function(3, means, 2, NULL),
+                   ppois(3, 2 * means))
+  expect_identical(
+    family_traits("gaussian")$distribution_function(1, means, NULL,
+                                                    list(sigma2_me = 0.3)),
+    pnorm(1, means, sqrt(0.3))
+  )
   # A matrix of means with a denominator for each row, as draw_simulation()
   # passes them.
   matrix_means <- matrix(c(0.2, 0.7, 0.5, 0.1, 0.9, 0.4), 3)
@@ -436,7 +443,7 @@ test_that("the family's simulator and scoring support take the draws of their ca
   expect_identical(
     family_traits("poisson")$simulate(matrix_means, units_m, NULL), expected
   )
-  expect_null(family_traits("gaussian")$score_support(draws, 1, 1, means))
+  expect_null(family_traits("gaussian")$score_limit(1, 1, means, NULL))
   expect_identical(family_traits("binomial")$inverse_link, stats::plogis)
   expect_identical(family_traits("poisson")$inverse_link, exp)
   expect_identical(family_traits("gaussian")$inverse_link, identity)
