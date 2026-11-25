@@ -115,6 +115,26 @@ test_that("a model whose covariates leave no residuals has no variogram", {
                  "as many coefficients")
   expect_null(alone$variogram)
   expect_output(print(alone), "inside|outside")
+  expect_input_error(plot(alone, type = "variogram"), "x", "leave no residuals")
+
+  # Asked for alone, there is nothing to draw.
+  expect_warning(only <- assess_fit(fit, "variogram", nsim = 19, seed = 1),
+                 "as many coefficients")
+  printed <- gsub("\\s+", " ", paste(capture.output(print(only)), collapse = " "))
+  expect_match(printed, "There is no variogram, because the covariates leave no residuals")
+  expect_no_match(printed, "draws")
+  expect_output(print(summary(only)), "There is no variogram")
+  expect_input_error(plot(only), "x", "leave no residuals")
+  # With another curve, that one is drawn.
+  expect_warning(
+    both <- assess_fit(fit, c("distribution", "variogram"), nsim = 19, seed = 1),
+    "as many coefficients"
+  )
+  expect_match(plot(both)$labels$y, "at or below")
+
+  # What isn't asked for isn't calculated, so nothing warns that it is missing.
+  expect_no_warning(assess_fit(fit, "sd", nsim = 19, seed = 1))
+  expect_no_warning(assess_fit(fit, "distribution", nsim = 19, seed = 1))
 })
 
 test_that("nearly collinear covariates are all taken out of the residuals", {
@@ -220,6 +240,62 @@ test_that("observations at a location are added up, or averaged", {
                semivariances(resid(lm(log_rate ~ weighted))))
 })
 
+test_that("binomial observations are added up only if they are individuals", {
+  data <- check_data_twice
+  data$tested <- rep(c(5, 1, 20, 8), 5)
+  set.seed(3)
+  data$positive <- rbinom(20, data$tested, 0.3)
+  fit <- suppressWarnings(
+    glgpm(positive ~ gp(), data = data, family = "binomial", denominator = tested,
+          fixed_pars = list(beta = -1, sigma2 = 0.5, phi = 2),
+          control_mcmc = control_mcmc, seed = 1, messages = FALSE)
+  )
+  prevalence <- data$positive / data$tested
+  check <- assess_fit(fit, nsim = 19, seed = 1)
+  expect_identical(check$unit, "observation")
+  expect_equal(check$observed$value,
+               c(mean(prevalence), sd(prevalence), mean(prevalence == 0)))
+  expect_equal(check$distribution$observed,
+               ecdf(prevalence)(check$distribution$value))
+  expect_match(plot(check, type = "distribution")$labels$y, "observations")
+  # The variogram has one value for each location.
+  index <- rep(1:10, each = 2)
+  locations <- data[2 * (1:10), ]
+  locations$values <- elogit(as.numeric(tapply(data$positive, index, sum)),
+                             as.numeric(tapply(data$tested, index, sum)))
+  expected <- variogram(locations, "values", n_permutations = 0)$variogram
+  expect_equal(check$variogram$observed,
+               expected$semivariance[expected$n_pairs > 0])
+
+  # An observation without anyone examined has no prevalence.
+  none <- fit
+  none$units_m[1] <- 0
+  none$y[1] <- 0
+  check <- assess_fit(none, nsim = 19, seed = 1)
+  expect_equal(check$observed$value[1], mean(prevalence[-1]))
+  expect_true(all(is.finite(check$simulated$value)))
+
+  # Individuals, with some who weren't examined.
+  individuals <- binary_twice
+  individuals$units_m[1] <- 0
+  individuals$y[1] <- 0
+  expect_identical(assess_fit(binary_twice, nsim = 19, seed = 1)$unit, "location")
+  expect_identical(assess_fit(individuals, nsim = 19, seed = 1)$unit, "location")
+  expect_identical(checked$unit, "observation")
+
+  # The output says which.
+  printed <- function(x) {
+    gsub("\\s+", " ", paste(capture.output(print(summary(x))), collapse = " "))
+  }
+  expect_match(printed(check), "The prevalences are those of the observations.")
+  by_location <- assess_fit(binary_twice, nsim = 19, seed = 1)
+  expect_match(printed(by_location), paste("The prevalences are those of the",
+                                           "locations, because every denominator"))
+  expect_no_match(printed(checked), "prevalences")
+  expect_no_match(printed(assess_fit(binary_twice, "variogram", nsim = 19,
+                                     seed = 1)), "prevalences are")
+})
+
 test_that("the distribution is the empirical one, with its joint envelope", {
   shown <- subset(checked$distribution, model == "b")
   expect_equal(shown$observed, ecdf(gaussian_data$y)(shown$value))
@@ -278,13 +354,142 @@ test_that("statistics can be a function or a named list of functions", {
   expect_identical(one$observed$value, 1)
 })
 
+test_that("statistics can be given by name, with functions or without", {
+  y <- gaussian_data$y
+  run <- function(statistics, fit = gaussian_model) {
+    assess_fit(fit, statistics, nsim = 19, seed = 7)
+  }
+  expect_identical(run(c("mean", "sd", "min", "max", "distribution",
+                         "variogram")), run(NULL))
+  check <- run(c("zeros", "max"))
+  expect_identical(check$observed$statistic, c("zeros", "max"))
+  expect_equal(check$observed$value, c(0, max(y)))
+
+  # In the order in which they are given, with the names of the list.
+  correlation <- function(data) cor(data$y, data$cov)
+  quartiles <- function(data) {
+    c(lower = quantile(data$y, 0.25, names = FALSE),
+      upper = quantile(data$y, 0.75, names = FALSE))
+  }
+  check <- run(list("max", quartiles, Spread = "sd", Correlation = correlation,
+                    "min"))
+  expect_identical(check$observed$statistic,
+                   c("max", "lower", "upper", "Spread", "Correlation", "min"))
+  expect_equal(check$observed$value,
+               c(max(y), quantile(y, c(0.25, 0.75), names = FALSE), sd(y),
+                 cor(y, gaussian_data$cov), min(y)))
+  simulated <- simulated_data(simulate_glgpm(gaussian_model, nsim = 19, seed = 7),
+                              simulation = 19)
+  expect_equal(subset(check$simulated, simulation == 19)$value,
+               c(max(simulated$y),
+                 quantile(simulated$y, c(0.25, 0.75), names = FALSE),
+                 sd(simulated$y), cor(simulated$y, simulated$cov),
+                 min(simulated$y)))
+  # Those given by name are spelt out, unless the list has a name for them.
+  expect_identical(
+    levels(plot(check)$data$statistic),
+    c("Maximum", "lower", "upper", "Spread", "Correlation", "Minimum")
+  )
+
+  # Of rates and prevalences.
+  rate <- check_data_twice$count / check_data_twice$exposure
+  check <- run(c("min", "zeros", "max", "sd", "mean"), poisson_twice)
+  expect_identical(check$observed$statistic,
+                   c("min_rate", "zeros", "max_rate", "sd_rate", "mean_rate"))
+  expect_equal(check$observed$value, c(min(rate), mean(rate == 0), max(rate),
+                                       sd(rate), mean(rate)))
+  expect_identical(check_statistic_labels(check$observed$statistic, check),
+                   c("Minimum rate", "Proportion of zeros", "Maximum rate",
+                     "SD of rate", "Mean rate"))
+  check <- run(c(Largest = "max", "sd"), binary_twice)
+  expect_identical(check$observed$statistic, c("Largest", "sd_prevalence"))
+})
+
+test_that("the distribution and the variogram are calculated if asked for", {
+  run <- function(statistics, ...) {
+    assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
+               statistics, nsim = 99, seed = 7, ...)
+  }
+  expect_identical(checked$types, c("statistic", "distribution", "variogram"))
+
+  # The variogram alone is the one of the default, and is what is drawn.
+  alone <- run("variogram")
+  expect_identical(alone$variogram, checked$variogram)
+  expect_null(alone$distribution)
+  expect_identical(alone$types, "variogram")
+  expect_identical(dim(alone$observed), c(0L, 3L))
+  expect_identical(dim(alone$simulated), c(0L, 4L))
+  expect_identical(plot(alone)$labels$y, "Semivariance of the residuals")
+  expect_identical(nrow(summary(alone)), 0L)
+  expect_named(summary(alone), names(summary(checked)))
+  expect_output(print(alone), "draws\\s+the\\s+variogram")
+  expect_false(any(grepl("At or above|distribution",
+                         capture.output(print(alone)))))
+  expect_output(print(summary(alone)), "The observed variogram")
+  expect_input_error(to_table(alone), "object", "no statistics")
+  expect_input_error(plot(alone, type = "statistic"), "type", "numbers")
+  expect_input_error(plot(alone, type = "distribution"), "type",
+                     "doesn't have the distribution")
+  expect_input_error(plot(alone, type = "pit"), "type", "must be one of")
+
+  # The distribution, and both.
+  expect_identical(run("distribution")$distribution, checked$distribution)
+  expect_match(plot(run("distribution"))$labels$y, "at or below")
+  both <- run(list("variogram", "distribution"))
+  expect_identical(both$types, c("distribution", "variogram"))
+  expect_identical(plot(both)$labels$y, plot(run("distribution"))$labels$y)
+
+  # With numbers, which are the first to be drawn.
+  mixed <- run(list("sd", function(data) c(largest = max(data$y)), "variogram"))
+  expect_identical(mixed$types, c("statistic", "variogram"))
+  expect_null(mixed$distribution)
+  expect_identical(plot(mixed)$labels$y, "Simulated datasets")
+  expect_identical(mixed$variogram, checked$variogram)
+  expect_null(run(function(data) c(a = 1))$variogram)
+
+  # The distance classes are those of the variogram.
+  expect_input_error(run("sd", breaks = c(0, 5)), "breaks", "doesn't include")
+  expect_identical(run("variogram", breaks = c(0, 5))$breaks, c(0, 5))
+  expect_input_error(run(list(v = "variogram")), "statistics", "another name")
+  expect_identical(run(c("variogram", "variogram"))$variogram, checked$variogram)
+})
+
 test_that("statistics that can't be used are errors", {
   run <- function(statistics) {
     assess_fit(gaussian_model, statistics, nsim = 19, seed = 7)
   }
-  expect_input_error(run("mean"), "statistics", "a function, or a list")
-  expect_input_error(run(list(mean, sd)), "statistics", "distinct names")
+  expect_input_error(run("median"), "statistics", "\"median\" isn't one")
+  expect_input_error(run(c("sd", "zero", "median")), "statistics",
+                     "aren't among them")
+  expect_input_error(run(variogram), "statistics", "failed")
+  expect_input_error(run(1), "statistics", "the names of statistics")
+  expect_input_error(run(list("sd", 1)), "statistics", "the names of statistics")
+  expect_input_error(run(list(c("sd", "mean"))), "statistics")
+  expect_input_error(run(NA_character_), "statistics")
+  expect_input_error(run(character()), "statistics")
   expect_input_error(run(list()), "statistics")
+  expect_input_error(run(c("sd", "sd")), "statistics", "\"sd\" is repeated")
+  expect_input_error(run(list("sd", function(data) c(sd = 1))), "statistics",
+                     "\"sd\" is repeated")
+  expect_input_error(run(list(function(data) 1, function(data) 2)), "statistics",
+                     "repeated")
+  # The labels of those given by name can't be repeated either.
+  expect_input_error(run(list("mean", Mean = function(data) 1)), "statistics",
+                     "\"Mean\" is repeated")
+  expect_input_error(run(list("sd", function(data) c(SD = 1, Mean = 2))),
+                     "statistics", "\"SD\" is repeated")
+  expect_input_error(run(list("mean", Mean = "sd")), "statistics",
+                     "\"Mean\" is repeated")
+  # Before the simulated datasets are described.
+  calls <- 0
+  counted <- function(data) {
+    calls <<- calls + 1
+    c(a = 1)
+  }
+  expect_input_error(run(list(counted, counted)), "statistics", "\"a\" is repeated")
+  expect_identical(calls, 2)
+  expect_input_error(run(list("sd", "sd", counted)), "statistics", "repeated")
+  expect_identical(calls, 2)
   expect_input_error(run(function(data) c(1, 2)), "statistics", "named numbers")
   expect_input_error(run(function(data) c(a = "x")), "statistics", "named numbers")
   expect_input_error(run(function(data) data.frame(a = 1:2)), "statistics")
@@ -307,7 +512,7 @@ test_that("statistics that can't be used are errors", {
                      "statistics", "same named numbers")
 })
 
-test_that("a transformed response needs the default statistics", {
+test_that("a transformed response has only the statistics with a name", {
   data <- gaussian_data
   data$positive <- exp(data$y)
   fit <- glgpm(log(positive) ~ gp(), data = data, family = "gaussian",
@@ -315,6 +520,8 @@ test_that("a transformed response needs the default statistics", {
   check <- assess_fit(fit, nsim = 19, seed = 1)
   expect_identical(check$response, "log(positive)")
   expect_equal(check$observed$value[1], mean(data$y))
+  expect_equal(assess_fit(fit, "max", nsim = 19, seed = 1)$observed$value,
+               max(data$y))
   expect_input_error(
     assess_fit(fit, function(data) c(a = mean(data$positive)), nsim = 19),
     "models", "plain column name"
@@ -477,7 +684,10 @@ test_that("few locations have no variogram, or one class of it", {
   expect_null(check$variogram)
   expect_output(print(check), "2\\s+locations")
   expect_input_error(plot_predictive_check(check, type = "variogram"), "x",
-                     "no variogram")
+                     "no variogram, because no pair")
+  only <- suppressWarnings(assess_fit(fit, "variogram", nsim = 19, seed = 1))
+  expect_output(print(only), "There is no variogram, because no pair")
+  expect_input_error(plot(only), "x", "no pair")
   one_class <- assess_fit(fit, breaks = c(0, 1e3), nsim = 19, seed = 1)
   expect_identical(nrow(one_class$variogram), 1L)
   expect_no_message(ggplot2::ggplotGrob(

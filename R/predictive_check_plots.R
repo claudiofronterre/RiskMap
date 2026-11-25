@@ -7,9 +7,11 @@
 ##' result of [assess_fit()], as `plot()` of the result does.
 ##'
 ##' @param x The result of [assess_fit()].
-##' @param type What to draw, each `"statistic"` (the default), the
+##' @param type What to draw, each `"statistic"` that is a number, the
 ##'   `"distribution"` of the prevalence, the rate or the response, or the
-##'   `"variogram"` of the residuals from the covariates.
+##'   `"variogram"` of the residuals from the covariates. By default, the first of
+##'   these that `x` has, which is the variogram when it is the only one in
+##'   `statistics` of [assess_fit()].
 ##' @param model Names of the models to include, all of them by default.
 ##' @param colour The colour of what is observed. The histograms and the bands
 ##'   have paler versions of it.
@@ -24,9 +26,11 @@
 ##' The histograms are those of the simulated datasets, with the models in rows,
 ##' and the vertical line is the observed value. The darker bars are the simulated
 ##' values at or above the observed one, whose proportion
-##' [summary()][summary.RiskMap_predictive_check()] gives. The
-##' observed value is unusual for the model when nearly all of the histogram is
-##' lighter or nearly all of it is darker. It doesn't have to be in the middle.
+##' [summary()][summary.RiskMap_predictive_check()] gives. The observed value is
+##' unusual for the model when it is in a tail of the histogram, beyond nearly all
+##' of the bars. It doesn't have to be in the middle. A bar at the observed value
+##' is darker, so the whole histogram is when the observed value is the smallest
+##' possible one, such as a proportion of zeros of 0, which need not be unusual.
 ##'
 ##' # Distribution and variogram
 ##'
@@ -53,16 +57,18 @@
 ##' plot_predictive_check(result)
 ##' plot_predictive_check(result, type = "distribution")
 ##' plot_predictive_check(result, type = "variogram")
+##'
+##' # Only the variogram, which is then what is drawn
+##' result <- assess_fit(fit, "variogram", nsim = 199, seed = 1)
+##' plot(result)
 ##' @export
-plot_predictive_check <- function(x,
-                                  type = c("statistic", "distribution",
-                                           "variogram"),
-                                  model = NULL, colour = "#00857F", ...) {
+plot_predictive_check <- function(x, type = NULL, model = NULL,
+                                  colour = "#00857F", ...) {
   check_supplied(x)
   check_plot_object(x, "RiskMap_predictive_check", "plot_predictive_check",
                     "assess_fit")
   check_dots_unused(...)
-  type <- match_choice(type)
+  type <- check_drawn_type(type, x)
   models <- names(x$family)
   check_assessed_model(model, models, "model", several = TRUE)
   check_colour(colour)
@@ -78,6 +84,22 @@ plot_predictive_check <- function(x,
 ##' @method plot RiskMap_predictive_check
 ##' @export
 plot.RiskMap_predictive_check <- function(x, ...) plot_predictive_check(x, ...)
+
+##' What to draw of a predictive check, by default the first thing it has
+##'
+##' @param x The check.
+##' @noRd
+check_drawn_type <- function(type, x, call = rlang::caller_env()) {
+  if (is.null(type)) return(c(drawn_types(x), x$types)[1L])
+  type <- match_choice(type, c("statistic", "distribution", "variogram"),
+                       call = call)
+  if (!type %in% x$types) {
+    missing <- if (type == "statistic") "statistics that are numbers" else
+      paste("the", type)
+    abort_input(c("{.arg x} doesn't have {missing} to draw.", "i" = "{.arg statistics} of {.fn assess_fit} says what is calculated."), arg = "type", call = call)
+  }
+  type
+}
 
 ##' The theme of the panels of a predictive check
 ##' @noRd
@@ -229,7 +251,6 @@ histogram_breaks <- function(values, above, observed, n_bars = 25L) {
 ##' @noRd
 plot_check_distribution <- function(x, models, colours) {
   steps <- distribution_steps(rows_of_models(x$distribution, models))
-  what <- if (x$quantity == "prevalence") "locations" else "observations"
   label <- switch(x$quantity, prevalence = "Prevalence", rate = "Rate",
                   x$response)
   out <- ggplot(steps, aes(x = .data$value)) +
@@ -240,7 +261,7 @@ plot_check_distribution <- function(x, models, colours) {
     scale_y_continuous(breaks = seq(0, 1, 0.25),
                        labels = c("0", "0.25", "0.5", "0.75", "1"),
                        expand = expansion(0.02)) +
-    labs(x = label, y = paste("Proportion of", what, "at or below")) +
+    labs(x = label, y = paste0("Proportion of ", x$unit, "s at or below")) +
     predictive_check_theme(colours)
   out <- if (x$quantity == "prevalence") {
     out + scale_x_continuous(labels = scales::label_percent(),
@@ -278,7 +299,10 @@ distribution_steps <- function(distribution) {
 ##' @noRd
 plot_check_variogram <- function(x, models, colours) {
   if (is.null(x$variogram)) {
-    abort_input(c("{.arg x} has no variogram, because no pair of locations is in a distance class.", "i" = "Give the distance classes in {.arg breaks} of {.fn assess_fit}."), arg = "x")
+    hint <- if (is.null(x$breaks)) {
+      c("i" = "Give the distance classes in {.arg breaks} of {.fn assess_fit}.")
+    }
+    abort_input(c("{.arg x} has no variogram, because {missing_variogram(x$breaks)}.", hint), arg = "x")
   }
   variogram <- rows_of_models(x$variogram, models)
   if (!nrow(variogram)) {

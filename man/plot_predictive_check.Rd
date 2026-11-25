@@ -5,22 +5,18 @@
 \alias{plot.RiskMap_predictive_check}
 \title{Plot the assessment of models against simulated data}
 \usage{
-plot_predictive_check(
-  x,
-  type = c("statistic", "distribution", "variogram"),
-  model = NULL,
-  colour = "#00857F",
-  ...
-)
+plot_predictive_check(x, type = NULL, model = NULL, colour = "#00857F", ...)
 
 \method{plot}{RiskMap_predictive_check}(x, ...)
 }
 \arguments{
 \item{x}{The result of \code{\link[=assess_fit]{assess_fit()}}.}
 
-\item{type}{What to draw, each \code{"statistic"} (the default), the
+\item{type}{What to draw, each \code{"statistic"} that is a number, the
 \code{"distribution"} of the prevalence, the rate or the response, or the
-\code{"variogram"} of the residuals from the covariates.}
+\code{"variogram"} of the residuals from the covariates. By default, the first of
+these that \code{x} has, which is the variogram when it is the only one in
+\code{statistics} of \code{\link[=assess_fit]{assess_fit()}}.}
 
 \item{model}{Names of the models to include, all of them by default.}
 
@@ -43,9 +39,11 @@ result of \code{\link[=assess_fit]{assess_fit()}}, as \code{plot()} of the resul
 The histograms are those of the simulated datasets, with the models in rows,
 and the vertical line is the observed value. The darker bars are the simulated
 values at or above the observed one, whose proportion
-\link[=summary.RiskMap_predictive_check]{summary()} gives. The
-observed value is unusual for the model when nearly all of the histogram is
-lighter or nearly all of it is darker. It doesn't have to be in the middle.
+\link[=summary.RiskMap_predictive_check]{summary()} gives. The observed value is
+unusual for the model when it is in a tail of the histogram, beyond nearly all
+of the bars. It doesn't have to be in the middle. A bar at the observed value
+is darker, so the whole histogram is when the observed value is the smallest
+possible one, such as a proportion of zeros of 0, which need not be unusual.
 }
 
 \section{Distribution and variogram}{
@@ -70,6 +68,10 @@ result <- assess_fit(fit, nsim = 199, seed = 1)
 plot_predictive_check(result)
 plot_predictive_check(result, type = "distribution")
 plot_predictive_check(result, type = "variogram")
+
+# Only the variogram, which is then what is drawn
+result <- assess_fit(fit, "variogram", nsim = 199, seed = 1)
+plot(result)
 }
 \seealso{
 \code{\link[=assess_fit]{assess_fit()}}

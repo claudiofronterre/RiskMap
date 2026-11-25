@@ -97,8 +97,9 @@ in the source repository.
 - `assess_fit()` shows whether a model could have produced the data. It compares
   statistics of the data, their distribution and the variogram of the residuals
   from the covariates with those of datasets simulated from the model, which
-  `plot_predictive_check()` draws. `?assessment` says which function answers
-  which question about a model.
+  `plot_predictive_check()` draws. The statistics can be given by name or as
+  functions. `?assessment` says which function answers which question about a
+  model.
 - `assess_prediction()` compares models by spatial cross-validation, on the test
   sets of `create_test_sets()` (leave-one-out, random, clusters or spaced), which
   `plot_test_sets()` draws. Test sets are predicted jointly, with the random

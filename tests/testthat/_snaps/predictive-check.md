@@ -27,9 +27,9 @@
        constant    2.596  2.694 1.867 to 4.020       57.6%
            line    2.596  2.884 1.970 to 4.256       73.7%
       
-      i At or above is the percentage of simulated values at or above the observed
-        one. Near 0% or 100% the observed value is unusual for the model, and 50% is
-        not a target.
+      i At or above is the percentage of simulated values that are equal to the
+        observed one or above it. An observed value outside the 95% interval is
+        unusual for the model, and 50% is not a target.
       i The observed variogram of the residuals is outside the 95% joint envelope in
         0 (constant) and 0 (line) of 6 distance classes.
       i The observed distribution is inside the 95% joint envelope.
@@ -49,9 +49,9 @@
          Minimum   -0.274 -0.998 -1.812 to 0.007       10.5%
          Maximum    2.596  2.660  2.036 to 3.488       52.6%
       
-      i At or above is the percentage of simulated values at or above the observed
-        one. Near 0% or 100% the observed value is unusual for the model, and 50% is
-        not a target.
+      i At or above is the percentage of simulated values that are equal to the
+        observed one or above it. An observed value outside the 95% interval is
+        unusual for the model, and 50% is not a target.
       i The observed variogram of the residuals is outside the 95% joint envelope in
         0 of 6 distance classes.
       i The observed distribution is inside the 95% joint envelope.
