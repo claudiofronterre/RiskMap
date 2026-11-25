@@ -16,8 +16,8 @@
 #'   time so far, which move each time the likelihood is evaluated. A step
 #'   computed in one call to compiled code, such as the Langevin sampler, shows
 #'   its line without them.
-#' - [check_computation()] shows such a line, or the bar of the profiles, for
-#'   each extra check.
+#' - [check_computation()] shows such a line for the check of the radius, and
+#'   for the profiles what [profile.RiskMap()] shows.
 #'
 #' Progress is shown when the function's argument `messages` is `TRUE` and
 #' the option `RiskMap.progress` is `TRUE`. The option's default is

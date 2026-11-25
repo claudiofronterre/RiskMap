@@ -19,8 +19,8 @@ time the stage took. While a stage runs, the line has a spinner and the
 time so far, which move each time the likelihood is evaluated. A step
 computed in one call to compiled code, such as the Langevin sampler, shows
 its line without them.
-\item \code{\link[=check_computation]{check_computation()}} shows such a line, or the bar of the profiles, for
-each extra check.
+\item \code{\link[=check_computation]{check_computation()}} shows such a line for the check of the radius, and
+for the profiles what \code{\link[=profile.RiskMap]{profile.RiskMap()}} shows.
 }
 
 Progress is shown when the function's argument \code{messages} is \code{TRUE} and

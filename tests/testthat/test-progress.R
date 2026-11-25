@@ -323,10 +323,18 @@ test_that("the spinner doesn't change a Gaussian fit", {
     )
     fit[c("estimate", "covariance", "log_lik")]
   }
-  held <- list(sigma2_me = 0)
-  still <- fit(fixed_pars = held, messages = FALSE)
   local_terminal()
-  expect_identical(fit(fixed_pars = held, messages = TRUE), still)
+  # Without a held position of the optimiser, and with one.
+  for (held in list(list(sigma2_me = 0), list(sigma2 = 1))) {
+    still <- fit(fixed_pars = held, messages = FALSE)
+    expect_identical(fit(fixed_pars = held, messages = TRUE), still)
+  }
+  withr::local_options(cli.dynamic = FALSE)
+  lines <- capture_messages(
+    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2 = 1), messages = TRUE)
+  )
+  expect_length(grep("Maximising", lines), 2L)
 })
 
 test_that("check_computation() shows the progress of its extra checks", {

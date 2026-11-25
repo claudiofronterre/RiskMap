@@ -76,8 +76,8 @@ message it was before where progress is hidden.
 - A Gaussian fit shows a step with a spinner while its likelihood is maximised,
 instead of the trace of `nlminb()`, which was printed wherever `messages` was
 `TRUE`, also in scripts and rendered documents. `check_computation()` shows the
-progress of its extra checks, a step for the radius and the step and the bar of
-`profile()` for the profiles.
+progress of its extra checks, a step for the radius, and for the profiles the
+progress and messages of `profile()`, which are hidden with the progress.
 - Progress is shown when `messages` is `TRUE` and the option
 `RiskMap.progress` allows it. The option's default is
 `rlang::is_interactive()`, so progress appears in the console but not in
