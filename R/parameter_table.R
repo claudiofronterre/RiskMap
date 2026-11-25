@@ -144,7 +144,7 @@ parameter_table <- function(beta_names, fix_tau2,
   held <- rbind(
     if (held_nugget) {
       piece("tau2", NA_character_, "covariance", "nugget", NA_real_,
-            NA_real_)
+            NA_real_, start = variance_start)
     },
     do.call(rbind, lapply(names(held_family), function(name) {
       piece(name, NA_character_, "family", "family", NA_real_, NA_real_,

@@ -275,12 +275,37 @@ test_that("the variances of a Gaussian model start at its residual variance", {
   expect_identical(unique(parameters$start[!parameters$name %in%
                                              c("beta", "phi")]),
                    "residual_variance")
-  # The variances of the other families start at 1, whatever is given.
+  held <- glgpm_parameters(formula, data = data, family = "gaussian",
+                           fixed_pars = list(tau2 = 1, sigma2_re = 1))
+  expect_identical(held$start, parameters$start)
+  # The variances of the other families start at 1.
   counts <- glgpm_parameters(y ~ x + gp(nugget = TRUE) + re(i),
                              data = transform(poisson_data, x = cov),
                              family = "poisson")
   expect_identical(unique(counts$start[!counts$name %in% c("beta", "phi")]),
                    "one")
+})
+
+test_that("the starting regression is fitted on the standardised design", {
+  # The columns of a cubic in the year are collinear to lm.fit() as they are,
+  # and independent once they are centred and scaled.
+  simulated <- simulate_units(1)
+  simulated$columns$year <- 2000 + 20 * seq(0, 1, length.out = 30)
+  data <- in_units(simulated, 1)
+  formula <- y ~ year + I(year^2) + I(year^3) + gp()
+  expect_lt(qr(model.matrix(~ year + I(year^2) + I(year^3), data))$rank, 4)
+  fit <- glgpm(formula, data = data, family = "gaussian", messages = FALSE)
+  started <- glgpm(formula, data = data, family = "gaussian",
+                   messages = FALSE,
+                   start_pars = list(beta = c(mean(data$y), 0, 0, 0)))
+  expect_equal(as.numeric(logLik(started)), as.numeric(logLik(fit)),
+               tolerance = 1e-6)
+  # The same model in the year since 2010.
+  data$year <- data$year - 2010
+  centred <- glgpm(formula, data = data, family = "gaussian",
+                   messages = FALSE)
+  expect_equal(as.numeric(logLik(centred)), as.numeric(logLik(fit)),
+               tolerance = 1e-6)
 })
 
 test_that("a response without residuals is fitted as it is", {
@@ -289,8 +314,16 @@ test_that("a response without residuals is fitted as it is", {
     estimated_family = character(), family_parameters = NULL,
     re_names = NULL, distance_units = "km"
   )
-  regression <- gaussian_regression(rep(1 / 3, 7), matrix(1, 7, 1), parameters)
+  design <- matrix(1, 7, 1, dimnames = list(NULL, "(Intercept)"))
+  regression <- gaussian_regression(rep(1 / 3, 7), 0, design, parameters)
   expect_identical(regression$variance, 0)
+  # Nor does what is left by subtracting an offset that differs from the
+  # response by a constant.
+  offset <- 1e6 * c(1.1, 0.7, 1.3, 0.2, 0.9, 1.7, 0.4) / 3
+  expect_gt(stats::sd(offset + 0.1 - offset), 0)
+  expect_identical(
+    gaussian_regression(offset + 0.1, offset, design, parameters)$variance, 0
+  )
   expect_identical(default_start(parameters, "sigma2", NULL, 0), 1)
   scaling <- scale_gaussian_response(regression)
   expect_equal(scaling$response, rep(0, 7))

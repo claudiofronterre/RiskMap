@@ -44,7 +44,7 @@ make_gaussian_profile_problem <- function(fitted) {
   log_scale <- log(spatial_scaling$distance_scale)
   # The coefficients are solved in closed form and need no bounds.
   residual_variance <- gaussian_regression(
-    fitted$y - (fitted$cov_offset %||% 0), as.matrix(fitted$D), parameters
+    fitted$y, fitted$cov_offset %||% 0, as.matrix(fitted$D), parameters
   )$variance
   log_variance <- if (residual_variance > 0) log(residual_variance) else 0
   bounds <- parameter_bounds(parameters, log_scale, c(-Inf, Inf), log_variance)

@@ -493,7 +493,7 @@ glgpm <- function(formula,
   start_family <- c(family_parameters, start_pars[estimated_family])
   # A Gaussian model's coefficients and variances start from its regression.
   regression <- if (model$exact) {
-    gaussian_regression(y - cov_offset, D, parameters)
+    gaussian_regression(y, cov_offset, D, parameters)
   }
   if (ncol(D) > 0L && length(given$beta) == ncol(D)) {
     start_pars[["beta"]] <- unname(given$beta)
@@ -662,6 +662,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
   fitting_coords <- spatial_scaling$coordinates
   fitting_start_phi <- spatial_scaling$phi
 
+  if (exact) regression <- gaussian_regression(y, cov_offset, D, parameters)
   design_scaling <- model_design_scaling(D, parameters)
   D <- design_scaling$design
   start_pars[["beta"]] <- as.numeric(
@@ -672,9 +673,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
     if (is.null(fix_var_me)) {
       check_positive_number(start_pars[["sigma2_me"]], call = call)
     }
-    response_scaling <- scale_gaussian_response(
-      gaussian_regression(y - cov_offset, D, parameters, start_pars[["beta"]])
-    )
+    response_scaling <- scale_gaussian_response(regression)
     fitting_start <- response_scaling$start(start_pars)
     fitting_start$phi <- fitting_start_phi
     res <- glgpm_lm(y = response_scaling$response, D, fitting_coords,
@@ -932,34 +931,41 @@ linear_start_values <- function(design, response) {
 
 ##' The regression of a Gaussian response without the latent effects
 ##'
-##' The least squares coefficients of `design`, given those that the model
-##' holds, which are read from `coefficients`, the whole vector on the scale
-##' of `design`, or from the table's held values.
-##' @return A list with the `coefficients`, held ones included, the
-##'   `residuals` and their `variance`, the mean of their squares, or 0 when
-##'   they are only rounding, as those of a constant response.
+##' The least squares coefficients of `y - offset`, given those that the model
+##' holds. They are found on the standardised design (`model_design_scaling()`),
+##' as the engines fit it, so that a design that only its units or a distant
+##' origin make look rank deficient is not refused.
+##' @return A list with the `coefficients`, held ones included, those on the
+##'   `standardised` design, the `residuals` and their `variance`, the mean of
+##'   their squares, or 0 when they are only rounding, as those of a constant
+##'   response.
 ##' @noRd
-gaussian_regression <- function(response, design, parameters,
-                                coefficients = NULL) {
+gaussian_regression <- function(y, offset, design, parameters) {
+  response <- y - offset
+  scaling <- model_design_scaling(design, parameters)
   pinned <- pinned_rows(parameters)
   pinned <- pinned[pinned$name == "beta", , drop = FALSE]
-  if (is.null(coefficients)) {
-    coefficients <- numeric(ncol(design))
-    coefficients[pinned$index] <- pinned$held
-  }
+  # A held coefficient has one coordinate on the standardised design.
+  held <- numeric(ncol(design))
+  held[pinned$index] <- pinned$held
+  coefficients <- as.numeric(solve(scaling$coefficient_transform, held))
   free <- setdiff(seq_len(ncol(design)), pinned$index)
   coefficients[free] <- 0
   if (length(free)) {
     coefficients[free] <- linear_start_values(
-      design[, free, drop = FALSE],
-      response - as.numeric(design %*% coefficients)
+      scaling$design[, free, drop = FALSE],
+      response - as.numeric(scaling$design %*% coefficients)
     )
   }
-  fitted <- as.numeric(design %*% coefficients)
+  fitted <- as.numeric(scaling$design %*% coefficients)
   residuals <- response - fitted
   variance <- mean(residuals^2)
-  if (sqrt(variance) <= 1e-14 * max(abs(response), abs(fitted))) variance <- 0
-  list(coefficients = coefficients, residuals = residuals, variance = variance)
+  rounding <- 1e-14 * max(abs(y), abs(offset), abs(fitted))
+  if (is.finite(variance) && sqrt(variance) <= rounding) variance <- 0
+  list(coefficients = as.numeric(scaling$coefficient_transform %*%
+                                   coefficients),
+       standardised = coefficients, residuals = residuals,
+       variance = variance)
 }
 
 ##' The standardisation of a Gaussian response
@@ -977,8 +983,8 @@ gaussian_regression <- function(response, design, parameters,
 ##'
 ##' A regression without residuals, as of a constant response, gives no scale,
 ##' so the response is then only centred.
-##' @param regression The regression on the design that the paths fit
-##'   (`gaussian_regression()`).
+##' @param regression The regression (`gaussian_regression()`), whose
+##'   coefficients on the standardised design are those the paths fit.
 ##' @return A list with the standardised `response`, and functions that take
 ##'   `start`, the starting values, and `variance`, a held variance or any
 ##'   other value of `fix_tau2` or `fix_var_me`, to its scale, and that
@@ -991,7 +997,7 @@ scale_gaussian_response <- function(regression) {
     response = regression$residuals / scale,
     variance = function(value) if (is.numeric(value)) value / scale^2 else value,
     start = function(start) {
-      start$beta <- (start$beta - regression$coefficients) / scale
+      start$beta <- (start$beta - regression$standardised) / scale
       variances <- intersect(c("sigma2", "tau2", "sigma2_me", "sigma2_re"),
                              names(start))
       start[variances] <- lapply(start[variances], function(value) {
@@ -1002,7 +1008,7 @@ scale_gaussian_response <- function(regression) {
     restore = function(result) {
       estimate <- result$estimate
       beta <- seq_along(estimate$beta)
-      result$estimate$beta <- regression$coefficients + scale * estimate$beta
+      result$estimate$beta <- regression$standardised + scale * estimate$beta
       # The nugget is kept as its ratio to the spatial variance.
       for (name in intersect(c("sigma2", "sigma2_me", "sigma2_re"),
                              names(estimate))) {
