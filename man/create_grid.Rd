@@ -4,7 +4,12 @@
 \alias{create_grid}
 \title{Create Grid of Points Within Boundaries}
 \usage{
-create_grid(boundaries, spacing, distance_units = c("km", "m"))
+create_grid(
+  boundaries,
+  spacing,
+  distance_units = c("km", "m"),
+  keep = c("centre", "overlap")
+)
 }
 \arguments{
 \item{boundaries}{An object of class \code{sf} containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.}
@@ -12,11 +17,18 @@ create_grid(boundaries, spacing, distance_units = c("km", "m"))
 \item{spacing}{A single positive number specifying the distance between grid-point centres.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, giving the units of \code{spacing}. Defaults to \code{"km"}.}
+
+\item{keep}{Which cells to keep. \code{"centre"} (the default) keeps cells
+whose centre lies within \code{boundaries}. \code{"overlap"} keeps every cell that
+overlaps \code{boundaries}, including cells along the edge whose centre lies
+outside. Use \code{"overlap"} when totals over the study area matter, for
+example population counts along a coastline.}
 }
 \value{
 A \code{RiskMap_grid} and \code{sf} object containing the generated grid points. The
 \code{grid_metadata} attribute records the spacing, units, cell size, cell area,
-cell shape, grid CRS and alignment origin. The \code{grid_id} column provides a
+cell shape, grid CRS, alignment origin, the cells kept and the study
+boundary. The \code{grid_id} column provides a
 stable identifier for each retained cell centre.
 }
 \description{
@@ -28,7 +40,13 @@ This function returns point centres rather than polygon cells. The returned
 object has class \code{RiskMap_grid} and carries lightweight metadata describing
 the square cells. This allows other RiskMap functions to reconstruct their
 footprints when exact cell coverage is needed without storing a second copy
-of the grid as polygons.
+of the grid as polygons. The metadata also records the study boundary, so
+that maps can clip edge cells to it.
+
+With \code{keep = "overlap"}, cells along the edge extend beyond \code{boundaries}.
+Areal predictions from \code{\link[=predict.RiskMap]{predict.RiskMap()}} weight each cell by the fraction
+lying within each polygon, so these cells contribute only their covered
+part.
 
 The CRS is inherited from \code{boundaries}. If \code{boundaries} is in
 longitude/latitude, it is automatically reprojected to an appropriate UTM
@@ -45,6 +63,9 @@ nc <- st_transform(nc, crs = 32617)
 
 # Create grid with 10 km spacing
 grid <- create_grid(nc, spacing = 10)
+
+# Also keep the edge cells whose centre lies outside the boundary
+grid_edges <- create_grid(nc, spacing = 10, keep = "overlap")
 
 # Plot the grid
 plot(st_geometry(nc))

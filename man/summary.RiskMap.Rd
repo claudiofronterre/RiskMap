@@ -4,14 +4,14 @@
 \alias{summary.RiskMap}
 \title{Summarize Model Fits}
 \usage{
-\method{summary}{RiskMap}(object, ..., conf_level = 0.95)
+\method{summary}{RiskMap}(object, ..., level = 0.95)
 }
 \arguments{
 \item{object}{An object of class "RiskMap" from \code{\link{glgpm}}}
 
 \item{...}{other parameters.}
 
-\item{conf_level}{Confidence level for intervals (default 0.95).}
+\item{level}{Confidence level for intervals (default 0.95).}
 }
 \value{
 A list of class \code{"summary.RiskMap"} with parameter estimates,
@@ -21,4 +21,17 @@ standard errors, and confidence intervals.
 Provides a \code{summary} method for the "RiskMap" class that
 computes standard errors and confidence intervals for likelihood-based
 model fits
+}
+\examples{
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+summary(fit, level = 0.98)
 }

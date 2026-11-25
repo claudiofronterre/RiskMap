@@ -18,7 +18,7 @@ test_that("create_grid produces errors", {
 
   square <- st_polygon(list(matrix(square_coords, ncol = 2, byrow = TRUE)))
   sf_square <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
-  expect_error(create_grid(sf_square, 1), "No grid-point centres fall within 'boundaries'")
+  expect_error(create_grid(sf_square, 1), "No grid cells fall within 'boundaries'")
 })
 
 test_that("create_grid functions correctly", {
@@ -122,4 +122,22 @@ test_that("RiskMap grid metadata survives common point operations", {
   expect_identical(
     attr(transformed_grid, "grid_metadata"), attr(grid, "grid_metadata")
   )
+})
+
+test_that("create_grid() can keep cells that overlap the boundary", {
+  boundary <- st_sf(geometry = st_sfc(
+    st_polygon(list(rbind(c(0, 0), c(10, 0), c(10, 10), c(0, 0)))),
+    crs = 32631
+  ))
+  centre <- create_grid(boundary, spacing = 2, distance_units = "m")
+  overlap <- create_grid(boundary, spacing = 2, distance_units = "m",
+                         keep = "overlap")
+  cells <- st_buffer(st_geometry(overlap), 1, endCapStyle = "SQUARE")
+
+  expect_gt(nrow(overlap), nrow(centre))
+  expect_true(all(lengths(st_intersects(cells, boundary)) > 0))
+  expect_identical(attr(overlap, "grid_metadata")$keep, "overlap")
+  expect_identical(attr(centre, "grid_metadata")$keep, "centre")
+  expect_s3_class(attr(overlap, "grid_metadata")$boundary, "sfc")
+  expect_error(create_grid(boundary, 2, "m", keep = "all"), "should be one of")
 })

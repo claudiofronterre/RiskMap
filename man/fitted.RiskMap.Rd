@@ -20,3 +20,17 @@ skipped for a non-Gaussian model.
 \description{
 Extract fitted values from a RiskMap model
 }
+\examples{
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  return_samples = TRUE,
+  messages = FALSE
+)
+
+fitted(fit)
+
+}

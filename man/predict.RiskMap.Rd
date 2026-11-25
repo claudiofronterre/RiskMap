@@ -18,6 +18,8 @@
   level = 0.95,
   weights = NULL,
   control_mcmc = NULL,
+  parameter_uncertainty = FALSE,
+  parameter_draws = 50L,
   seed = NULL,
   keep_samples = FALSE,
   messages = TRUE,
@@ -103,6 +105,17 @@ affect \code{"min"} or \code{"max"}.}
 conditional samples stored in a non-Gaussian fit are reused. Supplying a
 control object requests a fresh conditional run.}
 
+\item{parameter_uncertainty}{Logical. If \code{FALSE} (the default), predictions
+are made at the estimated parameters (plug-in prediction). If \code{TRUE},
+they also reflect the uncertainty in the estimated parameters; see
+Details.}
+
+\item{parameter_draws}{Positive integer giving the number of parameter
+values drawn when \code{parameter_uncertainty = TRUE}. Default 50. Conditional
+samples stored in the fit are not used in that case, because they
+condition on the estimate only; \code{control_mcmc}, if supplied, sets only
+the total number of predictive draws.}
+
 \item{seed}{Optional integer seed for random draws made during prediction.
 The caller's random-number state is restored on exit. When supplied, this
 seed takes precedence over a seed stored in \code{control_mcmc} for this call.}
@@ -128,9 +141,10 @@ boundary, aggregation, component, summary and threshold. \code{boundary_id}
 is the row number of the corresponding polygon in \code{boundaries}.}
 \item{samples}{\code{NULL} when \code{keep_samples = FALSE}; otherwise a list
 containing spatial samples and any requested random-effect or nugget
-samples for location-level prediction. For polygon aggregation it
-is nested first by aggregation and then by component, with one matrix
-row per polygon.}
+samples for location-level prediction, and, with parameter
+uncertainty, the fixed-effect contribution of each draw (\code{fixed}).
+For polygon aggregation it is nested first by aggregation and then by
+component, with one matrix row per polygon.}
 \item{include}{Optional components included in the link and response.}
 \item{transform}{Names of additional derived predictive targets.}
 \item{standardized}{Whether response predictions were averaged over a
@@ -140,7 +154,11 @@ reference population supplied through \code{standardize}.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
 \item{level}{Probability covered by the interval limits.}
 \item{type}{Whether prediction was marginal or joint.}
+\item{parameter_draws}{The number of parameter draws when parameter
+uncertainty was propagated, otherwise \code{NULL}.}
 \item{family}{The fitted response family.}
+\item{response_name}{Name of the response variable, used to label
+maps of Gaussian predictions.}
 \item{observed_locations}{Whether \code{newdata} was omitted.}
 \item{coverage}{\code{NULL} for location-only prediction. For polygon
 aggregation, \code{"exact"} when fractional grid-cell coverage was used and
@@ -170,6 +188,30 @@ when \code{control_mcmc = NULL}. If the model was fitted with
 \code{\link[=set_control_mcmc]{set_control_mcmc()}} defaults. Supplying \code{control_mcmc} always requests a
 fresh conditional run. For Gaussian models, prediction is based on their
 exact conditional Gaussian distribution.
+
+Plug-in prediction treats the estimated parameters as known, so its
+intervals can be too narrow when the parameters, in particular the spatial
+variance and range, are poorly estimated, as in small or low-prevalence
+surveys. With \code{parameter_uncertainty = TRUE}, \code{parameter_draws} parameter
+values are drawn from the approximate sampling distribution of the
+estimate: a multivariate normal distribution with the estimated covariance
+matrix, on the scale on which the model is estimated (log variances and
+log range). For each value, conditional samples of the latent effects are
+generated at that value and the prediction is repeated; the draws are then
+pooled, so every summary, aggregation and derived target reflects both the
+latent and the parameter uncertainty. For binomial and Poisson models the
+conditional samples at each parameter value come from a short run of the
+same Langevin (MALA) sampler used for plug-in prediction, in coordinates
+whitened by the Laplace approximation at that value, started at its mode
+and using the step size tuned at the estimate (500 burn-in iterations,
+then thinning by 10). The total number of predictive draws equals that of
+plug-in prediction. Parameters
+without a finite positive variance, such as those held at a boundary, keep
+their estimated value. When the covariance matrix of the estimates is not
+available, an error is returned; refitting with
+\code{set_control_mcml(pc_prior = TRUE)} usually resolves this. The location
+column \code{fixed} then reports the average fixed-effect contribution.
+
 At the observed locations, the conditioned location-level Gaussian effect
 already includes the fitted nugget when the model has one. Consequently,
 \code{include = "nugget"} is available only for predictions supplied through
@@ -245,6 +287,16 @@ prediction <- predict(
   messages = FALSE
 )
 prediction$predictions
+
+# Also reflect the uncertainty in the estimated parameters
+uncertain_prediction <- predict(
+  fit,
+  newdata = example_data[1:5, ],
+  parameter_uncertainty = TRUE,
+  parameter_draws = 20,
+  messages = FALSE
+)
+uncertain_prediction$predictions
 
 # Use the same reference distribution of population density at each location
 reference_population <- data.frame(pop_dens = example_data$pop_dens)

@@ -5,14 +5,6 @@ using namespace Rcpp;
 
 namespace {
 
-void check_coordinates(const NumericMatrix& coordinates) {
-  for (R_xlen_t i = 0; i < coordinates.length(); ++i) {
-    if (!R_finite(coordinates[i])) {
-      stop("`coordinates` must contain only finite values.");
-    }
-  }
-}
-
 double euclidean_distance(const NumericMatrix& first,
                           const int first_row,
                           const NumericMatrix& second,
@@ -32,7 +24,6 @@ double euclidean_distance(const NumericMatrix& first,
 
 // [[Rcpp::export]]
 NumericVector cpp_pairwise_distances(const NumericMatrix coordinates) {
-  check_coordinates(coordinates);
 
   const int number_locations = coordinates.nrow();
   const R_xlen_t number_distances =
@@ -69,12 +60,6 @@ NumericVector cpp_pairwise_distances(const NumericMatrix coordinates) {
 // [[Rcpp::export]]
 NumericMatrix cpp_cross_distances(const NumericMatrix first,
                                   const NumericMatrix second) {
-  check_coordinates(first);
-  check_coordinates(second);
-
-  if (first.ncol() != second.ncol()) {
-    stop("Coordinate matrices must have the same number of columns.");
-  }
 
   NumericMatrix distances(first.nrow(), second.nrow());
 

@@ -11,17 +11,17 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// cpp_canonical_likelihood
-List cpp_canonical_likelihood(const NumericMatrix eta_r, const NumericVector y_r, const NumericVector units_r, const std::string family);
-RcppExport SEXP _RiskMap_cpp_canonical_likelihood(SEXP eta_rSEXP, SEXP y_rSEXP, SEXP units_rSEXP, SEXP familySEXP) {
+// cpp_canonical_log_likelihood
+NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r, const NumericVector y_r, const NumericVector units_r, const bool poisson);
+RcppExport SEXP _RiskMap_cpp_canonical_log_likelihood(SEXP eta_rSEXP, SEXP y_rSEXP, SEXP units_rSEXP, SEXP poissonSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const NumericMatrix >::type eta_r(eta_rSEXP);
     Rcpp::traits::input_parameter< const NumericVector >::type y_r(y_rSEXP);
     Rcpp::traits::input_parameter< const NumericVector >::type units_r(units_rSEXP);
-    Rcpp::traits::input_parameter< const std::string >::type family(familySEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_canonical_likelihood(eta_r, y_r, units_r, family));
+    Rcpp::traits::input_parameter< const bool >::type poisson(poissonSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_canonical_log_likelihood(eta_r, y_r, units_r, poisson));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -107,7 +107,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_RiskMap_cpp_canonical_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_likelihood, 4},
+    {"_RiskMap_cpp_canonical_log_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_log_likelihood, 4},
     {"_RiskMap_cpp_canonical_mala", (DL_FUNC) &_RiskMap_cpp_canonical_mala, 19},
     {"_RiskMap_cpp_pairwise_distances", (DL_FUNC) &_RiskMap_cpp_pairwise_distances, 1},
     {"_RiskMap_cpp_cross_distances", (DL_FUNC) &_RiskMap_cpp_cross_distances, 2},

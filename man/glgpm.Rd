@@ -129,7 +129,7 @@ containing the bank size, estimate, optimizer result, effective sample
 sizes, Pareto tail diagnostics, parameter Monte Carlo error,
 independent-score agreement, timing, stopping decision, and the reason for
 any increase in sample size. Estimates use the same parameterisation as
-\code{estimate}, with regression coefficients and spatial range restored to the
+\code{estimate}, with regression coefficients and the scale parameter phi restored to the
 supplied covariate and distance units. \code{NULL} for Gaussian models.}
 \item{mcml_converged}{Whether the final adaptive stage met every Monte
 Carlo precision and independent-validation criterion. \code{NULL} for Gaussian
@@ -203,6 +203,7 @@ fit <- glgpm(
 )
 
 summary(fit)
+
 # add a random effect
 fit <- glgpm(
   formula = y ~ gp() + re(province),
@@ -220,6 +221,24 @@ fit <- glgpm(
   family = "gaussian",
   messages = FALSE
 )
+
+summary(fit)
+
+# binomial model
+data(loaloa)
+
+# reduce iterations to speed up fit and add
+# seed for reproducibility
+control_mcmc <- set_control_mcmc(n_sim = 100,
+                                 burnin = 20,
+                                 seed = 42)
+
+fit <- glgpm(NO_INF ~ gp(),
+             data = loaloa[1:50,],
+             denominator = NO_EXAM,
+             family = "binomial",
+             control_mcmc = control_mcmc,
+             messages = FALSE)
 
 summary(fit)
 

@@ -90,3 +90,13 @@ cross_validation <- assess_prediction(
   plot_fold = FALSE,
   messages = FALSE
 )
+
+surface <- grid
+surface$cov <- rnorm(nrow(grid))
+surface$i <- rep(1, nrow(grid))
+
+simulation <- simulate_glgpm(gaussian_model,
+                             what = c("data", "surface"),
+                             prediction_grid = surface,
+                             sample_locations = gaussian_data
+                             )

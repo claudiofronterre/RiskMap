@@ -42,7 +42,7 @@ test_that("summary.RiskMap returns the expected components for each family", {
   gaussian_summary <- summary(gaussian_model)
   expect_s3_class(gaussian_summary, "summary.RiskMap")
   expect_setequal(names(gaussian_summary),
-                  c("reg_coef", "me", "sp", "tau2", "ranef", "conf_level",
+                  c("reg_coef", "me", "sp", "tau2", "ranef", "level",
                     "family", "kappa", "log_lik", "cov_offset_used", "aic",
                     "call", "link_name", "invlink_expression"))
   expect_identical(gaussian_summary$family, "gaussian")
@@ -128,11 +128,11 @@ test_that("summary.RiskMap computes standard errors and confidence intervals", {
                ignore_attr = TRUE)
 })
 
-test_that("summary.RiskMap respects conf_level", {
+test_that("summary.RiskMap respects level", {
   default_summary <- summary(gaussian_model)
-  narrow_summary <- summary(gaussian_model, conf_level = 0.9)
+  narrow_summary <- summary(gaussian_model, level = 0.9)
 
-  expect_identical(narrow_summary$conf_level, 0.9)
+  expect_identical(narrow_summary$level, 0.9)
   expect_equal(narrow_summary$reg_coef[, "Estimate"],
                default_summary$reg_coef[, "Estimate"])
   default_width <- default_summary$reg_coef[, "Upper limit"] -
@@ -195,7 +195,7 @@ build_summary_riskmap <- function(changes = list()) {
     sp = sp,
     tau2 = TRUE,
     ranef = ranef,
-    conf_level = 0.95,
+    level = 0.95,
     family = "gaussian",
     kappa = 0.5,
     log_lik = -12.3456,
