@@ -101,7 +101,7 @@
 ##' The caller's random number state is otherwise left unchanged. Ignored for
 ##' Gaussian models, which have no random step.
 ##' @param messages Logical indicating whether to print messages, and a
-##'   line for each stage of Monte Carlo maximum likelihood as described in
+##'   line for each stage of the fit as described in
 ##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or
 ##'   `TRUE` if it is not set.
 ##' @details

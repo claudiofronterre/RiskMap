@@ -11,10 +11,13 @@
 #'   blocks, and while it propagates parameter uncertainty over its parameter
 #'   draws.
 #' - [glgpm()] shows a line for each stage of Monte Carlo maximum likelihood,
-#'   with the time the stage took. While a stage runs, the line has a spinner
-#'   and the time so far, which move each time the likelihood is evaluated.
-#'   A step computed in one call to compiled code, such as the Langevin
-#'   sampler, shows its line without them.
+#'   or for the maximisation of the likelihood of a Gaussian model, with the
+#'   time the stage took. While a stage runs, the line has a spinner and the
+#'   time so far, which move each time the likelihood is evaluated. A step
+#'   computed in one call to compiled code, such as the Langevin sampler, shows
+#'   its line without them.
+#' - [check_computation()] shows such a line for the check of the radius, and
+#'   for the profiles what [profile.RiskMap()] shows.
 #'
 #' Progress is shown when the function's argument `messages` is `TRUE` and
 #' the option `RiskMap.progress` is `TRUE`. The option's default is
