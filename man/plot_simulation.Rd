@@ -53,8 +53,10 @@ prediction grid, by default the mean, with the sampling locations overlaid
 when data were also simulated. \code{plot()} of the simulation does the same.
 }
 \details{
-The colours and the legend follow \code{\link[=plot_prediction]{plot_prediction()}}. The returned
-object can be modified further with standard \pkg{ggplot2} functions.
+The colours and the legend follow \code{\link[=plot_prediction]{plot_prediction()}}. A prediction grid
+that is regular in the CRS of the model is drawn with tiles, and other
+prediction locations as points. The returned object can be modified further
+with standard \pkg{ggplot2} functions.
 }
 \examples{
 data(italy_sim)

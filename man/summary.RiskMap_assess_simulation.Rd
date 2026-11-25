@@ -26,7 +26,8 @@ and \code{cc_summary}, the mean, standard deviation and 2.5\% and 97.5\%
 quantiles of the overall proportion of correct classification.
 }
 
-It also holds \code{fits}, the number of model fits and of failed fits.
+It also holds \code{fits}, the number of model fits (\code{n}), of failed fits
+(\code{failed}) and of fits with warnings (\code{warned}).
 }
 \description{
 Summarizes the results of model evaluations from a \code{RiskMap_assess_simulation} object. Provides average metrics for classification by category and overall correct classification (CC) summary.

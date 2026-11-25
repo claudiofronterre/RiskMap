@@ -1751,6 +1751,44 @@ don't use.
   simulations from it or from a fit, gives the size `theta` with the other
   parameters. It was left out.
 
+- `assess_simulation()` puts the simulated response and the denominators in
+  columns of its own, `.riskmap_response` and `.riskmap_denominator`, so a
+  candidate keeps its covariates whatever their names. Columns called `y` and
+  `units_m` were overwritten, and a covariate `y` was not asked for on the
+  prediction grid, without a message. A covariate called `units_m` gave mean
+  squared errors of 0.049 and 0.030 in one example, against 0.0069 and 0.0082
+  under another name. A candidate with a transformed response, which was
+  refitted without the transformation, stops.
+- In the classification of `assess_simulation()` the lowest class includes the
+  first break and values beyond the breaks belong to the end classes, for the
+  truth and for the draws, as in the maps of `plot_prediction()`. A true value
+  at the first break or beyond the breaks was left out of every metric, draws
+  beyond the breaks belonged to no class, and draws all above the last break
+  were classed in the lowest class. Classifications without such values are
+  unchanged. The help states the rule, and that the predicted class is the most
+  probable one, with ties to the lowest.
+- When the prediction grid of `assess_simulation()` has sampled locations and
+  the generating model has a nugget, the truth there has the nugget of the data,
+  and the prediction had a new one. The draws are now of the spatial effect and
+  that nugget given the data. They are the conditional samples of the latent
+  effect of the site for a binomial, Poisson or negative binomial candidate, and
+  draws from its closed-form distribution for a Gaussian one, joint with the
+  other locations of the same area (`assessment_response_draws()`). The mean
+  squared error at 60 sampled locations with equal variances of the spatial
+  effect and the nugget is 0.048, which is that of the exact conditional mean,
+  instead of 0.69. Draws at other locations are unchanged, apart from Gaussian
+  candidates in areas that contain a sampled location, whose spatial effect is
+  drawn again. The other results are identical bit for bit.
+- `assess_simulation()` stops before any fit when no area contains a prediction
+  location, where the mean squared errors were `NaN`, and when a model to
+  classify is called `"Class"`, whose results were lost. A covariate missing from
+  the prediction grid is named, where the message failed with an error of cli.
+  `summary()` counts the fits with warnings, such as those that found no maximum,
+  in `fits`, and `print()` of the assessment and of its summary report them.
+- `plot()` of a simulation and of a `simulated_surface()` draws points when the
+  prediction locations are not on a regular grid, as for a grid in another CRS
+  than the model's. They were drawn as tiles too small to see.
+
 ## Other
 
 - Argument checks in the compiled MALA, likelihood and distance kernels have
