@@ -190,7 +190,7 @@ glgpm(
 - messages:
 
   Logical indicating whether to print messages, and a line for each
-  stage of Monte Carlo maximum likelihood as described in
+  stage of the fit as described in
   [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 
@@ -559,7 +559,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.       2.1220      0.9347      4.8173
-#> Spatial corr. scale (km) 102.1364     34.7202    300.4544
+#> Spatial corr. scale (km) 102.1364     34.7203    300.4540
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Log-likelihood  -2018.33

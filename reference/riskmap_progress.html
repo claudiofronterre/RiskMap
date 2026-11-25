@@ -8,10 +8,13 @@ predict.RiskMap() shows a bar while it predicts at many locations in
 blocks, and while it propagates parameter uncertainty over its parameter
 draws.
 glgpm() shows a line for each stage of Monte Carlo maximum likelihood,
-with the time the stage took. While a stage runs, the line has a spinner
-and the time so far, which move each time the likelihood is evaluated.
-A step computed in one call to compiled code, such as the Langevin
-sampler, shows its line without them.
+or for the maximisation of the likelihood of a Gaussian model, with the
+time the stage took. While a stage runs, the line has a spinner and the
+time so far, which move each time the likelihood is evaluated. A step
+computed in one call to compiled code, such as the Langevin sampler, shows
+its line without them.
+check_computation() shows such a line for the check of the radius, and
+for the profiles what profile.RiskMap() shows.
 
 
 Progress is shown when the function's argument messages is TRUE and
@@ -36,10 +39,13 @@ predict.RiskMap() shows a bar while it predicts at many locations in
 blocks, and while it propagates parameter uncertainty over its parameter
 draws.
 glgpm() shows a line for each stage of Monte Carlo maximum likelihood,
-with the time the stage took. While a stage runs, the line has a spinner
-and the time so far, which move each time the likelihood is evaluated.
-A step computed in one call to compiled code, such as the Langevin
-sampler, shows its line without them.
+or for the maximisation of the likelihood of a Gaussian model, with the
+time the stage took. While a stage runs, the line has a spinner and the
+time so far, which move each time the likelihood is evaluated. A step
+computed in one call to compiled code, such as the Langevin sampler, shows
+its line without them.
+check_computation() shows such a line for the check of the radius, and
+for the profiles what profile.RiskMap() shows.
 
 
 Progress is shown when the function's argument messages is TRUE and
@@ -104,10 +110,13 @@ work done and an estimate of the time left.</p></li>
 blocks, and while it propagates parameter uncertainty over its parameter
 draws.</p></li>
 <li><p><code><a href="glgpm.html">glgpm()</a></code> shows a line for each stage of Monte Carlo maximum likelihood,
-with the time the stage took. While a stage runs, the line has a spinner
-and the time so far, which move each time the likelihood is evaluated.
-A step computed in one call to compiled code, such as the Langevin
-sampler, shows its line without them.</p></li>
+or for the maximisation of the likelihood of a Gaussian model, with the
+time the stage took. While a stage runs, the line has a spinner and the
+time so far, which move each time the likelihood is evaluated. A step
+computed in one call to compiled code, such as the Langevin sampler, shows
+its line without them.</p></li>
+<li><p><code><a href="check_computation.html">check_computation()</a></code> shows such a line for the check of the radius, and
+for the profiles what <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code> shows.</p></li>
 </ul><p>Progress is shown when the function's argument <code>messages</code> is <code>TRUE</code> and
 the option <code>RiskMap.progress</code> is <code>TRUE</code>. The option's default is
 <code><a href="https://rlang.r-lib.org/reference/is_interactive.html" class="external-link">rlang::is_interactive()</a></code>, so progress appears in the console but not in

@@ -53,8 +53,11 @@ check_computation(
 - messages:
 
   Logical, whether to say how long the extra checks should take before
-  they start. Defaults to the option `RiskMap.messages`, or `TRUE` if it
-  is not set.
+  they start, and to show their progress, with the messages of
+  [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
+  as described in
+  [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
+  Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 
 ## Value
 
@@ -324,7 +327,7 @@ summary(checked)
 #>      0.1786          8.619   0.0000     ok
 #>      0.1953          8.444   0.3495     ok
 #>      0.2136          7.940   1.3578     ok
-#>      0.2336          7.134   2.9687     ok
+#>      0.2336          7.134   2.9686     ok
 #>      0.2429          6.694   3.8489     ok
 #>      0.2554          6.053   5.1304     ok
 #>      0.2793          4.721   7.7959     ok
