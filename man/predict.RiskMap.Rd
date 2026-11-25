@@ -31,7 +31,7 @@
 
 \item{newdata}{An \code{sf} object with point geometries and the variables needed
 by the fitted model. When \code{NULL}, predictions are made at the observed
-locations.}
+locations, with one row for each record of the data.}
 
 \item{boundaries}{Optional \code{sf} polygon object. When supplied, prediction
 locations are assigned to polygons and their joint samples are aggregated
@@ -63,7 +63,12 @@ to add to the complete linear predictor and response. Supported values are
 \code{"random_effects"}, for conditional predictions at known groups, and
 \code{"nugget"}, for a new realization of observation-level predictive
 variation at locations supplied through \code{newdata}. Fixed effects, the
-spatial process and any offset are always returned separately.}
+spatial process and any offset are always returned separately. A level of
+a random effect that isn't in the data of the fit stops a prediction that
+includes \code{"random_effects"}, and doesn't matter to one that doesn't. The
+nugget is one value for each location, so with joint draws rows of
+\code{newdata} at the same location share it, as they share the spatial
+process.}
 
 \item{transform}{Optional named list of functions defining derived predictive
 targets from the complete linear-predictor draws. Each function receives a
@@ -150,7 +155,8 @@ boundary, aggregation, component, summary and threshold. \code{boundary_id}
 is the row number of the corresponding polygon in \code{boundaries}.}
 \item{samples}{\code{NULL} when \code{keep_samples = FALSE}; otherwise a list
 containing spatial samples and any requested random-effect or nugget
-samples for location-level prediction, and, with parameter
+samples for location-level prediction, with one row for each row of
+\code{predictions}, and, with parameter
 uncertainty, the fixed-effect contribution of each draw (\code{fixed}).
 For polygon aggregation it is nested first by aggregation and then by
 component, with one matrix row per polygon.}
@@ -221,7 +227,12 @@ of that approximation and using the step size tuned at the estimate (100
 burn-in iterations, then thinning by 10). The total number of predictive
 draws equals that of plug-in prediction, 2,000 by default. Parameters
 without a finite positive variance, such as those held at a boundary, keep
-their estimated value. When the covariance matrix of the estimates is not
+their estimated value. So does a variance, a scale or a size whose
+logarithm has a standard error above 3, as a variance of a Gaussian model
+estimated at zero has, because draws on the log scale would span more than
+five orders of magnitude. The other parameters are then drawn given it, and
+a warning names it unless it is a variance close to zero. When the
+covariance matrix of the estimates is not
 available, an error is returned; refitting with
 \code{set_control_mcml(pc_prior = TRUE)} usually resolves this. The location
 column \code{fixed} then reports the average fixed-effect contribution.
