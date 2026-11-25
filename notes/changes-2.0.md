@@ -179,6 +179,10 @@ RiskMap input error like those of the other methods.
 at points that did not come from `create_grid()` drew an empty map, because
 ggplot2 dropped every point for its border of colour `NA`. The border is now
 transparent.
+- The palette centred at zero, for signed effects in `plot_prediction()`,
+`plot_simulation()` and `plot_simulated_surface()`, goes from teal to orange
+instead of teal to magenta. The two sides of zero were nearly the same colour in
+red-green colour blindness, and they now have the same lightness.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

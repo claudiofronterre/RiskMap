@@ -609,8 +609,10 @@ prediction_role_palette <- function(role) {
       c("#2166AC", "#8FB3D6", neutral, "#DE9585", "#B2182B")
     )(256L),
     uncertainty = rev(grDevices::hcl.colors(256L, "Purples 3"))[24:256],
+    # Teal and orange stay apart in red-green colour blindness, with the same
+    # lightness on both sides of zero.
     signed = grDevices::colorRampPalette(
-      c("#00857F", "#7DBFB9", neutral, "#D69BC2", "#B5408F")
+      c("#00857F", "#7DBFB9", neutral, "#E0A886", "#C05A1E")
     )(256L)
   )
 }

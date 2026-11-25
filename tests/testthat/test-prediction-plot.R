@@ -153,6 +153,25 @@ test_that("map defaults depend on what the map shows", {
                          prediction_role_palette("uncertainty")))
 })
 
+test_that("the two sides of the signed palette differ in red-green colour blindness", {
+  colours <- prediction_role_palette("signed")
+  ends <- t(grDevices::col2rgb(colours[c(1L, length(colours))])) / 255
+  lab <- function(rgb) {
+    grDevices::convertColor(rgb, from = "sRGB", to = "Lab")
+  }
+  expect_lt(abs(diff(lab(ends)[, 1L])), 2)
+  # Deuteranopia, by the matrix of Machado et al. (2009) for linear RGB
+  deuteranopia <- rbind(c(0.367322, 0.860646, -0.227968),
+                        c(0.280085, 0.672501, 0.047413),
+                        c(-0.011820, 0.042940, 0.968881))
+  linear <- ifelse(ends <= 0.04045, ends / 12.92,
+                   ((ends + 0.055) / 1.055)^2.4)
+  seen <- pmin(pmax(linear %*% t(deuteranopia), 0), 1)
+  seen <- ifelse(seen <= 0.0031308, 12.92 * seen,
+                 1.055 * seen^(1 / 2.4) - 0.055)
+  expect_gt(sqrt(sum(diff(lab(seen))^2)), 40)
+})
+
 test_that("legend titles name the response of each family", {
   base <- list(level = 0.9)
   poisson <- structure(c(base, family = "poisson"),
