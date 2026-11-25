@@ -43,9 +43,11 @@ result of \code{\link[=assess_fit]{assess_fit()}}, as \code{plot()} of the resul
 The histograms are those of the simulated datasets, with the models in rows,
 and the vertical line is the observed value. The darker bars are the simulated
 values at or above the observed one, whose proportion
-\link[=summary.RiskMap_predictive_check]{summary()} gives. The
-observed value is unusual for the model when nearly all of the histogram is
-lighter or nearly all of it is darker. It doesn't have to be in the middle.
+\link[=summary.RiskMap_predictive_check]{summary()} gives. The observed value is
+unusual for the model when it is in a tail of the histogram, beyond nearly all
+of the bars. It doesn't have to be in the middle. A bar at the observed value
+is darker, so the whole histogram is when the observed value is the smallest
+possible one, such as a proportion of zeros of 0, which need not be unusual.
 }
 
 \section{Distribution and variogram}{

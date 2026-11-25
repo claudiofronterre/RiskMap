@@ -164,6 +164,16 @@ check_distance_breaks <- function(breaks, call = rlang::caller_env()) {
   invisible(breaks)
 }
 
+#' The lag-distance breakpoints used when the user gives none
+#'
+#' @param d Distances between the locations.
+#' @param n_bins The number of distance classes, of equal width.
+#' @param max_dist The largest distance, by default a third of the largest one.
+#' @noRd
+default_distance_breaks <- function(d, n_bins = 14L, max_dist = NULL) {
+  seq(0, max_dist %||% (max(d) / 3), length.out = n_bins + 1)
+}
+
 #' The distance classes of an empirical variogram and the pairs in them
 #'
 #' @param d Distances between the locations, in the order of `dist()`.
@@ -370,8 +380,7 @@ variogram <- function(data,
   }
 
   if (is.null(breaks)) {
-    upper_dist <- if (is.null(max_dist)) max(d) / 3 else max_dist
-    breaks <- seq(0, upper_dist, length.out = n_bins + 1)
+    breaks <- default_distance_breaks(d, n_bins, max_dist)
   } else {
     check_distance_breaks(breaks)
   }

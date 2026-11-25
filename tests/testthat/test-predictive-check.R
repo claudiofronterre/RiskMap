@@ -220,6 +220,50 @@ test_that("observations at a location are added up, or averaged", {
                semivariances(resid(lm(log_rate ~ weighted))))
 })
 
+test_that("binomial observations are added up only if they are individuals", {
+  data <- check_data_twice
+  data$tested <- rep(c(5, 1, 20, 8), 5)
+  set.seed(3)
+  data$positive <- rbinom(20, data$tested, 0.3)
+  fit <- suppressWarnings(
+    glgpm(positive ~ gp(), data = data, family = "binomial", denominator = tested,
+          fixed_pars = list(beta = -1, sigma2 = 0.5, phi = 2),
+          control_mcmc = control_mcmc, seed = 1, messages = FALSE)
+  )
+  prevalence <- data$positive / data$tested
+  check <- assess_fit(fit, nsim = 19, seed = 1)
+  expect_identical(check$unit, "observation")
+  expect_equal(check$observed$value,
+               c(mean(prevalence), sd(prevalence), mean(prevalence == 0)))
+  expect_equal(check$distribution$observed,
+               ecdf(prevalence)(check$distribution$value))
+  expect_match(plot(check, type = "distribution")$labels$y, "observations")
+  # The variogram has one value for each location.
+  index <- rep(1:10, each = 2)
+  locations <- data[2 * (1:10), ]
+  locations$values <- elogit(as.numeric(tapply(data$positive, index, sum)),
+                             as.numeric(tapply(data$tested, index, sum)))
+  expected <- variogram(locations, "values", n_permutations = 0)$variogram
+  expect_equal(check$variogram$observed,
+               expected$semivariance[expected$n_pairs > 0])
+
+  # An observation without anyone examined has no prevalence.
+  none <- fit
+  none$units_m[1] <- 0
+  none$y[1] <- 0
+  check <- assess_fit(none, nsim = 19, seed = 1)
+  expect_equal(check$observed$value[1], mean(prevalence[-1]))
+  expect_true(all(is.finite(check$simulated$value)))
+
+  # Individuals, with some who weren't examined.
+  individuals <- binary_twice
+  individuals$units_m[1] <- 0
+  individuals$y[1] <- 0
+  expect_identical(assess_fit(binary_twice, nsim = 19, seed = 1)$unit, "location")
+  expect_identical(assess_fit(individuals, nsim = 19, seed = 1)$unit, "location")
+  expect_identical(checked$unit, "observation")
+})
+
 test_that("the distribution is the empirical one, with its joint envelope", {
   shown <- subset(checked$distribution, model == "b")
   expect_equal(shown$observed, ecdf(gaussian_data$y)(shown$value))
@@ -278,13 +322,74 @@ test_that("statistics can be a function or a named list of functions", {
   expect_identical(one$observed$value, 1)
 })
 
+test_that("statistics can be given by name, with functions or without", {
+  y <- gaussian_data$y
+  run <- function(statistics, fit = gaussian_model) {
+    assess_fit(fit, statistics, nsim = 19, seed = 7)
+  }
+  expect_identical(run(c("mean", "sd", "min", "max")), run(NULL))
+  check <- run(c("zeros", "max"))
+  expect_identical(check$observed$statistic, c("zeros", "max"))
+  expect_equal(check$observed$value, c(0, max(y)))
+
+  # In the order in which they are given, with the names of the list.
+  correlation <- function(data) cor(data$y, data$cov)
+  quartiles <- function(data) {
+    c(lower = quantile(data$y, 0.25, names = FALSE),
+      upper = quantile(data$y, 0.75, names = FALSE))
+  }
+  check <- run(list("max", quartiles, Spread = "sd", Correlation = correlation,
+                    "min"))
+  expect_identical(check$observed$statistic,
+                   c("max", "lower", "upper", "Spread", "Correlation", "min"))
+  expect_equal(check$observed$value,
+               c(max(y), quantile(y, c(0.25, 0.75), names = FALSE), sd(y),
+                 cor(y, gaussian_data$cov), min(y)))
+  simulated <- simulated_data(simulate_glgpm(gaussian_model, nsim = 19, seed = 7),
+                              simulation = 19)
+  expect_equal(subset(check$simulated, simulation == 19)$value,
+               c(max(simulated$y),
+                 quantile(simulated$y, c(0.25, 0.75), names = FALSE),
+                 sd(simulated$y), cor(simulated$y, simulated$cov),
+                 min(simulated$y)))
+  # Those given by name are spelt out, unless the list has a name for them.
+  expect_identical(
+    levels(plot(check)$data$statistic),
+    c("Maximum", "lower", "upper", "Spread", "Correlation", "Minimum")
+  )
+
+  # Of rates and prevalences.
+  rate <- check_data_twice$count / check_data_twice$exposure
+  check <- run(c("min", "zeros", "max", "sd", "mean"), poisson_twice)
+  expect_identical(check$observed$statistic,
+                   c("min_rate", "zeros", "max_rate", "sd_rate", "mean_rate"))
+  expect_equal(check$observed$value, c(min(rate), mean(rate == 0), max(rate),
+                                       sd(rate), mean(rate)))
+  expect_identical(check_statistic_labels(check$observed$statistic, check),
+                   c("Minimum rate", "Proportion of zeros", "Maximum rate",
+                     "SD of rate", "Mean rate"))
+  check <- run(c(Largest = "max", "sd"), binary_twice)
+  expect_identical(check$observed$statistic, c("Largest", "sd_prevalence"))
+})
+
 test_that("statistics that can't be used are errors", {
   run <- function(statistics) {
     assess_fit(gaussian_model, statistics, nsim = 19, seed = 7)
   }
-  expect_input_error(run("mean"), "statistics", "a function, or a list")
-  expect_input_error(run(list(mean, sd)), "statistics", "distinct names")
+  expect_input_error(run("median"), "statistics", "\"median\" isn't one")
+  expect_input_error(run(c("sd", "zero", "median")), "statistics",
+                     "aren't among them")
+  expect_input_error(run(1), "statistics", "the names of statistics")
+  expect_input_error(run(list("sd", 1)), "statistics", "the names of statistics")
+  expect_input_error(run(list(c("sd", "mean"))), "statistics")
+  expect_input_error(run(NA_character_), "statistics")
+  expect_input_error(run(character()), "statistics")
   expect_input_error(run(list()), "statistics")
+  expect_input_error(run(c("sd", "sd")), "statistics", "\"sd\" is repeated")
+  expect_input_error(run(list("sd", function(data) c(sd = 1))), "statistics",
+                     "\"sd\" is repeated")
+  expect_input_error(run(list(function(data) 1, function(data) 2)), "statistics",
+                     "repeated")
   expect_input_error(run(function(data) c(1, 2)), "statistics", "named numbers")
   expect_input_error(run(function(data) c(a = "x")), "statistics", "named numbers")
   expect_input_error(run(function(data) data.frame(a = 1:2)), "statistics")
@@ -307,7 +412,7 @@ test_that("statistics that can't be used are errors", {
                      "statistics", "same named numbers")
 })
 
-test_that("a transformed response needs the default statistics", {
+test_that("a transformed response has only the statistics with a name", {
   data <- gaussian_data
   data$positive <- exp(data$y)
   fit <- glgpm(log(positive) ~ gp(), data = data, family = "gaussian",
@@ -315,6 +420,8 @@ test_that("a transformed response needs the default statistics", {
   check <- assess_fit(fit, nsim = 19, seed = 1)
   expect_identical(check$response, "log(positive)")
   expect_equal(check$observed$value[1], mean(data$y))
+  expect_equal(assess_fit(fit, "max", nsim = 19, seed = 1)$observed$value,
+               max(data$y))
   expect_input_error(
     assess_fit(fit, function(data) c(a = mean(data$positive)), nsim = 19),
     "models", "plain column name"
