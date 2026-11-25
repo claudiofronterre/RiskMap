@@ -70,6 +70,9 @@ in the source repository.
 - Gaussian fits no longer depend on the units of the response. With a
   standard deviation far from 1, a fit could stop at a lower maximum of
   the likelihood, often without spatial variance, or fail.
+- [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  stops when a binomial denominator isn’t a positive whole number, or a
+  Poisson response isn’t whole or its exposure positive.
 - Data are `sf` objects. `distance_crs` and `distance_units` set the
   projection and the units of distances in every function that measures
   them, and

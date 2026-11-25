@@ -84,11 +84,13 @@ glgpm(
 
 - denominator:
 
-  Optional denominator for binomial distributions, or exposure for
-  Poisson and negative binomial ones, the mean of a count being the
-  exposure times the inverse link of the linear predictor. Passed as a
-  bare/unquoted column name present in `data`. If not provided, defaults
-  to `1`.
+  Optional denominator for binomial distributions, the number of trials,
+  or exposure for Poisson and negative binomial ones, the mean of a
+  count being the exposure times the inverse link of the linear
+  predictor. A fit needs positive whole numbers of trials, and positive
+  exposures. Counts and numbers of trials that are whole to
+  floating-point error are rounded. Passed as a bare/unquoted column
+  name present in `data`. If not provided, defaults to `1`.
 
 - distance_crs:
 
@@ -557,7 +559,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.       2.1220      0.9347      4.8173
-#> Spatial corr. scale (km) 102.1364     34.7203    300.4540
+#> Spatial corr. scale (km) 102.1364     34.7202    300.4544
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Log-likelihood  -2018.33

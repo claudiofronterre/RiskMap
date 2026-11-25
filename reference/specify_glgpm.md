@@ -86,11 +86,13 @@ specify_glgpm(
 
 - denominator:
 
-  Optional denominator for binomial distributions, or exposure for
-  Poisson and negative binomial ones, the mean of a count being the
-  exposure times the inverse link of the linear predictor. Passed as a
-  bare/unquoted column name present in `data`. If not provided, defaults
-  to `1`.
+  Optional denominator for binomial distributions, the number of trials,
+  or exposure for Poisson and negative binomial ones, the mean of a
+  count being the exposure times the inverse link of the linear
+  predictor. A fit needs positive whole numbers of trials, and positive
+  exposures. Counts and numbers of trials that are whole to
+  floating-point error are rounded. Passed as a bare/unquoted column
+  name present in `data`. If not provided, defaults to `1`.
 
 - distance_crs:
 
