@@ -136,12 +136,12 @@
 ##' it and from a replicate of it (see [set_control_mcml()]). The samples
 ##' are enlarged only when the certificate exceeds
 ##' the tolerance, and a warning is issued if the tolerance is not met within
-##' the configured limits. [check_fit()] reports every stage. Warnings
-##' are kept for what changes how a result is read, and [check_fit()] goes through
-##' all the checks on the computation, with what to do about any that need a look.
-##' The estimation samples and the final conditional samples are drawn from
-##' separate streams derived from `seed`, so `glgpm(..., seed = fit$seed)`
-##' reproduces a fit exactly.
+##' the configured limits. [check_computation()] reports every stage. Warnings
+##' are kept for what changes how a result is read, and [check_computation()]
+##' goes through all the checks on the computation, with what to do about any
+##' that need a look. The estimation samples and the final conditional samples
+##' are drawn from separate streams derived from `seed`, so `glgpm(..., seed =
+##' fit$seed)` reproduces a fit exactly.
 ##'
 ##' Parameters not given in `start_pars` take RiskMap's defaults, which are
 ##' the coefficients of the regression without latent effects and `phi` at the
@@ -194,7 +194,7 @@
 ##' [logLik()][logLik.RiskMap()] and [nobs()][nobs.RiskMap()], fitted values
 ##' with [fitted()][fitted.RiskMap()], standard errors and intervals with
 ##' [summary()][summary.RiskMap()], and how the fit was computed with
-##' [check_fit()].
+##' [check_computation()].
 ##'
 ##' Every result of RiskMap that can be saved and read again, such as a fit, a
 ##' prediction or a profile, has the attribute `riskmap_version`, a list with
@@ -268,7 +268,7 @@
 ##'   [fitted()][fitted.RiskMap()], [logLik()][logLik.RiskMap()] with
 ##'   [vcov()][vcov.RiskMap()] and [nobs()][nobs.RiskMap()],
 ##'   [predict()][predict.RiskMap()], [profile()][profile.RiskMap()] and
-##'   [to_table()]. [check_fit()], [plot_mcmc()], [summarise_mcmc()],
+##'   [to_table()]. [check_computation()], [plot_mcmc()], [summarise_mcmc()],
 ##'   [parametric_bootstrap()], [assess_prediction()] and
 ##'   [assess_extrapolation()] take a fit too. [glgpm_parameters()] lists the
 ##'   parameters of a model before it is fitted, and [set_control_mcml()] and
@@ -3454,9 +3454,9 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' several sampled points, and the levels at a location where two `re()`
 ##' terms vary, such as households and the individuals within them. A term
 ##' can be integrated out at some of its levels and sampled at others.
-##' `check_fit()` reports, for each term, at how many levels it was integrated
-##' out and at how many it stayed sampled. It works with any link, including a
-##' custom `invlink`. Where the nugget variance is close to zero the
+##' `check_computation()` reports, for each term, at how many levels it was
+##' integrated out and at how many it stayed sampled. It works with any link,
+##' including a custom `invlink`. Where the nugget variance is close to zero the
 ##' likelihood is nearly flat along it, and there the Monte Carlo estimate of
 ##' its effect is noisier with the nugget integrated out than sampled, so fewer
 ##' such fits are certified. With `"auto"` each stage of the fit integrates out
@@ -3473,9 +3473,10 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' integrated out at every stage wherever the rules above allow. On simulated
 ##' surveys of households that certified every fit, and in a fraction of the
 ##' time of sampling, also where the nugget variance was zero, where switching
-##' the nugget alone sometimes failed. Defaults to `"auto"`, which on simulated surveys with a nugget certified
-##' more fits than either form alone. A model without a nugget or `re()` terms
-##' is fitted in the same way whatever the value.
+##' the nugget alone sometimes failed. Defaults to `"auto"`, which on simulated
+##' surveys with a nugget certified more fits than either form alone. A model
+##' without a nugget or `re()` terms is fitted in the same way whatever the
+##' value.
 ##' @param check_maxima Logical. The certificate establishes Monte Carlo
 ##' precision at the maximum found, not that no higher maximum exists. In
 ##' sparse surveys an optimiser can stop at a maximum with a spatial scale far

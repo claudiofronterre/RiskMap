@@ -9,7 +9,7 @@ plot_cases <- function() {
                         seed = 1, messages = FALSE)
   extrapolation <- assess_extrapolation(gaussian_intercept_model, grid,
                                         spatial_threshold = 0.8)
-  checked <- check_fit(binomial_model, messages = FALSE)
+  checked <- check_computation(binomial_model, messages = FALSE)
   profiles <- profile(gaussian_intercept_model, parameters = "phi",
                       n_points = 5L, seed = 1, messages = FALSE)
   bootstrap <- parametric_bootstrap(gaussian_intercept_model, n_sim = 3,
@@ -22,8 +22,8 @@ plot_cases <- function() {
     extrapolation = list(fun = plot_extrapolation, x = extrapolation,
                          args = list(indicator = "spatial_unexplained"),
                          made_by = "assess_extrapolation"),
-    check = list(fun = plot_check, x = checked,
-                 args = list(which = "certificate"), made_by = "check_fit"),
+    check = list(fun = plot_computation, x = checked,
+                 args = list(which = "certificate"), made_by = "check_computation"),
     profile = list(fun = plot_profile, x = profiles,
                    args = list(scale = "deviance"), made_by = "profile"),
     bootstrap = list(fun = plot_bootstrap, x = bootstrap,

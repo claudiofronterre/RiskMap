@@ -26,7 +26,7 @@ the Newton correction of the last stage did not converge),
 \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
 last stage), \code{certification_bank} (the effective draws and Pareto
 shape of the certification draws), \code{checks_to_review}, the number
-of checks of \code{\link[=check_fit]{check_fit()}} that need a look,
+of checks of \code{\link[=check_computation]{check_computation()}} that need a look,
 \code{starting_values}, where the starting values of the parameters not
 given in \code{start_pars} came from, \code{"current"} (RiskMap's
 defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the

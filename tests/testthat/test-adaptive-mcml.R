@@ -171,7 +171,7 @@ test_that("a scale smaller than the location spacing is reported, not held", {
   outcome <- list(boundary_parameters = integer(), budget = 1000L,
                   validation_budget = 5000L, outcome = "certified",
                   certified = TRUE, certificate = 0.05, history = list(1))
-  # A short scale does not change how a certified fit is read, so check_fit()
+  # A short scale does not change how a certified fit is read, so check_computation()
   # reports it and the fit does not warn.
   expect_no_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
                                         messages = FALSE))
@@ -1308,10 +1308,10 @@ test_that("failed canonical refits make the stage use the Laplace proposal", {
 test_that("the check for other maxima warns about a move and an ambiguity", {
   moved <- list(better_maximum = TRUE, ambiguous_maxima = FALSE)
   expect_warning(report_maxima_check(moved),
-                 "found a maximum higher.*See `check_fit\\(\\)`")
+                 "found a maximum higher.*See `check_computation\\(\\)`")
   ambiguous <- list(better_maximum = FALSE, ambiguous_maxima = TRUE)
   expect_warning(report_maxima_check(ambiguous),
-                 "fit about equally well.*See `check_fit\\(\\)`")
+                 "fit about equally well.*See `check_computation\\(\\)`")
   expect_silent(report_maxima_check(list(better_maximum = FALSE,
                                          ambiguous_maxima = FALSE)))
 })
@@ -2353,7 +2353,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
   expect_false(any(grepl("maximum likelihood estimate\\.", zero$warnings)))
   expect_output(print(zero$value), "No certificate. The likelihood has no maximum",
                 fixed = TRUE)
-  expect_match(check_fit(zero$value)$checks$finding,
+  expect_match(check_computation(zero$value)$checks$finding,
                "no individual tested is positive")
 
   every <- fit_to(transform(binomial_data, y = denominator))
@@ -2388,7 +2388,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
                    seq_len(nrow(binomial_data)))
   expect_match(complete$warnings, "\"cov\" grows in absolute value",
                all = FALSE)
-  expect_match(check_fit(complete$value)$checks$finding, "through 'cov'")
+  expect_match(check_computation(complete$value)$checks$finding, "through 'cov'")
 
   # With one positive at an urban location the maximum is finite.
   urban$y[1L] <- 1

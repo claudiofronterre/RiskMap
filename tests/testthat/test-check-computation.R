@@ -8,16 +8,16 @@ with_flags <- function(fit = binomial_model, ...) {
 }
 
 find_check <- function(fit, name) {
-  checks <- check_fit(fit)$checks
+  checks <- check_computation(fit)$checks
   checks[checks$check == name, ]
 }
 
 certified_mcml <- list(certificate = 0.0594, tolerance = 0.1,
                        outcome = "certified", correction_refused = FALSE)
 
-test_that("check_fit lists the checks of a fit with a status for each", {
-  expect_error(check_fit(1), "RiskMap")
-  checked <- check_fit(binomial_model)
+test_that("check_computation lists the checks of a fit with a status for each", {
+  expect_error(check_computation(1), "RiskMap")
+  checked <- check_computation(binomial_model)
   expect_s3_class(checked, "RiskMap_check")
   expect_named(checked$checks, c("check", "status", "finding", "fix", "brief"))
   expect_contains(checked$checks$check,
@@ -31,7 +31,7 @@ test_that("check_fit lists the checks of a fit with a status for each", {
 })
 
 test_that("a Gaussian fit has one check and nothing to plot", {
-  checked <- check_fit(gaussian_model)
+  checked <- check_computation(gaussian_model)
   expect_identical(nrow(checked$checks), 1L)
   expect_identical(checked$checks$status, "OK")
   expect_match(checked$checks$finding, "no Monte Carlo error")
@@ -49,7 +49,7 @@ test_that("a Gaussian fit has one check and nothing to plot", {
 })
 
 test_that("those that need a look come first", {
-  checks <- check_fit(with_flags(
+  checks <- check_computation(with_flags(
     mcml_maxima_alarm = TRUE, mcml_boundary = "nugget variance (tau2)"
   ))$checks
   expect_identical(checks$status[1:2], c("PROBLEM", "SUSPICIOUS"))
@@ -115,7 +115,7 @@ test_that("the maxima check says what the check for other maxima found", {
   expect_identical(alarm$status, "PROBLEM")
   expect_match(alarm$finding, "not the maximum likelihood estimate")
   expect_identical(alarm$fix, paste0("Inspect the profile likelihood, ",
-                                     "`check_fit(fit, extra = \"profile\")`."))
+                                     "`check_computation(fit, extra = \"profile\")`."))
 
   check <- data.frame(
     maximum = 1:3, independent_log_likelihood = c(-12.1, -10.2, -10.3),
@@ -139,7 +139,7 @@ test_that("the maxima check says what the check for other maxima found", {
   expect_match(ambiguous$finding, "about equally well")
   expect_match(ambiguous$finding, "differ by 0.1 .* scale of 3 km")
   expect_match(ambiguous$fix,
-               "see the profile likelihood, `check_fit(fit, extra = \"profile\")`.",
+               "see the profile likelihood, `check_computation(fit, extra = \"profile\")`.",
                fixed = TRUE)
   expect_identical(describe_other_maximum(NULL, FALSE), "")
 })
@@ -180,7 +180,7 @@ test_that("the scale check says whether the data determine the scale", {
   expect_match(short$finding, "shorter than the median distance")
   expect_match(short$finding, "(12.3 ", fixed = TRUE)
   expect_match(short$fix, paste0("^See the profile likelihood, ",
-                                 "`check_fit\\(fit, extra = \"profile\"\\)`\\. "))
+                                 "`check_computation\\(fit, extra = \"profile\"\\)`\\. "))
   expect_match(short$fix, "pc_prior = TRUE")
   penalised <- fit_check_spatial_scale(
     binomial_model, list(mcml_small_scale = TRUE, mcml_pc_prior = TRUE)
@@ -251,7 +251,7 @@ test_that("changes of importance distribution and the mode limit stay OK", {
 })
 
 test_that("a fit without a maximum gets that check alone, with what to do", {
-  everywhere <- check_fit(with_flags(
+  everywhere <- check_computation(with_flags(
     mcml_no_maximum = TRUE, mcml_outcome = "no maximum",
     mcml_separation = list(everywhere = "no positives")
   ))$checks
@@ -287,21 +287,21 @@ test_that("the summary counts the checks that need a look", {
   expect_null(describe_checks_to_review(NULL))
   expect_identical(
     describe_checks_to_review(0L),
-    c(v = "No check needs a look. See `check_fit()` for the details.")
+    c(v = "No check needs a look. See `check_computation()` for the details.")
   )
   expect_identical(describe_checks_to_review(1L),
-                   c("!" = "1 check needs a look. See `check_fit()`."))
+                   c("!" = "1 check needs a look. See `check_computation()`."))
   expect_identical(describe_checks_to_review(2L),
-                   c("!" = "2 checks need a look. See `check_fit()`."))
+                   c("!" = "2 checks need a look. See `check_computation()`."))
   flagged <- with_flags(mcml_maxima_alarm = FALSE,
                         mcml_near_limit = TRUE,
                         mcml_boundary = "nugget variance (tau2)")
-  count <- sum(check_fit(flagged)$checks$status != "OK")
+  count <- sum(check_computation(flagged)$checks$status != "OK")
   expect_gte(count, 2L)
   expect_identical(summary(flagged)$mcml$checks_to_review, count)
   expect_output(print(summary(flagged)), paste0(count, " checks need a look"))
   expect_output(print(flagged), paste0(count, " checks need a look"))
-  expect_no_match(capture.output(print(gaussian_model)), "check_fit")
+  expect_no_match(capture.output(print(gaussian_model)), "check_computation")
 })
 
 test_that("the stages and the moves of the estimates are summarised", {
@@ -320,7 +320,7 @@ test_that("the stages and the moves of the estimates are summarised", {
          second_validation = list(relative_ess = 0.5, pareto_k = 0.3)),
     list(proposal = "global", certificate = NA_real_, estimate = later)
   )
-  checked <- check_fit(fit)
+  checked <- check_computation(fit)
   expect_identical(checked$stages$stage, 1:3)
   expect_identical(checked$stages$proposal, c("laplace", "global", "global"))
   expect_identical(checked$stages$certificate, c(0.5, 0.05, NA))
@@ -342,16 +342,16 @@ test_that("the stages and the moves of the estimates are summarised", {
   held <- fit
   held$covariance[1L, ] <- NA_real_
   held$covariance[, 1L] <- NA_real_
-  expect_disjoint(check_fit(held)$moves$parameter, rownames(fit$covariance)[1L])
+  expect_disjoint(check_computation(held)$moves$parameter, rownames(fit$covariance)[1L])
   held$covariance[] <- NA_real_
-  expect_null(check_fit(held)$moves)
+  expect_null(check_computation(held)$moves)
   fit$mcml_history <- fit$mcml_history[1L]
-  expect_null(check_fit(fit)$moves)
+  expect_null(check_computation(fit)$moves)
 })
 
 test_that("printing gives a check that needs a look in full and an OK one on a line", {
   flagged <- with_flags(mcml_boundary = "nugget variance (tau2)")
-  checked <- check_fit(flagged)
+  checked <- check_computation(flagged)
   withr::local_options(width = 80L)
   printed <- capture.output(result <- print(checked))
   expect_identical(result, checked)
@@ -460,29 +460,29 @@ test_that("each OK check has a brief finding for its line", {
 
 test_that("a fix names the extra check that would settle it", {
   expect_identical(describe_profile_pointer(),
-                   ", `check_fit(fit, extra = \"profile\")`")
+                   ", `check_computation(fit, extra = \"profile\")`")
   expect_match(describe_profile_pointer(TRUE), "the check \"Profile likelihood\"",
                fixed = TRUE)
   heavy <- list(effective_draws = 94, pareto_k = 1.005)
   expect_match(fit_check_weights(heavy, radius = describe_radius_pointer())$fix,
                paste0("read the bound with caution. The check of the radius, ",
-                      "`check_fit(fit, extra = \"radius\")`, predicts whether it ",
+                      "`check_computation(fit, extra = \"radius\")`, predicts whether it ",
                       "is too small."), fixed = TRUE)
   expect_no_match(fit_check_weights(heavy)$fix, "extra")
 
-  # In check_fit(), the fixes follow the extras that ran.
+  # In check_computation(), the fixes follow the extras that ran.
   weak <- with_flags(mcml_small_scale = TRUE, mcml_ambiguous_maxima = TRUE)
   fixes <- function(checked) {
     stats::setNames(checked$checks$fix, checked$checks$check)
   }
-  plain <- fixes(check_fit(weak))
-  expect_match(plain[["Spatial scale"]], "check_fit(fit, extra = \"profile\")",
+  plain <- fixes(check_computation(weak))
+  expect_match(plain[["Spatial scale"]], "check_computation(fit, extra = \"profile\")",
                fixed = TRUE)
-  expect_match(plain[["Other maxima"]], "check_fit(fit, extra = \"profile\")",
+  expect_match(plain[["Other maxima"]], "check_computation(fit, extra = \"profile\")",
                fixed = TRUE)
   scale_profile <- profile(weak, parameters = "phi", n_points = 5,
                            n_draws = 200, seed = 1, messages = FALSE)
-  profiled <- fixes(check_fit(weak, profile = scale_profile))
+  profiled <- fixes(check_computation(weak, profile = scale_profile))
   for (check in c("Spatial scale", "Other maxima")) {
     expect_no_match(profiled[[check]], "extra = ", fixed = TRUE)
     expect_match(profiled[[check]],
@@ -497,7 +497,7 @@ test_that("a fix names the extra check that would settle it", {
                list(certification_bank = heavy))
   )
   expect_match(results[["Importance weights"]]$row$fix,
-               "check_fit(fit, extra = \"radius\")", fixed = TRUE)
+               "check_computation(fit, extra = \"radius\")", fixed = TRUE)
   ran <- run_fit_checks(
     binomial_model,
     modifyList(summarise_mcml_fit(binomial_model),
@@ -510,7 +510,7 @@ test_that("a fix names the extra check that would settle it", {
 
 test_that("the plot shows the stages, and a profile once it is computed", {
   skip_on_cran()
-  checked <- check_fit(binomial_model)
+  checked <- check_computation(binomial_model)
   stage_panels <- c("certificate", "effective_draws", "pareto_k")
   # One object, drawn only when printed
   expect_silent(drawn <- withVisible(plot(checked)))
@@ -524,7 +524,7 @@ test_that("the plot shows the stages, and a profile once it is computed", {
   # A panel that was not computed says which extra to run, and plot() draws
   # the others, or stops when there are none.
   expect_message(chosen <- plot(checked, which = c("certificate", "profile")),
-                 "needs the extra check \"profile\", check_fit(fit, extra = \"profile\")",
+                 "needs the extra check \"profile\", check_computation(fit, extra = \"profile\")",
                  fixed = TRUE)
   expect_false(inherits(chosen, "patchwork"))
   expect_s3_class(chosen, "ggplot")
@@ -534,7 +534,7 @@ test_that("the plot shows the stages, and a profile once it is computed", {
   expect_message(plot(checked, which = c("certificate", "moves")),
                  "no changes in the estimates to plot")
   expect_error(plot(checked, which = "radius"),
-               "needs the extra check \"radius\", check_fit(fit, extra = \"radius\")",
+               "needs the extra check \"radius\", check_computation(fit, extra = \"radius\")",
                fixed = TRUE)
   expect_error(plot(checked, which = "radii"),
                "unknown panel \"radii\"")
@@ -545,7 +545,7 @@ test_that("the plot shows the stages, and a profile once it is computed", {
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, seed = 1, messages = FALSE)
-  given <- check_fit(binomial_model, profile = scale_profile)
+  given <- check_computation(binomial_model, profile = scale_profile)
   expect_identical(drawn_titles(plot(given)),
                    panel_titles(given, c(stage_panels, "profile_phi")))
   expect_identical(drawn_titles(plot(given, which = "profile")),
@@ -574,7 +574,7 @@ test_that("the panels of a held variance and of the screen say why they are empt
   withr::defer(grDevices::dev.off())
   # The binomial fixture holds no variance, and its random effects keep the
   # screen of short scales from running.
-  checked <- check_fit(binomial_model)
+  checked <- check_computation(binomial_model)
   expect_error(plot(checked, which = "held_variances"),
                "No variance was held at zero, so there is no slope at zero to plot.",
                fixed = TRUE)
@@ -586,30 +586,30 @@ test_that("the panels of a held variance and of the screen say why they are empt
                  "unstructured random effects", fixed = TRUE)
   expect_identical(drawn_titles(chosen), panel_titles(checked, "certificate"))
 
-  spatial <- check_fit(with_flags(mcml_boundary = "spatial variance (sigma2)"))
+  spatial <- check_computation(with_flags(mcml_boundary = "spatial variance (sigma2)"))
   expect_error(plot(spatial, which = "held_variances"),
                paste0("The spatial variance (sigma2) held at zero was not ",
                       "tested, since with the spatial variance at zero the ",
                       "slope depends on the scale"), fixed = TRUE)
-  untested <- check_fit(with_flags(mcml_boundary = "nugget variance (tau2)"))
+  untested <- check_computation(with_flags(mcml_boundary = "nugget variance (tau2)"))
   expect_error(plot(untested, which = "held_variances"),
                paste0("The fit recorded no test of the slope at zero for the ",
                       "nugget variance (tau2)."), fixed = TRUE)
-  failed <- check_fit(with_flags(mcml_maxima_screen = list(gate = "failed")))
+  failed <- check_computation(with_flags(mcml_maxima_screen = list(gate = "failed")))
   expect_error(plot(failed, which = "screen"),
                "likelihood with independent location effects could not be computed",
                fixed = TRUE)
-  unrecorded <- check_fit(with_flags(mcml_maxima_screen = NULL))
+  unrecorded <- check_computation(with_flags(mcml_maxima_screen = NULL))
   expect_error(plot(unrecorded, which = "screen"),
                "The fit recorded no screen of short scales.", fixed = TRUE)
 
-  gaussian <- check_fit(gaussian_model)
+  gaussian <- check_computation(gaussian_model)
   expect_error(plot(gaussian, which = "screen"),
                "A Gaussian fit is fitted exactly, so it has no screen of short scales to plot.",
                fixed = TRUE)
   expect_error(plot(gaussian, which = "held_variances"),
                "so it has no test of a variance held at zero to plot.", fixed = TRUE)
-  no_maximum <- check_fit(with_flags(
+  no_maximum <- check_computation(with_flags(
     mcml_no_maximum = TRUE, mcml_outcome = "no maximum",
     mcml_separation = list(everywhere = "no positives")
   ))
@@ -629,7 +629,7 @@ test_that("the panel of the held variances draws the test the fit recorded", {
              "random-effect variance (sigma2_re.b)")
   )
   held <- with_flags(mcml_boundary = slopes$name, mcml_held_variances = slopes)
-  checked <- check_fit(held)
+  checked <- check_computation(held)
   expect_identical(
     checked$results$Variances$data[["Slope of the likelihood at zero"]],
     slopes[c("name", "slope", "se", "rising", "falling")]
@@ -669,7 +669,7 @@ test_that("the screen of short scales is tabulated and drawn from the fit", {
     messages = FALSE
   ))
   record <- attr(screened, "optimizer")$mcml_maxima_screen
-  checked <- check_fit(screened)
+  checked <- check_computation(screened)
   data <- checked$results[["Other maxima"]]$data
   units <- screened$distance_units %||% "distance units"
   short <- data[["Short scales, log-likelihood above the estimate"]]
@@ -781,7 +781,7 @@ test_that("the evidence is measured from the estimate that replaced the fit", {
     flagged <- with_flags(mcml_maxima_screen = screen,
                           mcml_maxima_check = check,
                           mcml_maxima_alarm = TRUE, mcml_pc_prior = FALSE)
-    check_fit(flagged)$results[["Other maxima"]]$data
+    check_computation(flagged)$results[["Other maxima"]]$data
   }
   short <- "Short scales, log-likelihood above the estimate"
   largest <- "Largest exact lower bound, above the estimate"
@@ -870,7 +870,7 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   sentence <- "not clearly above the limit with independent location effects"
   question <- "Likelihood near the limit of independent location effects"
   answer <- function(fit) {
-    check_fit(fit)$results[["Spatial scale"]]$data[[question]]
+    check_computation(fit)$results[["Spatial scale"]]$data[[question]]
   }
   printed <- function(object) {
     gsub("\\s+", " ", paste(capture.output(print(object)), collapse = " "))
@@ -881,8 +881,8 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   expect_match(row$finding, "longer than the median distance")
   expect_match(row$finding, sentence)
   expect_true(answer(fit_with()))
-  expect_match(printed(check_fit(fit_with())), sentence)
-  expect_match(printed(summary(check_fit(fit_with()))),
+  expect_match(printed(check_computation(fit_with())), sentence)
+  expect_match(printed(summary(check_computation(fit_with()))),
                paste(question, "yes"))
   # A short scale is SUSPICIOUS with or without the limit, and below the
   # shortest scale of the screen the fit records it itself.
@@ -898,7 +898,7 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   above$alarm$fitted_comparison <- -99.93
   expect_false(answer(fit_with(above)))
   expect_no_match(find_check(fit_with(above), "Spatial scale")$finding, sentence)
-  expect_match(printed(summary(check_fit(fit_with(above)))),
+  expect_match(printed(summary(check_computation(fit_with(above)))),
                paste(question, "no "))
   # Below the shortest screened scale the fit has judged it, on the bank that
   # decided between its maxima, so its answer stands.
@@ -953,7 +953,7 @@ test_that("nearness to the limit of independent effects is assessed at any scale
   for (fit in c(unassessed, list(penalised, separate, enlarged, unknown))) {
     expect_identical(answer(fit), NA)
     expect_no_match(find_check(fit, "Spatial scale")$finding, sentence)
-    expect_match(printed(summary(check_fit(fit))),
+    expect_match(printed(summary(check_computation(fit))),
                  paste(question, "not assessed"))
   }
   expect_identical(assess_near_limit(list(
@@ -988,7 +988,7 @@ test_that("a fit made before the bounds were kept draws the screen alone", {
     screen = data.frame(log_phi = log(c(1, 2)), plug_in = c(-103, -101),
                         stepped = c(NA, -100.5), gap = c(-3, -0.5))
   ))
-  checked <- check_fit(older)
+  checked <- check_computation(older)
   data <- checked$results[["Other maxima"]]$data
   expect_identical(data[["Largest exact lower bound, above the estimate"]], -4)
   expect_named(data[["Short scales, log-likelihood above the estimate"]],
@@ -1003,7 +1003,7 @@ test_that("a fit made before the bounds were kept draws the screen alone", {
   unscreened <- with_flags(mcml_maxima_screen = list(
     gate = "not run", independent = list(log_likelihood = -105), alarm = alarm
   ))
-  expect_error(plot(check_fit(unscreened), which = "screen"),
+  expect_error(plot(check_computation(unscreened), which = "screen"),
                paste0("The fit kept only the largest exact lower bound of the ",
                       "screen of short scales (-4 above the estimate), as fits ",
                       "did before the bound at each scale was recorded, so ",
@@ -1015,6 +1015,6 @@ test_that("a fit made before the bounds were kept draws the screen alone", {
   record$alarm$bounds <- data.frame(log_phi = log(c(1, 2)), bound = c(-104, -110),
                                     error = 0)
   newer <- with_flags(mcml_maxima_screen = record)
-  subtitle <- ggplot2::get_labs(plot(check_fit(newer), which = "screen"))$subtitle
+  subtitle <- ggplot2::get_labs(plot(check_computation(newer), which = "screen"))$subtitle
   expect_no_match(subtitle, "kept only")
 })

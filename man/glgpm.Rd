@@ -161,7 +161,7 @@ RiskMap. The estimates, their covariance and the likelihood are read with
 \link[=logLik.RiskMap]{logLik()} and \link[=nobs.RiskMap]{nobs()}, fitted values
 with \link[=fitted.RiskMap]{fitted()}, standard errors and intervals with
 \link[=summary.RiskMap]{summary()}, and how the fit was computed with
-\code{\link[=check_fit]{check_fit()}}.
+\code{\link[=check_computation]{check_computation()}}.
 
 Every result of RiskMap that can be saved and read again, such as a fit, a
 prediction or a profile, has the attribute \code{riskmap_version}, a list with
@@ -210,12 +210,11 @@ standard errors, with an allowance for that sample's own error taken from
 it and from a replicate of it (see \code{\link[=set_control_mcml]{set_control_mcml()}}). The samples
 are enlarged only when the certificate exceeds
 the tolerance, and a warning is issued if the tolerance is not met within
-the configured limits. \code{\link[=check_fit]{check_fit()}} reports every stage. Warnings
-are kept for what changes how a result is read, and \code{\link[=check_fit]{check_fit()}} goes through
-all the checks on the computation, with what to do about any that need a look.
-The estimation samples and the final conditional samples are drawn from
-separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)}
-reproduces a fit exactly.
+the configured limits. \code{\link[=check_computation]{check_computation()}} reports every stage. Warnings
+are kept for what changes how a result is read, and \code{\link[=check_computation]{check_computation()}}
+goes through all the checks on the computation, with what to do about any
+that need a look. The estimation samples and the final conditional samples
+are drawn from separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)} reproduces a fit exactly.
 
 Parameters not given in \code{start_pars} take RiskMap's defaults, which are
 the coefficients of the regression without latent effects and \code{phi} at the
@@ -310,7 +309,7 @@ The methods for a fit are \link[=print.RiskMap]{print()},
 \link[=fitted.RiskMap]{fitted()}, \link[=logLik.RiskMap]{logLik()} with
 \link[=vcov.RiskMap]{vcov()} and \link[=nobs.RiskMap]{nobs()},
 \link[=predict.RiskMap]{predict()}, \link[=profile.RiskMap]{profile()} and
-\code{\link[=to_table]{to_table()}}. \code{\link[=check_fit]{check_fit()}}, \code{\link[=plot_mcmc]{plot_mcmc()}}, \code{\link[=summarise_mcmc]{summarise_mcmc()}},
+\code{\link[=to_table]{to_table()}}. \code{\link[=check_computation]{check_computation()}}, \code{\link[=plot_mcmc]{plot_mcmc()}}, \code{\link[=summarise_mcmc]{summarise_mcmc()}},
 \code{\link[=parametric_bootstrap]{parametric_bootstrap()}}, \code{\link[=assess_prediction]{assess_prediction()}} and
 \code{\link[=assess_extrapolation]{assess_extrapolation()}} take a fit too. \code{\link[=glgpm_parameters]{glgpm_parameters()}} lists the
 parameters of a model before it is fitted, and \code{\link[=set_control_mcml]{set_control_mcml()}} and

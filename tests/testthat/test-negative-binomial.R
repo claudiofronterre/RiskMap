@@ -349,7 +349,7 @@ test_that("the refits of a negative binomial fit carry its size", {
   # back to the estimate.
   refit <- make_bootstrap_refit(fit)
   expect_equal(refit(fit$y, 5L), estimated_coef(fit), tolerance = 1e-6)
-  # profile() and the radius of check_fit() rebuild the likelihood, which at
+  # profile() and the radius of check_computation() rebuild the likelihood, which at
   # the estimate is the fit's, less the constant of its records. With the
   # size dropped they would stop, and at another size they are far off.
   problem <- make_profile_problem(fit, 2000L, 1L)

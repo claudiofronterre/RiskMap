@@ -107,9 +107,9 @@ term that span several locations, such as villages or districts with
 several sampled points, and the levels at a location where two \code{re()}
 terms vary, such as households and the individuals within them. A term
 can be integrated out at some of its levels and sampled at others.
-\code{check_fit()} reports, for each term, at how many levels it was integrated
-out and at how many it stayed sampled. It works with any link, including a
-custom \code{invlink}. Where the nugget variance is close to zero the
+\code{check_computation()} reports, for each term, at how many levels it was
+integrated out and at how many it stayed sampled. It works with any link,
+including a custom \code{invlink}. Where the nugget variance is close to zero the
 likelihood is nearly flat along it, and there the Monte Carlo estimate of
 its effect is noisier with the nugget integrated out than sampled, so fewer
 such fits are certified. With \code{"auto"} each stage of the fit integrates out
@@ -126,9 +126,10 @@ fitted with \code{"auto"} as with \code{TRUE}, its \code{re()} terms and its nug
 integrated out at every stage wherever the rules above allow. On simulated
 surveys of households that certified every fit, and in a fraction of the
 time of sampling, also where the nugget variance was zero, where switching
-the nugget alone sometimes failed. Defaults to \code{"auto"}, which on simulated surveys with a nugget certified
-more fits than either form alone. A model without a nugget or \code{re()} terms
-is fitted in the same way whatever the value.}
+the nugget alone sometimes failed. Defaults to \code{"auto"}, which on simulated
+surveys with a nugget certified more fits than either form alone. A model
+without a nugget or \code{re()} terms is fitted in the same way whatever the
+value.}
 
 \item{check_maxima}{Logical. The certificate establishes Monte Carlo
 precision at the maximum found, not that no higher maximum exists. In

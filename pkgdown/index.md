@@ -115,7 +115,7 @@ population weights with `create_grid()` and `get_worldpop()`.
 ### Fit
 
 Write the model as a formula with a spatial Gaussian process, `gp()`, and
-random effects, `re()`, and fit it with `glgpm()`. `check_fit()` flags
+random effects, `re()`, and fit it with `glgpm()`. `check_computation()` flags
 anything in the fit that needs attention.
 
 [Specifying and fitting](reference/index.html#specifying-and-fitting)

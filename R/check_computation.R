@@ -126,10 +126,11 @@
 ##' \item{fit_seconds}{The time the fit took in seconds, `NULL` where the fit
 ##' did not record it.}
 ##' @seealso The methods for the result are [print()][print.RiskMap_check()],
-##'   [summary()][summary.RiskMap_check()] and [plot_check()], which `plot()`
-##'   of the result also calls. [summary.RiskMap()] gives the estimates, and
-##'   [profile.RiskMap()] and [parametric_bootstrap()] their uncertainty.
-##'   [assessment] says which function answers which question about a model.
+##'   [summary()][summary.RiskMap_check()] and [plot_computation()], which
+##'   `plot()` of the result also calls. [summary.RiskMap()] gives the
+##'   estimates, and [profile.RiskMap()] and [parametric_bootstrap()] their
+##'   uncertainty. [assessment] says which function answers which question about
+##'   a model.
 ##' @examples
 ##' data(italy_sim)
 ##'
@@ -140,15 +141,15 @@
 ##'   messages = FALSE
 ##' )
 ##'
-##' check_fit(fit)
-##' checked <- check_fit(fit, extra = "profile")
+##' check_computation(fit)
+##' checked <- check_computation(fit, extra = "profile")
 ##' checked
 ##' summary(checked)
 ##' plot(checked, which = "profile")
 ##' @export
-check_fit <- function(object, extra = character(), profile = NULL,
-                      cores = 1L,
-                      messages = getOption("RiskMap.messages", TRUE)) {
+check_computation <- function(object, extra = character(), profile = NULL,
+                              cores = 1L,
+                              messages = getOption("RiskMap.messages", TRUE)) {
   check_supplied(object)
   check_class(object, "RiskMap")
   extra <- match_extra_checks(extra)
@@ -273,14 +274,14 @@ capitalise_first <- function(text) {
 ##' Where a fix sends the user for the profile likelihood
 ##'
 ##' The phrase completes "see the profile likelihood", with the call of
-##' `check_fit()` that computes the profiles or, when they ran, their row and
-##' panels.
+##' `check_computation()` that computes the profiles or, when they ran, their
+##' row and panels.
 ##' @noRd
 describe_profile_pointer <- function(ran = FALSE) {
   if (ran) {
     return(" in the check \"Profile likelihood\" and its panels in `plot()`")
   }
-  ", `check_fit(fit, extra = \"profile\")`"
+  ", `check_computation(fit, extra = \"profile\")`"
 }
 
 ##' Where a fix sends the user for the check of the radius of the bound
@@ -290,7 +291,7 @@ describe_profile_pointer <- function(ran = FALSE) {
 ##' @noRd
 describe_radius_pointer <- function(ran = FALSE) {
   if (ran) return(" See the check \"Radius of the bound\".")
-  paste0(" The check of the radius, `check_fit(fit, extra = \"radius\")`, ",
+  paste0(" The check of the radius, `check_computation(fit, extra = \"radius\")`, ",
          "predicts whether it is too small.")
 }
 
@@ -941,12 +942,12 @@ summarise_estimate_moves <- function(object, history) {
 
 ##' @title Print the Checks on a Fitted Model
 ##' @description Print method for objects of class `"RiskMap_check"` from
-##'   [check_fit()], which gives the verdict. Each check has an entry, those
-##'   that need a look first. A check that needs a look is given in full,
+##'   [check_computation()], which gives the verdict. Each check has an entry,
+##'   those that need a look first. A check that needs a look is given in full,
 ##'   with its fix where there is one, and a check that is `OK` takes one line,
-##'   with its finding in a few words. The extra checks that were asked for
-##'   but not computed are listed with the reason. [summary.RiskMap_check()]
-##'   gives each finding in full with the numbers behind it.
+##'   with its finding in a few words. The extra checks that were asked for but
+##'   not computed are listed with the reason. [summary.RiskMap_check()] gives
+##'   each finding in full with the numbers behind it.
 ##' @param x An object of class `"RiskMap_check"`.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
@@ -1003,60 +1004,59 @@ format_checks <- function(x) {
 }
 
 ##' @title Plot the Checks on a Fitted Model
-##' @description Plots the checks of a fit from [check_fit()], as `plot()` of
+##' @description Plots the checks of a fit from [check_computation()], as
+##' `plot()` of
 ##'   the result does. It makes the figures of the checks that were computed,
 ##'   and never computes anything itself, so an extra check runs once in
-##'   [check_fit()]. By stage of certified Monte Carlo maximum likelihood, the
-##'   panels show the bound on the Monte Carlo error against the tolerance
-##'   (`"certificate"`), the effective certification draws
+##'   [check_computation()]. By stage of certified Monte Carlo maximum
+##'   likelihood, the panels show the bound on the Monte Carlo error against the
+##'   tolerance (`"certificate"`), the effective certification draws
 ##'   (`"effective_draws"`), the tail shape of the importance weights against
 ##'   its limit of 0.7 (`"pareto_k"`) and how far the estimates moved
 ##'   (`"moves"`). Two more panels come from what the fit recorded. For a
-##'   variance held at zero whose slope was tested, `"held_variances"` shows
-##'   the slope of the log-likelihood in that variance at zero with its
-##'   interval of 2.58 standard errors each side, the test of the fit, so that
-##'   the likelihood clearly rises as the variance leaves zero when the whole
+##'   variance held at zero whose slope was tested, `"held_variances"` shows the
+##'   slope of the log-likelihood in that variance at zero with its interval of
+##'   2.58 standard errors each side, the test of the fit, so that the
+##'   likelihood clearly rises as the variance leaves zero when the whole
 ##'   interval is above zero, and clearly falls when it is below. The panel
-##'   `"screen"` shows the screen of short scales of the check for other
-##'   maxima. On a log scale of distance it gives, at each short scale, the
-##'   log-likelihood estimated on the fitting draws above that of the
-##'   estimate, which repeats the fit from the best such scale when one comes
-##'   within 0.25 of it (the dashed line), and the exact lower bound on the
-##'   likelihood there, with the likelihood with independent location effects,
-##'   the limit as the scale goes to zero, as a dotted line. When another fit
-##'   replaced the one that was screened, the values are above that fit and
-##'   the dashed line is 0.25 below the replaced one. An exact bound clearly
-##'   above the estimate shows that the estimate is not the
-##'   maximum likelihood estimate. For a fit with the spatial variance at zero
-##'   and a nugget, the panel adds the exact bound over longer scales for each
-##'   share of the variance in a spatial effect. With the extra check
-##'   `"radius"`, the panel `"radius"` shows the error of each resampled sample
-##'   of certification draws against the
-##'   radius the fit would use for it, the larger of its own and a
-##'   replicate's, in standard errors, with the line where they are equal. Its
-##'   subtitle gives the predicted rate at which the radius is exceeded, as in
-##'   the row of the check, and the share of samples whose error exceeds the
-##'   radius, as in [summary.RiskMap_check()], from many more pairs of samples
-##'   than the panel shows. With
-##'   the extra check `"profile"`, each profiled parameter has a panel of its
-##'   profile likelihood, named `"profile_"` followed by the parameter, such
-##'   as `"profile_phi"`.
-##' @param x The result of [check_fit()].
+##'   `"screen"` shows the screen of short scales of the check for other maxima.
+##'   On a log scale of distance it gives, at each short scale, the
+##'   log-likelihood estimated on the fitting draws above that of the estimate,
+##'   which repeats the fit from the best such scale when one comes within 0.25
+##'   of it (the dashed line), and the exact lower bound on the likelihood
+##'   there, with the likelihood with independent location effects, the limit as
+##'   the scale goes to zero, as a dotted line. When another fit replaced the
+##'   one that was screened, the values are above that fit and the dashed line
+##'   is 0.25 below the replaced one. An exact bound clearly above the estimate
+##'   shows that the estimate is not the maximum likelihood estimate. For a fit
+##'   with the spatial variance at zero and a nugget, the panel adds the exact
+##'   bound over longer scales for each share of the variance in a spatial
+##'   effect. With the extra check `"radius"`, the panel `"radius"` shows the
+##'   error of each resampled sample of certification draws against the radius
+##'   the fit would use for it, the larger of its own and a replicate's, in
+##'   standard errors, with the line where they are equal. Its subtitle gives
+##'   the predicted rate at which the radius is exceeded, as in the row of the
+##'   check, and the share of samples whose error exceeds the radius, as in
+##'   [summary.RiskMap_check()], from many more pairs of samples than the panel
+##'   shows. With the extra check `"profile"`, each profiled parameter has a
+##'   panel of its profile likelihood, named `"profile_"` followed by the
+##'   parameter, such as `"profile_phi"`.
+##' @param x The result of [check_computation()].
 ##' @param which Names of the panels to draw, among `"certificate"`,
 ##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, `"held_variances"`,
 ##'   `"screen"`, `"radius"`, the panels of the profiles, such as
 ##'   `"profile_phi"`, and `"profile"` for every profile.
 ##'   The default is every panel that has something to show. A chosen panel
 ##'   with nothing to show gives a message saying why, and which extra check
-##'   of [check_fit()] would compute it. If no panel has anything to show,
-##'   `plot_check()` stops with those messages.
-##' @param ... For `plot()`, the arguments of `plot_check()`. For
-##'   `plot_check()`, not used, and an error if given, so that a misspelt
+##'   of [check_computation()] would compute it. If no panel has anything to
+##'   show, `plot_computation()` stops with those messages.
+##' @param ... For `plot()`, the arguments of `plot_computation()`. For
+##'   `plot_computation()`, not used, and an error if given, so that a misspelt
 ##'   argument is not ignored.
 ##' @return A `ggplot` object when one panel is drawn, and otherwise a
 ##'   `patchwork` object that arranges the panels in two columns. Nothing is
 ##'   drawn until the object is printed, so it can be saved or changed first.
-##' @seealso [check_fit()], [summary.RiskMap_check()]
+##' @seealso [check_computation()], [summary.RiskMap_check()]
 ##' @examples
 ##' \donttest{
 ##' data(liberia)
@@ -1068,17 +1068,17 @@ format_checks <- function(x) {
 ##' # A short profile of the scale keeps the example quick
 ##' profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
 ##'                     seed = 1, messages = FALSE)
-##' checked <- check_fit(fit, extra = "radius", profile = profiles)
-##' plot_check(checked)
-##' plot_check(checked,
-##'            which = c("certificate", "screen", "radius", "profile_phi"))
+##' checked <- check_computation(fit, extra = "radius", profile = profiles)
+##' plot_computation(checked)
+##' plot_computation(checked,
+##'                  which = c("certificate", "screen", "radius", "profile_phi"))
 ##' # The same panels
 ##' plot(checked)
 ##' }
 ##' @export
-plot_check <- function(x, which = NULL, ...) {
+plot_computation <- function(x, which = NULL, ...) {
   check_supplied(x)
-  check_plot_object(x, "RiskMap_check", "plot_check", "check_fit")
+  check_plot_object(x, "RiskMap_check", "plot_computation", "check_computation")
   check_dots_unused(...)
   panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
                    "held_variances", "screen", "radius")
@@ -1111,10 +1111,10 @@ plot_check <- function(x, which = NULL, ...) {
   patchwork::wrap_plots(panels, ncol = 2L)
 }
 
-##' @rdname plot_check
+##' @rdname plot_computation
 ##' @method plot RiskMap_check
 ##' @export
-plot.RiskMap_check <- function(x, ...) plot_check(x, ...)
+plot.RiskMap_check <- function(x, ...) plot_computation(x, ...)
 
 ##' Every panel of the checks, NULL where there is nothing to show
 ##' @noRd
@@ -1163,7 +1163,7 @@ explain_missing_panels <- function(x, names) {
       }
       if (!length(profiled)) {
         return(paste0("The panel \"", name, "\" needs the extra check ",
-                      "\"profile\", check_fit(fit, extra = \"profile\")."))
+                      "\"profile\", check_computation(fit, extra = \"profile\")."))
       }
       return(paste0("The panel \"", name, "\" has no profile, since the ",
                     "profiles are of ", join_phrases(profiled), "."))
@@ -1174,7 +1174,7 @@ explain_missing_panels <- function(x, names) {
       }
       if (!gaussian) {
         return(paste0("The panel \"radius\" needs the extra check ",
-                      "\"radius\", check_fit(fit, extra = \"radius\")."))
+                      "\"radius\", check_computation(fit, extra = \"radius\")."))
       }
     }
     if (name %in% c("held_variances", "screen")) {

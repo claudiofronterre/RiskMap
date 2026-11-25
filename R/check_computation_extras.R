@@ -1,4 +1,4 @@
-##' The extra checks of `check_fit()`, each with what it computes
+##' The extra checks of `check_computation()`, each with what it computes
 ##'
 ##' The names are those that `extra` takes, in the order the checks run. The
 ##' description completes a sentence such as "Computing ...".

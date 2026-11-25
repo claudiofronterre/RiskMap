@@ -132,8 +132,8 @@
 ##' }
 ##' @seealso The methods for a profile are `print()`, on this page, and
 ##'   [plot_profile()], which `plot()` of the profile also calls.
-##'   [check_fit()] checks the profiles, and [parametric_bootstrap()] gives
-##'   bootstrap intervals.
+##'   [check_computation()] checks the profiles, and [parametric_bootstrap()]
+##'   gives bootstrap intervals.
 ##' @export
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             n_points = 11L, n_grid = 11L, span = 3,

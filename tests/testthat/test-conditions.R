@@ -69,16 +69,16 @@ test_that("conditions are raised through the RiskMap constructors", {
 })
 
 test_that("leaving out a required argument gives a RiskMap input error", {
-  error <- expect_input_error(check_fit(), "object",
+  error <- expect_input_error(check_computation(), "object",
                               "`object` is missing, with no default.")
-  expect_identical(as.character(error$call[[1L]]), "check_fit")
+  expect_identical(as.character(error$call[[1L]]), "check_computation")
   expect_input_error(glgpm(y ~ gp(), family = "gaussian"), "data")
   expect_input_error(variogram(gaussian_data), "variable")
   # An argument passed on without a value is missing too, and the error
   # names the function the user called.
-  wrapper <- function(fit) check_fit(fit)
+  wrapper <- function(fit) check_computation(fit)
   error <- expect_input_error(wrapper(), "object")
-  expect_identical(as.character(error$call[[1L]]), "check_fit")
+  expect_identical(as.character(error$call[[1L]]), "check_computation")
 })
 
 test_that("a message without a bullet gets the information sign", {

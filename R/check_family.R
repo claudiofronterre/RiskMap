@@ -2,10 +2,11 @@
 ##'
 ##' The checks of step 5 of #253. The tests run them on every family of
 ##' `riskmap_families` with each of its links, so that a family or a link
-##' added to the table is checked as soon as it is there, and `check_fit()`
-##' runs them on a link given as a function to learn whether its likelihood
-##' is convex anywhere. On records of the kinds the family meets
-##' (`check_family_records()`), at the linear predictors `eta`, it checks that
+##' added to the table is checked as soon as it is there, and
+##' `check_computation()` runs them on a link given as a function to learn
+##' whether its likelihood is convex anywhere. On records of the kinds the
+##' family meets (`check_family_records()`), at the linear predictors `eta`, it
+##' checks that
 ##' - the inverse link gives a mean in the range of the family,
 ##' - the log-likelihood by which the engine weights draws, the
 ##'   `log_likelihood()` of the family object, is the family's log density
@@ -48,8 +49,8 @@
 ##' (`inverse_link`). The derivatives of the built-in links are exact, which
 ##' the `tolerance` of 10^-6 suits. Those of a link given as a function come
 ##' from `Deriv` or from numerical differences, whose second derivative is
-##' accurate only to about 10^-6, so `check_fit()` reads only `convex_at` for
-##' such a link.
+##' accurate only to about 10^-6, so `check_computation()` reads only
+##' `convex_at` for such a link.
 ##'
 ##' Returns a list with `problems`, a sentence for each check that fails,
 ##' empty if none does, and `convex_at`, NULL or the linear predictor at

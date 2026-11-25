@@ -24,7 +24,7 @@ coefficients and of the covariance parameters on their natural scale,
 the log-likelihood and, for binomial, Poisson and negative binomial models, whether the
 Monte Carlo error of the estimate is certified. Standard errors and
 confidence intervals are given by \code{\link[=summary.RiskMap]{summary.RiskMap()}}, and the
-checks on the computation by \code{\link[=check_fit]{check_fit()}}.
+checks on the computation by \code{\link[=check_computation]{check_computation()}}.
 }
 \examples{
 data(italy_sim)

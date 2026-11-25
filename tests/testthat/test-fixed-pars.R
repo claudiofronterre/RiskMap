@@ -371,7 +371,7 @@ test_that("predictions with parameter uncertainty keep held parameters", {
                      "parameter_uncertainty")
 })
 
-test_that("check_fit() says that a fit holding every parameter estimates nothing", {
+test_that("check_computation() says that a fit holding every parameter estimates nothing", {
   fit <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
@@ -379,14 +379,14 @@ test_that("check_fit() says that a fit holding every parameter estimates nothing
     messages = FALSE,
     fixed_pars = list(beta = c(0.6, 0), sigma2 = 0.5, phi = 0.3)
   ))
-  checks <- check_fit(fit, messages = FALSE)$checks
+  checks <- check_computation(fit, messages = FALSE)$checks
   row <- checks[checks$check == "Monte Carlo accuracy", ]
   expect_identical(row$status, "OK")
   expect_match(row$finding, "Every parameter is held by `fixed_pars`",
                fixed = TRUE)
   # The log-likelihood is still a Monte Carlo estimate.
   expect_match(row$finding, "Monte Carlo estimate from one bank of", fixed = TRUE)
-  gaussian <- check_fit(gaussian_model, messages = FALSE)$checks
+  gaussian <- check_computation(gaussian_model, messages = FALSE)$checks
   expect_identical(gaussian$finding[gaussian$check == "Monte Carlo accuracy"],
                    "A Gaussian fit has no Monte Carlo error.")
 })

@@ -141,7 +141,7 @@
       Monte Carlo maximum likelihood
       v Certified. The Monte Carlo error of the estimate is within 0.059 statistical
         standard errors (an approximate 95% bound, tolerance 0.1).
-      v No check needs a look. See `check_fit()` for the details.
+      v No check needs a look. See `check_computation()` for the details.
 
 ---
 
@@ -171,7 +171,7 @@
       x Not certified. The Newton correction of the estimate did not converge on the
         validation draws, so the approximate 95% bound of 0.041 statistical standard
         errors may not hold. Refit with a larger `max_draws` in `set_control_mcml()`.
-      ! 2 checks need a look. See `check_fit()`.
+      ! 2 checks need a look. See `check_computation()`.
 
 # print() of the summary of a cross-validation formats its scores
 

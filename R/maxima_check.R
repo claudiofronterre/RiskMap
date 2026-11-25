@@ -641,8 +641,8 @@ estimate_on_comparison_bank <- function(engine, penalty, parameters, n_draws,
 ##' with the spatial variance at zero (`at_zero_variance`) is also judged by
 ##' `judge_spatial_share()`. The alarm keeps the bound and its quadrature
 ##' error at each screened scale (`bounds`), and the bounds over scales and
-##' spatial shares where they were computed (`shares`), which `check_fit()`
-##' reports and plots.
+##' spatial shares where they were computed (`shares`), which
+##' `check_computation()` reports and plots.
 ##' @noRd
 judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
                               n_draws, seed, at_zero_variance = FALSE,
@@ -742,8 +742,8 @@ judge_spatial_share <- function(screen, fit, estimate, tolerance) {
 ##' A kept maximum at a positive scale below the shortest screened one whose
 ##' log-likelihood is not clearly above the limit at this Monte Carlo
 ##' precision stays a candidate like any other, and the record notes it as
-##' `near_limit` for `check_fit()`. An alarm persists if its exact value still
-##' exceeds the kept maximum, whatever the comparison with the limit says.
+##' `near_limit` for `check_computation()`. An alarm persists if its exact value
+##' still exceeds the kept maximum, whatever the comparison with the limit says.
 ##' @return The kept `optimised` result, a `check` table of the candidates
 ##' (NULL if no refit was run), whether the kept maximum is `separate` from
 ##' the fitted one, whether the choice is `ambiguous`, the record of the
@@ -876,7 +876,7 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
       !at_zero_variance && scale < min(screen$log_phi)) {
     # A positive short scale whose likelihood is not clearly above the limit
     # at this Monte Carlo precision. The candidate is kept and assessed as
-    # usual, and check_fit() says so.
+    # usual, and check_computation() says so.
     if (is_near_limit(judge_kept()$value, judge_kept()$se, limit,
                       screen$alarm_multiplier, screen$comparison_tolerance)) {
       record$near_limit <- list(
