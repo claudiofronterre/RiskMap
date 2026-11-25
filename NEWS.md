@@ -86,7 +86,9 @@ in the source repository.
 
 - `assess_prediction()` compares models by spatial cross-validation. Every
   score is a loss, so lower is better, and `PIT_area` is given once for all
-  test observations, next to its value under perfect calibration.
+  test observations, next to its value under perfect calibration. Counts are
+  scored with their exact distribution given the draws of the mean, where
+  `assess_pp()` simulated them.
   `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses predictions on them.
 - In `assess_simulation()` every value belongs to a class, those beyond the

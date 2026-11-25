@@ -727,7 +727,9 @@ test_that("the expected PIT_area shrinks with the test observations and allows f
                                 numeric(length(u)))), u)
   })
   set.seed(2)
-  discrete <- expected_pit_area(list(list(rows = seq_along(cdf), values = cdf)),
+  values <- lapply(cdf, function(Fk) list(counts = -1:60, values = c(0, Fk)))
+  discrete <- expected_pit_area(list(list(rows = seq_along(cdf),
+                                          values = values)),
                                 TRUE, u, n_replicates = 400L)
   expect_equal(discrete, mean(brute), tolerance = 0.08)
 })
@@ -831,7 +833,7 @@ test_that("assess_prediction scores with the model's inverse link", {
     sum((F_k - as.numeric(0:10 >= y))^2)
   }
   expected <- vapply(c(9, 6), exact_crps, numeric(1), p = pnorm(1))
-  expect_equal(out$model$probit$metric$CRPS[[1]], expected, tolerance = 0.05)
+  expect_equal(out$model$probit$metric$CRPS[[1]], expected)
   logit_crps <- vapply(c(9, 6), exact_crps, numeric(1), p = plogis(1))
   expect_gt(abs(out$model$probit$metric$CRPS[[1]][1] - logit_crps[1]), 0.2)
 })

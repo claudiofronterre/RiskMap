@@ -1657,6 +1657,27 @@ model, so the CRPS and SCRPS are those of before and identical models get
 identical values. Under perfect calibration the area is about 0.31/√n for n
 test observations, so a per-test-set area mostly measured the size of the test
 sets.
+- `assess_prediction()` scores binomial, Poisson and negative binomial counts
+with F(k), the average over the draws of the mean of the family's distribution
+function, instead of with one count simulated for each draw. The simulated
+counts had no seed, so the same fit got different scores in two positions of
+`models` (mean CRPS 3.477 and 3.469 in one example). CRPS, SCRPS, the
+calibration curve, `PIT_area` and `PIT_area_expected` of these families change
+by the size of that noise. The draws of the linear predictor and the seeds are
+those of before, and Gaussian results are identical bit for bit. F is
+evaluated at every count up to 100 and on an adaptive grid beyond, where the
+sum over a cell is in closed form, with a relative error of about 10^-5 in the
+CRPS. With 2,000 draws the score of a count takes about 5 ms with 20 trials,
+25 ms with 100, and 0.1 to 0.5 s for predicted counts in the thousands or
+more, most where the draws of the mean are widely dispersed
+(`count_distribution()`). A rare event whose simulated counts were all zero
+has a SCRPS. A test set of counts is recorded as a failure if a draw of the
+mean is not finite, is outside the range of the family or gives counts above
+2^53, or if a binomial denominator is not a whole number. A binomial fit was
+scored without such a draw, and its scores with such a denominator were wrong.
+- The families have the trait `distribution_function()`, which `check_family()`
+compares with the density, and `score_limit()`, the largest count that is
+scored, instead of `score_support()`, which needed the simulated counts.
 - `summary()` of a cross-validation gives `CRPS` and `SCRPS` averaged over every
 test observation with a score, `PIT_area` and `PIT_area_expected`. Before, the
 means of the test sets were weighted by their sizes, which counted the missing

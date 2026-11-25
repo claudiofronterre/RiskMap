@@ -441,15 +441,24 @@ riskmap_families <- list(
 ##'   responses `y` at the mean `mean` of the inverse link, from `dnorm()`,
 ##'   `dbinom()`, `dpois()` or `dnbinom()` with the exposure or trials and the
 ##'   family's parameters as `simulate()` takes them. `check_family()` compares
-##'   the engine's log-likelihood and the simulator with it.
+##'   the engine's log-likelihood, the distribution function and the simulator
+##'   with it.
+##' - `distribution_function(y, mean, units_m, parameters)`, the probability of
+##'   a response of at most `y` at the mean `mean`, from `pnorm()`, `pbinom()`,
+##'   `ppois()` or `pnbinom()` with the arguments of `log_density()`.
+##'   `assess_prediction()` averages it over the draws of the mean
+##'   (`count_distribution()`).
 ##' - `simulate(means, units_m, parameters)`, one response for each mean, from
 ##'   `rbinom()` with `units_m` trials, `rpois()` with exposure `units_m`,
 ##'   `rnbinom()` with exposure `units_m` and size `parameters$theta`, or
 ##'   `rnorm()` with the measurement error variance `parameters$sigma2_me`
-##'   (`draw_simulation()`, `assess_prediction()`).
-##' - `score_support(draws, y, units_m, means, parameters)`, the counts over
-##'   which a discrete prediction of a record is scored, from the draws of its
-##'   response and their means, NULL for a family that is not discrete.
+##'   (`draw_simulation()`).
+##' - `score_limit(y, units_m, means, parameters)`, the largest count over
+##'   which a discrete prediction of a record with the observed count `y` is
+##'   scored, from the draws of its mean. The number of trials for the binomial
+##'   family. For the others, the larger of `y` and a count that is exceeded
+##'   with a probability of at most 10^-10 in every draw, that of the largest
+##'   mean. NULL for a family that is not discrete.
 ##'
 ##' The negative binomial family hands the engine its records as binomial ones
 ##' (`engine_records()`), so the methods that start a fit work on those
@@ -496,11 +505,14 @@ family_traits <- function(family) {
       log_density = function(y, mean, units_m, parameters) {
         dnorm(y, mean, sqrt(parameters$sigma2_me), log = TRUE)
       },
+      distribution_function = function(y, mean, units_m, parameters) {
+        pnorm(y, mean, sqrt(parameters$sigma2_me))
+      },
       simulate = function(means, units_m, parameters) {
         as.numeric(means) + rnorm(length(means),
                                   sd = sqrt(parameters$sigma2_me))
       },
-      score_support = function(draws, y, units_m, means, parameters) NULL
+      score_limit = function(y, units_m, means, parameters) NULL
     ),
     binomial = list(
       validate = function(y, units_m) check_binomial(y, units_m),
@@ -523,12 +535,13 @@ family_traits <- function(family) {
       log_density = function(y, mean, units_m, parameters) {
         dbinom(y, units_m, mean, log = TRUE)
       },
+      distribution_function = function(y, mean, units_m, parameters) {
+        pbinom(y, units_m, mean)
+      },
       simulate = function(means, units_m, parameters) {
         rbinom(length(means), size = units_m, prob = as.numeric(means))
       },
-      score_support = function(draws, y, units_m, means, parameters) {
-        0:units_m
-      }
+      score_limit = function(y, units_m, means, parameters) units_m
     ),
     poisson = list(
       validate = function(y, units_m) invisible(TRUE),
@@ -554,12 +567,14 @@ family_traits <- function(family) {
       log_density = function(y, mean, units_m, parameters) {
         dpois(y, units_m * mean, log = TRUE)
       },
+      distribution_function = function(y, mean, units_m, parameters) {
+        ppois(y, units_m * mean)
+      },
       simulate = function(means, units_m, parameters) {
         rpois(length(means), lambda = as.numeric(means) * units_m)
       },
-      score_support = function(draws, y, units_m, means, parameters) {
-        lambda <- units_m * means
-        0:max(max(draws), y, qpois(0.999, mean(lambda)))
+      score_limit = function(y, units_m, means, parameters) {
+        max(y, qpois(1e-10, units_m * max(means), lower.tail = FALSE))
       }
     ),
     negative_binomial = list(
@@ -577,14 +592,16 @@ family_traits <- function(family) {
         dnbinom(y, size = family_size(parameters), mu = units_m * mean,
                 log = TRUE)
       },
+      distribution_function = function(y, mean, units_m, parameters) {
+        pnbinom(y, size = family_size(parameters), mu = units_m * mean)
+      },
       simulate = function(means, units_m, parameters) {
         rnbinom(length(means), size = family_size(parameters),
                 mu = as.numeric(means) * units_m)
       },
-      score_support = function(draws, y, units_m, means, parameters) {
-        lambda <- units_m * means
-        0:max(max(draws), y, qnbinom(0.999, size = family_size(parameters),
-                                     mu = mean(lambda)))
+      score_limit = function(y, units_m, means, parameters) {
+        max(y, qnbinom(1e-10, size = family_size(parameters),
+                       mu = units_m * max(means), lower.tail = FALSE))
       },
       engine_records = function(y, units_m, offset, parameters) {
         theta <- family_size(parameters)
