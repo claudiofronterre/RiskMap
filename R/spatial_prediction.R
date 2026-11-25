@@ -1147,6 +1147,9 @@ build_prediction_components <- function(object, prediction_setup, include,
   if (!is.matrix(spatial)) {
     spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
   }
+  # Samples of the distinct locations give each row those of its location.
+  location <- prediction_setup$location_index
+  if (!is.null(location)) spatial <- spatial[location, , drop = FALSE]
   n_locations <- nrow(spatial)
   n_samples <- ncol(spatial)
   fixed <- prediction_row_values(prediction_setup$mu_pred, n_locations)
@@ -2333,11 +2336,13 @@ gaussian_random_effect_samples <- function(latent, prediction_weights,
 #' `mcmc_seed`, after which the caller's random number state is restored, so
 #' the predictive draws that follow start from that state.
 #'
-#' The spatial samples have a row for each prediction row. At the observed
-#' locations and in joint predictions they are drawn once for each distinct
-#' location (`location_index`), so that records at one location share them.
-#' The effect of a level of an `re()` term that isn't in the fit is drawn from
-#' its distribution, independently of the data.
+#' At the observed locations, and in joint predictions with several rows at some
+#' location, the spatial samples have a row for each distinct location, and
+#' `location_index` gives the location of each prediction row, so that the rows
+#' at one location share its samples (`build_prediction_components()`).
+#' Otherwise they have a row for each prediction row. The effect of a level of
+#' an `re()` term that isn't in the fit is drawn from its distribution,
+#' independently of the data.
 #' @noRd
 draw_prediction_samples <- function(object, prediction_data, prediction,
                                     include, control_mcmc = NULL,
@@ -2817,9 +2822,6 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     out$re <- list(levels = random_levels$levels, samples = re_samples)
   }
 
-  if (!is.null(location_index)) {
-    out$S_samples <- out$S_samples[location_index, , drop = FALSE]
-  }
   out["location_index"] <- list(location_index)
   out$obs_loc  <- obs_loc
   if (obs_loc){
