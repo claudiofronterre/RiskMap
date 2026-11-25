@@ -680,7 +680,7 @@ nobs.RiskMap <- function(object, ...) {
 ##'   `stages`, `fitting_draws` and `validation_draws` (at the
 ##'   last stage), `certification_bank` (the effective draws and Pareto
 ##'   shape of the certification draws), `checks_to_review`, the number
-##'   of checks of [check_fit()] that need a look,
+##'   of checks of [check_computation()] that need a look,
 ##'   `starting_values`, where the starting values of the parameters not
 ##'   given in `start_pars` came from, `"current"` (RiskMap's
 ##'   defaults) or `"transformed_gaussian"` (a Gaussian fit to the

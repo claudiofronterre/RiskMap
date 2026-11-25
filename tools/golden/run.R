@@ -161,6 +161,8 @@ fit_binomial <- function(formula, data, ..., seed) {
         seed = seed, control_mcmc = ctrl, ...)
 }
 quiet <- function(expr) suppressWarnings(suppressMessages(expr))
+# check_computation() was check_fit() until November 2026, so that older commits can still be run.
+if (!exists("check_computation", envir = ns, inherits = FALSE)) check_computation <- ns$check_fit
 # From step 2d of the parameter table, held parameters are given in fixed_pars, and before it through
 # gp(nugget = <value>), fix_var_me and negative_binomial(theta). F31, F33 and F36 take whichever the commit has, with
 # the same model and the same held values in both branches.
@@ -334,7 +336,7 @@ if (holds_any) fits <- c(fits, list(
 # The fit is not kept again in record$fits, where compare.R does not look for it.
 run_fit <- function(make) {
   fit <- quiet(make())
-  check <- quiet(check_fit(fit, messages = FALSE))
+  check <- quiet(check_computation(fit, messages = FALSE))
   list(fit = fit, check = check,
        text = c(texts(fit, summary(fit), check), list(capture.output(print(summary(check))))))
 }
@@ -378,7 +380,7 @@ downstream <- list(
     list(profile = prof, text = texts(prof))
   },
   extras = function(fit, data) {
-    check <- check_fit(fit, extra = c("profile", "radius"), messages = FALSE)
+    check <- check_computation(fit, extra = c("profile", "radius"), messages = FALSE)
     list(check = check, text = c(texts(check), list(capture.output(print(summary(check))))))
   },
   assess = function(fit, data) {

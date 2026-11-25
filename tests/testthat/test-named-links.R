@@ -205,10 +205,10 @@ test_that("print() and summary() name the link", {
   expect_no_match(title, "link")
 })
 
-test_that("check_fit() notes a link not known to be log-concave", {
+test_that("check_computation() notes a link not known to be log-concave", {
   skip_on_cran()
   link_rows <- function(fit) {
-    checks <- check_fit(fit)$checks
+    checks <- check_computation(fit)$checks
     checks[checks$check == "Link", ]
   }
   # Logit, probit and log are known to be concave, and the radius has been
@@ -238,7 +238,7 @@ test_that("check_fit() notes a link not known to be log-concave", {
   expect_identical(cauchit$fix, "")
   # The row is OK, so summary() does not count it among the checks to review.
   expect_identical(summarise_mcml_fit(named_fits$cauchit)$checks_to_review,
-                   sum(check_fit(named_fits$cauchit)$checks$status != "OK"))
+                   sum(check_computation(named_fits$cauchit)$checks$status != "OK"))
 
   # A concave link given as a function is checked on a grid, which cannot show
   # that it is concave everywhere.
@@ -256,10 +256,10 @@ test_that("check_fit() notes a link not known to be log-concave", {
                              "binomial"))
 })
 
-test_that("check_fit() says where a link given as a function is convex", {
+test_that("check_computation() says where a link given as a function is convex", {
   skip_on_cran()
   fit <- fit_binomial("binomial", function(eta) 0.01 + 0.89 * plogis(eta))
-  checked <- check_fit(fit)
+  checked <- check_computation(fit)
   row <- checked$checks[checked$checks$check == "Link", ]
   expect_match(row$finding, paste0(
     "^The link was given as a function, under which the log-likelihood of a ",
@@ -276,12 +276,12 @@ test_that("check_fit() says where a link given as a function is convex", {
 
   # A link that cannot be evaluated on the grid, as one whose variable is gone
   # from the session, is said to be of unknown concavity, and print(),
-  # summary() and check_fit() still run.
+  # summary() and check_computation() still run.
   sensitivity <- 0.9
   fit <- fit_binomial("binomial", function(eta) sensitivity * plogis(eta))
   rm(sensitivity)
   expect_no_error(capture.output(print(fit), print(summary(fit))))
-  checked <- check_fit(fit)
+  checked <- check_computation(fit)
   row <- checked$checks[checked$checks$check == "Link", ]
   expect_match(row$finding, paste0(
     "^The link was given as a function, so it is not known whether it makes"

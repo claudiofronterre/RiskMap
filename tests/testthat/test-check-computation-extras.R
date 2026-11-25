@@ -42,21 +42,21 @@ test_that("the extra checks are named, with all for every one", {
   expect_identical(match_extra_checks(c("radius", "profile")),
                    c("profile", "radius"))
   expect_identical(match_extra_checks("all"), c("profile", "radius"))
-  error <- expect_input_error(check_fit(binomial_model, extra = "radii"),
+  error <- expect_input_error(check_computation(binomial_model, extra = "radii"),
                               "extra")
   expect_match(conditionMessage(error), "\"profile\" and \"radius\", or \"all\"",
                fixed = TRUE)
-  expect_error(check_fit(binomial_model, extra = c("profile", "a", "b")),
+  expect_error(check_computation(binomial_model, extra = c("profile", "a", "b")),
                "unknown extra checks \"a\" and \"b\"", fixed = TRUE)
-  expect_input_error(check_fit(binomial_model, extra = TRUE),
+  expect_input_error(check_computation(binomial_model, extra = TRUE),
                "extra")
-  expect_input_error(check_fit(binomial_model, extra = NA_character_),
+  expect_input_error(check_computation(binomial_model, extra = NA_character_),
                "extra")
-  expect_input_error(check_fit(binomial_model, messages = NA), "messages")
+  expect_input_error(check_computation(binomial_model, messages = NA), "messages")
 })
 
 test_that("a fit without extras keeps every default check and no extra", {
-  checked <- check_fit(binomial_model)
+  checked <- check_computation(binomial_model)
   expect_named(checked, c("checks", "draws", "stages", "moves", "tolerance",
                           "results", "extras", "not_computed", "fit_seconds"))
   expect_identical(checked$extras, list())
@@ -74,14 +74,14 @@ test_that("a fit without extras keeps every default check and no extra", {
   }
   expect_identical(checked$checks,
                    list_fit_checks(binomial_model, summarise_mcml_fit(binomial_model)))
-  expect_identical(names(check_fit(gaussian_model)$results), "Monte Carlo accuracy")
-  expect_null(check_fit(gaussian_model)$results[[1L]]$data)
+  expect_identical(names(check_computation(gaussian_model)$results), "Monte Carlo accuracy")
+  expect_null(check_computation(gaussian_model)$results[[1L]]$data)
 })
 
 test_that("the print gives the checks that need a look in full and the others on a line", {
   # The print reads only the table of checks, the draws and what was not
   # computed.
-  checked <- check_fit(binomial_model)
+  checked <- check_computation(binomial_model)
   before <- structure(unclass(checked)[c("checks", "draws", "stages", "moves",
                                          "tolerance")],
                       class = "RiskMap_check")
@@ -129,7 +129,7 @@ test_that("the profile check runs on request, from a stream of the fit's seed", 
   set.seed(11)
   before <- .Random.seed
   expect_message(
-    checked <- check_fit(binomial_model, extra = "profile"),
+    checked <- check_computation(binomial_model, extra = "profile"),
     paste0("Computing the profiles of the 3 covariance parameters, which should ",
            "take about .*, from the .* the fit took")
   )
@@ -141,11 +141,11 @@ test_that("the profile check runs on request, from a stream of the fit's seed", 
   expect_identical(checked$extras$profile$data$settings$seed,
                    make_extra_check_seed(binomial_model$seed, 9600L))
   expect_contains(checked$checks$check, "Profile likelihood")
-  expect_identical(nrow(checked$checks), nrow(check_fit(binomial_model)$checks) + 1L)
+  expect_identical(nrow(checked$checks), nrow(check_computation(binomial_model)$checks) + 1L)
   # Reproducible, with or without a random number state in the session.
   rm(".Random.seed", envir = .GlobalEnv)
-  expect_silent(again <- check_fit(binomial_model, extra = "profile",
-                                   messages = FALSE))
+  expect_silent(again <- check_computation(binomial_model, extra = "profile",
+                                           messages = FALSE))
   expect_false(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
   expect_identical(again$extras, checked$extras)
   expect_identical(again$checks, checked$checks)
@@ -163,36 +163,36 @@ test_that("a profile computed by the user is used as it is", {
   skip_on_cran()
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, seed = 1, messages = FALSE)
-  expect_silent(checked <- check_fit(binomial_model, profile = scale_profile))
+  expect_silent(checked <- check_computation(binomial_model, profile = scale_profile))
   expect_identical(checked$extras$profile$data, scale_profile)
   expect_identical(
-    check_fit(binomial_model, extra = "profile", profile = scale_profile)$extras,
+    check_computation(binomial_model, extra = "profile", profile = scale_profile)$extras,
     checked$extras
   )
-  expect_input_error(check_fit(binomial_model, profile = 1), "profile")
+  expect_input_error(check_computation(binomial_model, profile = 1), "profile")
   # Whatever parameters it covers, coefficients included.
   other_profile <- profile(binomial_model, parameters = c("cov", "sigma2"),
                            n_points = 5, n_draws = 200, seed = 1,
                            messages = FALSE)
-  other <- check_fit(binomial_model, profile = other_profile)
+  other <- check_computation(binomial_model, profile = other_profile)
   expect_identical(other$extras$profile$data, other_profile)
   expect_named(other$extras$profile$data$marginal, c("beta.cov", "sigma2"))
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   expect_identical(drawn_titles(plot(other, which = "profile")),
                    panel_titles(other, c("profile_beta.cov", "profile_sigma2")))
-  expect_input_error(check_fit(poisson_model, profile = scale_profile),
+  expect_input_error(check_computation(poisson_model, profile = scale_profile),
                "profile")
-  expect_input_error(check_fit(binomial_model, cores = 0),
+  expect_input_error(check_computation(binomial_model, cores = 0),
                "cores")
-  expect_input_error(check_fit(binomial_model, cores = 1.5),
+  expect_input_error(check_computation(binomial_model, cores = 1.5),
                "cores")
 })
 
 test_that("an extra check that does not apply or fails says why", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
-  expect_silent(checked <- check_fit(no_maximum_fit(), extra = "profile"))
+  expect_silent(checked <- check_computation(no_maximum_fit(), extra = "profile"))
   expect_identical(checked$extras, list())
   reason <- paste0("The profiles of the covariance parameters were not computed, ",
                    "because the likelihood has no maximum.")
@@ -210,8 +210,8 @@ test_that("an extra check that does not apply or fails says why", {
     cores <<- cores
     stop("no bank")
   })
-  failed <- check_fit(binomial_model, extra = "profile", messages = FALSE,
-                      cores = 3)
+  failed <- check_computation(binomial_model, extra = "profile", messages = FALSE,
+                              cores = 3)
   expect_identical(cores, 3L)
   expect_identical(failed$extras, list())
   expect_identical(
@@ -219,7 +219,7 @@ test_that("an extra check that does not apply or fails says why", {
     paste0("The profiles of the covariance parameters were not computed, ",
            "because their computation stopped with the error \"no bank\".")
   )
-  expect_identical(failed$checks, check_fit(binomial_model)$checks)
+  expect_identical(failed$checks, check_computation(binomial_model)$checks)
 })
 
 test_that("the profiles of a fit with a named link use that link", {
@@ -235,7 +235,7 @@ test_that("the profiles of a fit with a named link use that link", {
       stop("engine captured")
     }
   )
-  checked <- check_fit(probit, extra = "profile", messages = FALSE)
+  checked <- check_computation(probit, extra = "profile", messages = FALSE)
   expect_match(checked$not_computed[["profile"]], "engine captured")
   expect_identical(captured$link, "probit")
   expect_identical(captured$inv, probit$link_function$inv)
@@ -250,7 +250,7 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
   set.seed(12)
   before <- .Random.seed
   expect_message(
-    checked <- check_fit(binomial_model, extra = "radius"),
+    checked <- check_computation(binomial_model, extra = "radius"),
     paste0("^", cli::symbol$info, " Computing the predictions of how often ",
            "the radius of the bound ",
            "is too small, which should take about .*, from the .* the fit took")
@@ -273,7 +273,7 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
   rownames(row) <- NULL
   expect_identical(row, radius$row)
   expect_identical(nrow(checked$checks),
-                   nrow(check_fit(binomial_model)$checks) + 1L)
+                   nrow(check_computation(binomial_model)$checks) + 1L)
   printed <- capture.output(print(checked))
   expect_true(any(grepl(paste0(
     "^(", out_status_symbol("OK"),
@@ -326,29 +326,29 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
 test_that("a radius check that does not apply or fails says why", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
-  expect_silent(gaussian <- check_fit(gaussian_model, extra = "radius"))
+  expect_silent(gaussian <- check_computation(gaussian_model, extra = "radius"))
   reason <- paste0("The predictions of how often the radius of the bound is ",
                    "too small were not computed, because a Gaussian fit has ",
                    "no Monte Carlo error.")
   expect_identical(gaussian$not_computed, c(radius = reason))
   expect_identical(gaussian$extras, list())
   expect_error(plot(gaussian, which = "radius"), reason, fixed = TRUE)
-  expect_error(plot(check_fit(gaussian_model), which = "radius"),
+  expect_error(plot(check_computation(gaussian_model), which = "radius"),
                "no stages to plot")
-  expect_silent(no_maximum <- check_fit(no_maximum_fit(), extra = "radius"))
+  expect_silent(no_maximum <- check_computation(no_maximum_fit(), extra = "radius"))
   expect_match(no_maximum$not_computed[["radius"]],
                "because the likelihood has no maximum.", fixed = TRUE)
   uncertified <- binomial_model
   uncertified$mcml_history[[1L]]$certificate_radius <- NA_real_
   expect_match(
-    check_fit(uncertified, extra = "radius", messages = FALSE)$not_computed[["radius"]],
+    check_computation(uncertified, extra = "radius", messages = FALSE)$not_computed[["radius"]],
     "because the fit has no certificate whose radius could be checked (outcome '",
     fixed = TRUE
   )
   local_mocked_bindings(fit_check_radius = function(object, ...) {
     stop("no chains")
   })
-  failed <- check_fit(binomial_model, extra = "radius", messages = FALSE)
+  failed <- check_computation(binomial_model, extra = "radius", messages = FALSE)
   expect_identical(failed$extras, list())
   expect_identical(
     failed$not_computed[["radius"]],
@@ -356,14 +356,14 @@ test_that("a radius check that does not apply or fails says why", {
            "small were not computed, because their computation stopped with ",
            "the error \"no chains\".")
   )
-  expect_identical(failed$checks, check_fit(binomial_model)$checks)
+  expect_identical(failed$checks, check_computation(binomial_model)$checks)
 })
 
 test_that("a Gaussian profile needs no seed and can be plotted alone", {
   skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
-  expect_message(checked <- check_fit(gaussian_model, extra = "profile"),
+  expect_message(checked <- check_computation(gaussian_model, extra = "profile"),
                  paste0("^", cli::symbol$info, " Computing the profiles of ",
                         "the 4 covariance parameters.$"))
   expect_null(make_extra_check_seed(gaussian_model$seed, 9600L))
@@ -563,7 +563,7 @@ test_that("the summary gives the numbers behind each finding", {
   optimizer <- attr(flagged, "optimizer")
   optimizer$mcml_boundary <- "nugget variance (tau2)"
   attr(flagged, "optimizer") <- optimizer
-  checked <- check_fit(flagged)
+  checked <- check_computation(flagged)
   summarised <- summary(checked)
   expect_s3_class(summarised, "summary.RiskMap_check")
   expect_identical(unname(vapply(summarised$results,
@@ -604,7 +604,7 @@ test_that("the summary gives the numbers behind each finding", {
     )
   ))
 
-  gaussian <- capture.output(print(summary(check_fit(gaussian_model))))
+  gaussian <- capture.output(print(summary(check_computation(gaussian_model))))
   expect_identical(gaussian[2:4],
                    c("", paste(out_status_symbol("OK"), "Monte Carlo accuracy"),
                      "  A Gaussian fit has no Monte Carlo error."))
@@ -614,8 +614,8 @@ test_that("the summary gives the numbers behind each finding", {
 test_that("the summary gives the full results of the extra checks", {
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, seed = 1, messages = FALSE)
-  printed <- capture.output(print(summary(check_fit(binomial_model,
-                                                    profile = scale_profile))))
+  printed <- capture.output(print(summary(check_computation(binomial_model,
+                                                            profile = scale_profile))))
   expect_true(any(grepl(paste0("^", out_status_symbol("SUSPICIOUS"),
                                " Profile likelihood$"), printed)))
   expect_contains(printed, paste0("  ", capture.output(print(scale_profile))))
@@ -624,8 +624,8 @@ test_that("the summary gives the full results of the extra checks", {
   # A heading and a line for each point.
   expect_gte(length(printed) - points, nrow(scale_profile$marginal$phi) + 1L)
 
-  missing <- capture.output(print(summary(check_fit(no_maximum_fit(),
-                                                    extra = "profile"))))
+  missing <- capture.output(print(summary(check_computation(no_maximum_fit(),
+                                                            extra = "profile"))))
   expect_match(squish(missing),
                paste0("The profiles of the covariance parameters were not ",
                       "computed, because the likelihood has no maximum."),

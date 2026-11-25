@@ -1671,8 +1671,9 @@ read_refit_change <- function(engine) {
 ##' with a last change below its tolerance instead of counting a failure
 ##' (`build_gaussian_proposal()`), and the largest such `change`. Recorded in a
 ##' stage as `stalled_anchors` and `stalled_change` when there are any, so that
-##' `check_fit()` can report them. NULL for an engine that does not record them,
-##' such as those that other packages build on `fit_adaptive_mcml()`.
+##' `check_computation()` can report them. NULL for an engine that does not
+##' record them, such as those that other packages build on
+##' `fit_adaptive_mcml()`.
 ##' @noRd
 read_stalled_anchors <- function(engine) {
   if (is.function(engine$stalled_anchors)) engine$stalled_anchors()

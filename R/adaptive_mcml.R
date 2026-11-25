@@ -1944,16 +1944,16 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D,
 ##'
 ##' An exact alarm shows that the estimate is not the global maximum. A separate
 ##' maximum, higher or about equal, means that Wald intervals may describe the
-##' uncertainty poorly. `check_fit()` gives the details and what to do.
+##' uncertainty poorly. `check_computation()` gives the details and what to do.
 ##' @noRd
 report_maxima_check <- function(fit) {
   if (isTRUE(fit$maxima_screen$alarm$persists)) {
-    riskmap_warn(c("An exact lower bound on the likelihood shows that the estimate is not the maximum likelihood estimate.", "i" = "See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("An exact lower bound on the likelihood shows that the estimate is not the maximum likelihood estimate.", "i" = "See {.fn check_computation}."), class = "riskmap_warning_fit")
   }
   if (isTRUE(fit$ambiguous_maxima)) {
-    riskmap_warn(c("Separate maxima of the likelihood fit about equally well, so Wald intervals may describe the uncertainty poorly.", "i" = "See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("Separate maxima of the likelihood fit about equally well, so Wald intervals may describe the uncertainty poorly.", "i" = "See {.fn check_computation}."), class = "riskmap_warning_fit")
   } else if (isTRUE(fit$better_maximum)) {
-    riskmap_warn(c("The check for other maxima found a maximum higher than the one reached from the starting values.", "i" = "The estimate is taken from it. See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("The check for other maxima found a maximum higher than the one reached from the starting values.", "i" = "The estimate is taken from it. See {.fn check_computation}."), class = "riskmap_warning_fit")
   }
   invisible(NULL)
 }
@@ -1967,19 +1967,20 @@ report_maxima_check <- function(fit) {
 ##' (`check_other_maxima()`), so the estimate alone gives the variance.
 ##' @noRd
 report_numerically_independent <- function() {
-  riskmap_warn(c("The fitted spatial scale is so short that the fit is numerically one of independent location effects.", "i" = "The spatial scale is unresolved, and standard errors and the Monte Carlo certificate are not reported. See {.fn check_fit}."), class = "riskmap_warning_fit")
+  riskmap_warn(c("The fitted spatial scale is so short that the fit is numerically one of independent location effects.", "i" = "The spatial scale is unresolved, and standard errors and the Monte Carlo certificate are not reported. See {.fn check_computation}."), class = "riskmap_warning_fit")
 }
 
 ##' Warn that the likelihood has no maximum
 ##'
 ##' Gives the cause, from the separation of the data (`fit$separation`, from
 ##' `find_separation()`) or else the regression coefficients that reached the
-##' bound of the search (`fit$coefficients_at_bound`). `check_fit()` says what
-##' can be done instead. `coefficient_names` names the regression coefficients.
+##' bound of the search (`fit$coefficients_at_bound`). `check_computation()`
+##' says what can be done instead. `coefficient_names` names the regression
+##' coefficients.
 ##' @noRd
 report_no_maximum <- function(fit, coefficient_names, family) {
   traits <- family_traits(family)
-  returned <- "The estimate is where the optimiser stopped, and it is returned without standard errors or a Monte Carlo certificate. See {.fn check_fit}."
+  returned <- "The estimate is where the optimiser stopped, and it is returned without standard errors or a Monte Carlo certificate. See {.fn check_computation}."
   separation <- fit$separation
   everywhere <- separation$everywhere
   if (!is.null(everywhere)) {
@@ -2014,8 +2015,8 @@ report_no_maximum <- function(fit, coefficient_names, family) {
 ##' Tell the user how a certified MCML fit ended
 ##'
 ##' Warns only about what changes how a result is read, in a sentence or two
-##' that point to `check_fit()`: a certificate that is missing or above the
-##' tolerance, a likelihood without a maximum, weak identification, other
+##' that point to `check_computation()`: a certificate that is missing or above
+##' the tolerance, a likelihood without a maximum, weak identification, other
 ##' maxima and a spatial variance at zero. With `messages`, a certified fit gets
 ##' one line. A fit whose likelihood has no maximum gets only the warning of
 ##' `report_no_maximum()`, since the others describe a maximum.
@@ -2027,15 +2028,15 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
     return(report_no_maximum(fit, coefficient_names, family))
   }
   if (layout$index$sigma2 %in% fit$boundary_parameters) {
-    riskmap_warn(c("The spatial variance {.code sigma2} was estimated as effectively zero, so the spatial scale cannot be estimated.", "i" = "See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("The spatial variance {.code sigma2} was estimated as effectively zero, so the spatial scale cannot be estimated.", "i" = "See {.fn check_computation}."), class = "riskmap_warning_fit")
   }
   report_maxima_check(fit)
   if (identical(fit$outcome, "numerically independent")) {
     report_numerically_independent()
   } else if (identical(fit$outcome, "weak identification")) {
-    riskmap_warn(c("The observed information matrix is singular, so some parameters, often the spatial scale, are not identifiable from these data.", "i" = "The estimate has no standard errors or Monte Carlo certificate. See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("The observed information matrix is singular, so some parameters, often the spatial scale, are not identifiable from these data.", "i" = "The estimate has no standard errors or Monte Carlo certificate. See {.fn check_computation}."), class = "riskmap_warning_fit")
   } else if (isTRUE(fit$held_variance_rising)) {
-    riskmap_warn(c("The Monte Carlo error of the estimate is not certified.", "x" = "The likelihood rises as a variance held at zero leaves it, so the estimate is not a maximum.", "i" = "See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("The Monte Carlo error of the estimate is not certified.", "x" = "The likelihood rises as a variance held at zero leaves it, so the estimate is not a maximum.", "i" = "See {.fn check_computation}."), class = "riskmap_warning_fit")
   } else if (!fit$certified) {
     last <- fit$history[[length(fit$history)]]
     refused <- isTRUE(last$residual_refused)
@@ -2047,7 +2048,7 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
     } else {
       "Its approximate 95% bound is {bound} statistical standard errors, above the tolerance of {tolerance}."
     }
-    riskmap_warn(c("The Monte Carlo error of the estimate is not certified.", "x" = reason, "i" = "See {.fn check_fit}."), class = "riskmap_warning_fit")
+    riskmap_warn(c("The Monte Carlo error of the estimate is not certified.", "x" = reason, "i" = "See {.fn check_computation}."), class = "riskmap_warning_fit")
   } else if (messages) {
     bound <- signif(fit$certificate, 2)
     riskmap_inform(c(v = "Certified. The Monte Carlo error of the estimate is within {bound} statistical standard errors (an approximate 95% bound, tolerance {tolerance})."))

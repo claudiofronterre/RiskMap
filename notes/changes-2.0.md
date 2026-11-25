@@ -27,7 +27,7 @@ be reliable, such as an uncertified Monte Carlo error, have
 - Errors from the compiled Langevin sampler are raised again as
 `riskmap_error_fit`, with the original error as the cause.
 - The `messages` argument of `glgpm()`, `predict()`, `profile()`,
-`parametric_bootstrap()`, `check_fit()`, `assess_prediction()` and
+`parametric_bootstrap()`, `check_computation()`, `assess_prediction()` and
 `assess_simulation()` defaults to the option `RiskMap.messages`, as
 `get_worldpop()`'s does, so `options(RiskMap.messages = FALSE)` silences them
 all.
@@ -38,8 +38,8 @@ by RiskMap input errors, and a unique abbreviation is now accepted wherever a
 choice is made, as `match.arg()` allows.
 - Leaving out an argument that has no default gives a RiskMap input error
 that names the argument and the function, such as "`object` is missing, with
-no default." from `check_fit()`, instead of R's error where the argument is
-first used.
+no default." from `check_computation()`, instead of R's error where the argument
+is first used.
 - Messages start with a symbol, as the printed output does. Most have an
 information sign, a step done has a tick, such as a certified fit or a
 finished bootstrap, and something to note has an exclamation mark. `glgpm()`
@@ -91,8 +91,8 @@ BLAS thread while the workers run, as the bootstrap already did.
 
 ## Printed output
 
-- The printed output of a fit, of its `summary()`, of `check_fit()` and of the
-summary of the checks is formatted with cli. Each starts with a rule that
+- The printed output of a fit, of its `summary()`, of `check_computation()` and
+of the summary of the checks is formatted with cli. Each starts with a rule that
 carries its title, the call is shown faint, and each verdict has a symbol. A
 certified fit and an OK check have a green tick, a check that needs care a
 yellow exclamation mark, and a problem a red cross. Hints have an information
@@ -108,8 +108,8 @@ Unicode fonts needs.
 certified." instead of "Certified:" or "Not certified:", `summary()` gives the
 link in one sentence, such as "The canonical logit link.", the log-likelihood
 and the AIC have no colon, and a fix follows an arrow instead of "Fix:".
-Argument and function names in the findings and fixes of `check_fit()` are
-quoted with backticks, as in RiskMap's messages. Code that matched the old
+Argument and function names in the findings and fixes of `check_computation()`
+are quoted with backticks, as in RiskMap's messages. Code that matched the old
 printed text needs updating.
 - The printed checks give each status as its symbol instead of the words OK,
 SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
@@ -130,7 +130,7 @@ element `starting_values` of `mcml`, and the reason in `starting_reason`.
 values." when it makes that choice.
 - In a console with colours, the labels of rows that line up labels and
 values, such as the log-likelihood, the settings of a prediction or the
-evidence of `check_fit()`, are grey, so that the values stand out.
+evidence of `check_computation()`, are grey, so that the values stand out.
 - Printing the result of `assess_prediction()` gives the models, the test
 sets, how the parameters were set and the scores averaged over the test sets,
 instead of the whole list of scores and test sets. Its `summary()` gives the
@@ -161,17 +161,17 @@ covariates is named "(Intercept)", where it was blank.
 
 - Each `plot()` method of RiskMap has an exported function of its own, which
 holds its arguments, checks and documentation. They are `plot_variogram()`,
-`plot_prediction()`, `plot_extrapolation()`, `plot_check()`, `plot_profile()`,
-`plot_bootstrap()`, `plot_cross_validation()`, `plot_simulation()` and
-`plot_simulated_surface()`. The method is a one-line call of the function and
-is documented on its page, so `plot(x, ...)` and the function give the same
-object. A function given the result of another function stops with an input
-error that names the function whose result it draws, as in "`plot_variogram()`
-needs the result of `variogram()`". Their unused arguments stop as before, and
-the maps of predictions and simulations still pass theirs to the fill scale.
-The help pages `plot.RiskMap_*` become aliases of the new pages, and the
-reference index lists the functions in their task groups instead of a group of
-plots. `plot_mcmc()` is unchanged.
+`plot_prediction()`, `plot_extrapolation()`, `plot_computation()`,
+`plot_profile()`, `plot_bootstrap()`, `plot_cross_validation()`,
+`plot_simulation()` and `plot_simulated_surface()`. The method is a one-line
+call of the function and is documented on its page, so `plot(x, ...)` and the
+function give the same object. A function given the result of another function
+stops with an input error that names the function whose result it draws, as in
+"`plot_variogram()` needs the result of `variogram()`". Their unused arguments
+stop as before, and the maps of predictions and simulations still pass theirs to
+the fill scale. The help pages `plot.RiskMap_*` become aliases of the new pages,
+and the reference index lists the functions in their task groups instead of a
+group of plots. `plot_mcmc()` is unchanged.
 - `plot()` of a variogram, which already stopped on `plot_envelope` and
 `color`, now says that they are `envelope` and `colour`, and its error is a
 RiskMap input error like those of the other methods.
@@ -323,11 +323,11 @@ ignored.
 binomial regression without random effects or from `start_pars$theta`, unless
 it is given, as in `negative_binomial(theta = 2)` or
 `MASS::negative.binomial(2)`, at which it is held. A size that goes to the
-Poisson limit is held there and reported by `check_fit()`. An estimated size
-can't be fitted with a nugget or a random effect with one level per
+Poisson limit is held there and reported by `check_computation()`. An estimated
+size can't be fitted with a nugget or a random effect with one level per
 observation when there is one observation per location. `predict()`,
 `simulate_glgpm()`, `specify_glgpm()`, `assess_prediction()`, `profile()`,
-`parametric_bootstrap()` and `check_fit()` take the size of a fit, and
+`parametric_bootstrap()` and `check_computation()` take the size of a fit, and
 `maxim_integrand()` takes the family with its size. Its log-likelihood leaves
 out the same terms as that of a Poisson fit, so the two can be compared.
 - Several `re()` calls in a formula are now combined, so `re(a) + re(b)` is the
@@ -463,9 +463,9 @@ and drawn once. `plot_profile()` names a pair in the order given to
 
 - `profile()`, the print of a profile and its `plot()`, `summary()`, `print()`
 and `plot()` of a parametric bootstrap and the print of its summary, and
-`print()`, `summary()` and `plot()` of the checks of `check_fit()` and the
-print of their summary stop on an argument they don't use instead of ignoring
-it (`check_dots_unused()`).
+`print()`, `summary()` and `plot()` of the checks of `check_computation()` and
+the print of their summary stop on an argument they don't use instead of
+ignoring it (`check_dots_unused()`).
 
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
@@ -660,22 +660,27 @@ approximation is followed by one that tries the global distribution again. Fits
 without a failure are unchanged. `mcml_history` records why the iteration
 failed.
 
-- New `check_fit()` goes through the checks on how a model was computed, says
-which are OK and which need a look, and gives the fix where there is one. Its
-`plot()` method shows the certificate, the effective draws, the Pareto shape and
-the changes in the estimates by stage. It reports what used to crowd the output,
-including the effective draws and Pareto shape of the certification draws, a
-heavy tail of the importance weights, changes of importance distribution and a
-search for the conditional mode that stopped at its iteration limit.
+- New `check_computation()` goes through the checks on how a model was computed,
+says which are OK and which need a look, and gives the fix where there is one.
+Its `plot()` method shows the certificate, the effective draws, the Pareto shape
+and the changes in the estimates by stage. It reports what used to crowd the
+output, including the effective draws and Pareto shape of the certification
+draws, a heavy tail of the importance weights, changes of importance
+distribution and a search for the conditional mode that stopped at its iteration
+limit.
 
+- `check_computation()` and `plot_computation()` were `check_fit()` and
+`plot_check()` in the release candidates. They are about the computation and not
+about the model, which `assess_fit()` assesses.
 - Certified MCML is quieter. A fit warns only about what changes how a result is
 read, which is a certificate that is missing or above the tolerance, a likelihood
 without a maximum, weak identification, other maxima and a spatial variance at
-zero, in a sentence or two that point to `check_fit()`. A nugget or random effect
-at zero, a short spatial scale and a scale close to the limit of independent
-effects no longer warn. With `messages = TRUE` a certified fit gives one line.
-`summary()` ends with the verdict and the number of checks that need a look, in
-place of its notes, and `summary()$mcml$notes` is replaced by `checks_to_review`.
+zero, in a sentence or two that point to `check_computation()`. A nugget or
+random effect at zero, a short spatial scale and a scale close to the limit of
+independent effects no longer warn. With `messages = TRUE` a certified fit gives
+one line. `summary()` ends with the verdict and the number of checks that need a
+look, in place of its notes, and `summary()$mcml$notes` is replaced by
+`checks_to_review`.
 
 - Certified MCML now tests a nugget or random-effect variance that it holds at
 zero. A fit moves in the log of a variance, whose gradient vanishes near zero
@@ -684,7 +689,7 @@ show that zero is a maximum. The slope at zero is estimated on an independent
 bank of draws. If it is clearly positive the stage is not certified, because the
 held point is not a maximum, and the next stage starts the variance from an
 interior value, even at the largest number of draws if stages remain. If it is
-clearly negative, `check_fit()` reports that zero is the
+clearly negative, `check_computation()` reports that zero is the
 maximum and the variance no longer counts as a check that needs a look. Fits that
 hold no variance are unchanged, and those with a custom link are not tested.
 
@@ -702,10 +707,10 @@ Poisson surveys the first fell from at most 10.0% to at most 4.6%. The
 certificate changes for every fit, and the replicate costs about 9% more fit
 time. In 1,270 paired fits of 127 simulated binomial surveys every fit stayed
 certified, the median certificate grew from 0.0171 to 0.0175 statistical
-standard errors, and 12 more fits needed a second stage. `check_fit()` says
-which sample set the radius in the `radius_from` column of its `stages` table,
-and each stage of `mcml_history` records both radii (`certificate_radii`) and
-the replicate's weight diagnostics (`replicate_validation`).
+standard errors, and 12 more fits needed a second stage. `check_computation()`
+says which sample set the radius in the `radius_from` column of its `stages`
+table, and each stage of `mcml_history` records both radii (`certificate_radii`)
+and the replicate's weight diagnostics (`replicate_validation`).
 
 - With a nugget and the spatial variance at zero, the exact alarm of the check for
 other maxima now also tries scales up to 16 times the spacing, with 2% to 30% of
@@ -738,7 +743,7 @@ draws and the sampler behind predictions with parameter uncertainty now receive
 the derivatives that the fit used, in place of deriving them again from the
 inverse link. Errors while an importance distribution is built at a trial
 parameter value, which give that value no weight, are counted and reported by
-`check_fit()`. Fits with the canonical links are unchanged.
+`check_computation()`. Fits with the canonical links are unchanged.
 
 - The likelihood with independent location effects, behind the screen of
 short scales and the exact alarms, is now right at every location for a custom
@@ -882,25 +887,25 @@ abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
 an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
 name instead of its compiled body, `.Call(C_pnorm, ...)`.
 
-- `check_fit()` adds a row when a link is not known to make the likelihood of
-each location log-concave in its latent effect, as the cauchit link and links
-given as a function in `invlink` are not, since the latent effects can then
-have more than one conditional mode. The row is `OK`, because this belongs to
-the model and not to how it was fitted. A fit with a named link takes its
-starting regression coefficients from a binomial regression with that link
-instead of a logit regression, and falls back on the logit regression if that
-one cannot be fitted.
+- `check_computation()` adds a row when a link is not known to make the
+likelihood of each location log-concave in its latent effect, as the cauchit
+link and links given as a function in `invlink` are not, since the latent
+effects can then have more than one conditional mode. The row is `OK`, because
+this belongs to the model and not to how it was fitted. A fit with a named link
+takes its starting regression coefficients from a binomial regression with that
+link instead of a logit regression, and falls back on the logit regression if
+that one cannot be fitted.
 
-- The row "Link" of `check_fit()` also says when it has not been measured on
-simulated surveys how often the radius of the bound on the Monte Carlo error is
-too small, as it has for the logit and probit links of binomial data and the
-log link of Poisson and negative binomial counts, and points to
-`check_fit(extra = "radius")`, which predicts it for the fit. A fit with the
-cloglog link, which makes the likelihood log-concave, now has the row for that
-reason. For a link given as a function in `invlink`, the row says where the
-log-likelihood of a record was found to be convex on a grid of linear
-predictors from -30 to 30, so that a link such as that of an imperfect test is
-known not to be log-concave.
+- The row "Link" of `check_computation()` also says when it has not been
+measured on simulated surveys how often the radius of the bound on the Monte
+Carlo error is too small, as it has for the logit and probit links of binomial
+data and the log link of Poisson and negative binomial counts, and points to
+`check_computation(extra = "radius")`, which predicts it for the fit. A fit with
+the cloglog link, which makes the likelihood log-concave, now has the row for
+that reason. For a link given as a function in `invlink`, the row says where the
+log-likelihood of a record was found to be convex on a grid of linear predictors
+from -30 to 30, so that a link such as that of an imperfect test is known not to
+be log-concave.
 
 - A binomial model fitted without an intercept, such as
 `y ~ 0 + x1 + x2 + gp()`, now takes its automatic starting regression
@@ -958,10 +963,10 @@ With every parameter held, a Gaussian fit gives its exact log-likelihood at the
 values, and a binomial, Poisson or negative binomial fit its Monte Carlo
 log-likelihood on one sample of `validation_samples` draws from the global
 proposal at the values, with conditional samples there and no certificate.
-`check_fit()` says that nothing is estimated and that this log-likelihood's
-Monte Carlo error is not assessed. `glgpm_parameters()` shows the held values.
-`summary()` and `print()` say which parameters are held, and the AIC of a
-Gaussian fit counts the estimated ones.
+`check_computation()` says that nothing is estimated and that this
+log-likelihood's Monte Carlo error is not assessed. `glgpm_parameters()` shows
+the held values. `summary()` and `print()` say which parameters are held, and
+the AIC of a Gaussian fit counts the estimated ones.
 
 - `glgpm(fixed_pars = )` holds parameters at given values, with the names and
 structure of `start_pars`. It holds the nugget variance (`tau2`, with
@@ -984,8 +989,8 @@ estimates that `assess_simulation()` records are the estimated parameters only.
 `profile()` names the nugget `tau2` and holds its variance for every family. For
 a binomial, Poisson or negative binomial fit it profiled `nu2`, the ratio of the
 nugget to the spatial variance, so the profiles of those fits move, and
-`check_fit(extra = "profile")` names the nugget variance. The fits themselves
-are unchanged.
+`check_computation(extra = "profile")` names the nugget variance. The fits
+themselves are unchanged.
 
 - `start_pars` of `glgpm()` defaults to `NULL` and is a partial named list over
 the model's estimated parameters, with the names of `?riskmap_parameters`.
@@ -1109,39 +1114,39 @@ draws. The stages where this happened record `stalled_anchors` and
 `stalled_change` in `mcml_history`, summarised as `mcml_stalled_anchors`. The
 sampled form keeps its rule, so its fits are unchanged. The
 default of `laplace_start` becomes `NULL`, meaning `TRUE` for the sampled form
-and `FALSE` with `integrate_noise = TRUE`. `check_fit()` says at how many
-locations the nugget was integrated out, and suggests the option for a fit with
-a nugget variance of at least 0.1 that was not certified or whose weights have a
-heavy tail. Where the nugget variance is close to zero the likelihood is nearly
-flat along the nugget, and the integrated estimate of the nugget's score is far
-noisier than the sampled one, so there the integrated form certified fewer
-fits (on simulated surveys of 700 sites, 5 against 12 of 21 runs below a nugget
-variance of 0.1, 68 against 28 of 75 above 0.3). With
-`integrate_noise = "auto"` both forms are built and each stage of the fit
-integrates the nugget out when its variance at the start of the stage is at
-least 0.1 and samples it otherwise, the first stage taking the variance from the
-Laplace estimate. Each stage records its `form` in `mcml_history`, the fit
-records them as `mcml_noise_forms`, and `check_fit()` reports them. With
-`"auto"` every validation bank is drawn in both forms, and the two estimates of
-the score are combined with weights inverse to their Monte Carlo covariances,
-so the certificate rests on the more precise form or on both. A bank whose
-importance weights have a Pareto k above 0.8 is left out of the combination,
-since a heavy tail can make its estimated covariance far too small. On 96
-simulated surveys of 700 sites with nugget variances of 0.15 and 0.8, three
-runs each, the sampled form certified 124 of the 288 fits and `"auto"` 224.
-Among the fits with a Markov chain reference, `"auto"` had no error above the
-tolerance of 0.1 in the reference's information (222 fits), against two for the
-sampled form (122). In every cell of the design it gave at least as many
-certificates with an error within the tolerance as the sampled form, and more
-in 31 of the 48 cells. It took 31 core-hours against 38. In a build before the
-replicate bank's radius the sampled form certified 142 of the fits and the
-integrated form 213, and without the ceiling on k the combination certified
-245, 9 of them with an error above the tolerance. The stages record the combination in `combined`
-of each validation bank in `mcml_history`. The extra check `"radius"` of
-`check_fit()` rebuilds its samples in the form of the nugget of the fit's last
-stage, and where that stage combined the two forms it resamples banks in each
-form and combines them in pairs as the fit does, which takes about twice as
-long. `"auto"` is the default, so fits of binomial and Poisson models with a
+and `FALSE` with `integrate_noise = TRUE`. `check_computation()` says at how
+many locations the nugget was integrated out, and suggests the option for a fit
+with a nugget variance of at least 0.1 that was not certified or whose weights
+have a heavy tail. Where the nugget variance is close to zero the likelihood is
+nearly flat along the nugget, and the integrated estimate of the nugget's score
+is far noisier than the sampled one, so there the integrated form certified
+fewer fits (on simulated surveys of 700 sites, 5 against 12 of 21 runs below a
+nugget variance of 0.1, 68 against 28 of 75 above 0.3). With `integrate_noise =
+"auto"` both forms are built and each stage of the fit integrates the nugget out
+when its variance at the start of the stage is at least 0.1 and samples it
+otherwise, the first stage taking the variance from the Laplace estimate. Each
+stage records its `form` in `mcml_history`, the fit records them as
+`mcml_noise_forms`, and `check_computation()` reports them. With `"auto"` every
+validation bank is drawn in both forms, and the two estimates of the score are
+combined with weights inverse to their Monte Carlo covariances, so the
+certificate rests on the more precise form or on both. A bank whose importance
+weights have a Pareto k above 0.8 is left out of the combination, since a heavy
+tail can make its estimated covariance far too small. On 96 simulated surveys of
+700 sites with nugget variances of 0.15 and 0.8, three runs each, the sampled
+form certified 124 of the 288 fits and `"auto"` 224. Among the fits with a
+Markov chain reference, `"auto"` had no error above the tolerance of 0.1 in the
+reference's information (222 fits), against two for the sampled form (122). In
+every cell of the design it gave at least as many certificates with an error
+within the tolerance as the sampled form, and more in 31 of the 48 cells. It
+took 31 core-hours against 38. In a build before the replicate bank's radius the
+sampled form certified 142 of the fits and the integrated form 213, and without
+the ceiling on k the combination certified 245, 9 of them with an error above
+the tolerance. The stages record the combination in `combined` of each
+validation bank in `mcml_history`. The extra check `"radius"` of
+`check_computation()` rebuilds its samples in the form of the nugget of the
+fit's last stage, and where that stage combined the two forms it resamples banks
+in each form and combines them in pairs as the fit does, which takes about twice
+as long. `"auto"` is the default, so fits of binomial and Poisson models with a
 nugget change, while a model without a nugget is fitted as before.
 
 - `integrate_noise` now also integrates out `re()` terms whose levels lie within
@@ -1165,20 +1170,19 @@ of a nested location's likelihood in its inner variance directly. With
 `"auto"` a model with such a term is fitted as with `TRUE`, its `re()` terms and
 its nugget integrated out at every stage wherever the rules allow, while a
 model whose only such term is the nugget switches it by stage as before.
-`check_fit()` says for each term at how many levels it was integrated out and
-at how many it stayed sampled, and `summary()` gives them as `integration` in
-place of `integrated_locations`. The radius check and `profile()` rebuild the
-integrated form for such a fit. On
-48 simulated surveys of 200 locations with about 800 households each, fitted
-three times in each form, `TRUE`, and so `"auto"`, certified all 144 fits
-against 128 sampled, at a median bound of 0.022 against 0.063, in 9% of the
-sampled form's time. Against MCMC references the median error was 0.011
-against 0.017 sampled, and no fit was off by more than the tolerance. Switching
-the nugget alone with the households integrated certified 142 of 143, and on a
-survey whose nugget variance was zero two of its three runs ended without a
-certificate. On a survey built from `malkenya`'s households the bounds
-fell from about 0.08 sampled to 0.007 integrated. A model without such terms is
-fitted exactly as before.
+`check_computation()` says for each term at how many levels it was integrated
+out and at how many it stayed sampled, and `summary()` gives them as
+`integration` in place of `integrated_locations`. The radius check and
+`profile()` rebuild the integrated form for such a fit. On 48 simulated surveys
+of 200 locations with about 800 households each, fitted three times in each
+form, `TRUE`, and so `"auto"`, certified all 144 fits against 128 sampled, at a
+median bound of 0.022 against 0.063, in 9% of the sampled form's time. Against
+MCMC references the median error was 0.011 against 0.017 sampled, and no fit was
+off by more than the tolerance. Switching the nugget alone with the households
+integrated certified 142 of 143, and on a survey whose nugget variance was zero
+two of its three runs ended without a certificate. On a survey built from
+`malkenya`'s households the bounds fell from about 0.08 sampled to 0.007
+integrated. A model without such terms is fitted exactly as before.
 
 - `integrate_noise` now also integrates out households whose members differ in
 covariates, such as children of a household who differ in sex or birth
@@ -1233,8 +1237,8 @@ numerical integration to about 1e-10.
 that would take a variance or the spatial scale past the upper bound of the
 search is no longer applied. Such a correction follows a direction along which
 the likelihood is nearly flat. The fit keeps its estimate and is reported as
-not certified, with a warning, and `check_fit()` says why and suggests a larger
-`max_samples`. Before, the parameter was clamped at the bound and the
+not certified, with a warning, and `check_computation()` says why and suggests a
+larger `max_samples`. Before, the parameter was clamped at the bound and the
 certificate was computed there.
 
 - `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
@@ -1244,58 +1248,59 @@ an inverse link given in `invlink`, were those of another model, and nothing
 warned of it. The fix does not change the profiles of fits with the logit
 and log links.
 
-- `check_fit()` gains `extra`, which names the checks that cost computing time,
-with `"all"` for every one, so that `check_fit()` is the one place to check a
-fit (#262). The first is `"profile"`, the marginal profile likelihood from
-`profile()` of every covariance parameter of the fit, which are the spatial
-variance and scale, the nugget, an estimated measurement error variance and the
-variances of the random effects, but not the regression coefficients. Its row
-names each parameter whose profile is flat, so that its 95% interval is open at
-an end, or has a second maximum, and is then `SUSPICIOUS`, and is a `PROBLEM`
-when a point of a profile is above the estimate, which is then not the maximum
-likelihood estimate. `cores` runs the profiles in parallel, with the same
-results. Before the extra checks start, a message says how long they should
-take, from the time the fit took, the number of parameters and the cores. Each
-draws from a random number stream of its own after the seed of the fit, so the
-same call gives the same result, and the random number state of the session is
-left as it was. A profile already computed can be passed to `check_fit()` in
-`profile`, which moves there from `plot()` of the checks, and is used as it is,
-whatever parameters it covers. The checks returned keep the result of every
-check that ran with the numbers behind its finding, and the new `summary()` of
-the checks gives them, with the certificate and draws of each stage and the full
-results of the extra checks, while `print()` still gives the verdict. `plot()` of
-the checks gains `which` to choose its panels, draws only what was computed, and
-says which extra check would compute a panel that is missing. Each profiled
-parameter has its own panel, such as `"profile_phi"`, and `which = "profile"`
-draws them all. The print of a fit without extra checks is unchanged.
+- `check_computation()` gains `extra`, which names the checks that cost
+computing time, with `"all"` for every one, so that `check_computation()` is the
+one place to check a fit (#262). The first is `"profile"`, the marginal profile
+likelihood from `profile()` of every covariance parameter of the fit, which are
+the spatial variance and scale, the nugget, an estimated measurement error
+variance and the variances of the random effects, but not the regression
+coefficients. Its row names each parameter whose profile is flat, so that its
+95% interval is open at an end, or has a second maximum, and is then
+`SUSPICIOUS`, and is a `PROBLEM` when a point of a profile is above the
+estimate, which is then not the maximum likelihood estimate. `cores` runs the
+profiles in parallel, with the same results. Before the extra checks start, a
+message says how long they should take, from the time the fit took, the number
+of parameters and the cores. Each draws from a random number stream of its own
+after the seed of the fit, so the same call gives the same result, and the
+random number state of the session is left as it was. A profile already computed
+can be passed to `check_computation()` in `profile`, which moves there from
+`plot()` of the checks, and is used as it is, whatever parameters it covers. The
+checks returned keep the result of every check that ran with the numbers behind
+its finding, and the new `summary()` of the checks gives them, with the
+certificate and draws of each stage and the full results of the extra checks,
+while `print()` still gives the verdict. `plot()` of the checks gains `which` to
+choose its panels, draws only what was computed, and says which extra check
+would compute a panel that is missing. Each profiled parameter has its own
+panel, such as `"profile_phi"`, and `which = "profile"` draws them all. The
+print of a fit without extra checks is unchanged.
 
-- `check_fit()` gains the extra check `"radius"` for binomial and Poisson fits,
-which predicts how often the radius in the bound on the Monte Carlo error is too
-small (#262). The radius is estimated from the certification draws themselves,
-which can miss the rare draws of large importance weight. Sixteen short Markov
-chains on the latent effects reach those draws, and samples of certification
-draws resampled from them and a fresh sample of the fit's size give the rate at
-which the error that the radius allows for exceeds it, with a 95% interval,
-against the 5% of the bound. On 35 simulated binomial and Poisson surveys the
-prediction was within a factor of 1.65 of the rate measured on independent
-samples. Outside binomial fits with the logit link it is read with a margin of
-15%, since it ran low on the Poisson surveys. The row is `SUSPICIOUS` when the
-radius, with that margin, would have to widen for the rate to be 5%, and then
-gives the bound with the radius so widened. The chains can miss a separate mode
-of the latent effects, so `OK` is not a proof. The check should take about
-twice as long as the fit, and draws from the streams 9500 to 9502 after the
-seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
-resampled samples against the radius the fit uses for them, whose subtitle
-gives the predicted rate first.
+- `check_computation()` gains the extra check `"radius"` for binomial and
+Poisson fits, which predicts how often the radius in the bound on the Monte
+Carlo error is too small (#262). The radius is estimated from the certification
+draws themselves, which can miss the rare draws of large importance weight.
+Sixteen short Markov chains on the latent effects reach those draws, and samples
+of certification draws resampled from them and a fresh sample of the fit's size
+give the rate at which the error that the radius allows for exceeds it, with a
+95% interval, against the 5% of the bound. On 35 simulated binomial and Poisson
+surveys the prediction was within a factor of 1.65 of the rate measured on
+independent samples. Outside binomial fits with the logit link it is read with a
+margin of 15%, since it ran low on the Poisson surveys. The row is `SUSPICIOUS`
+when the radius, with that margin, would have to widen for the rate to be 5%,
+and then gives the bound with the radius so widened. The chains can miss a
+separate mode of the latent effects, so `OK` is not a proof. The check should
+take about twice as long as the fit, and draws from the streams 9500 to 9502
+after the seed of the fit. `plot()` of the checks gains the panel `"radius"`,
+the error of resampled samples against the radius the fit uses for them, whose
+subtitle gives the predicted rate first.
 
-- `print()` of the checks from `check_fit()` now gives a check that needs a
-look in full with its fix, and a check that is `OK` on one line with its
+- `print()` of the checks from `check_computation()` now gives a check that
+needs a look in full with its fix, and a check that is `OK` on one line with its
 finding in a few words, and ends by pointing to `summary()`, which now gives
 every finding in full before the numbers behind it (#262). A fix that a costly
-check would settle names it, `check_fit(fit, extra = "profile")` for a scale
-that may be weakly identified and for other maxima, and
-`check_fit(fit, extra = "radius")` for heavy-tailed importance weights, or
-points to the row of that check when it ran. `plot()` of the checks gains two
+check would settle names it, `check_computation(fit, extra = "profile")` for a
+scale that may be weakly identified and for other maxima, and
+`check_computation(fit, extra = "radius")` for heavy-tailed importance weights,
+or points to the row of that check when it ran. `plot()` of the checks gains two
 panels drawn from what the fit recorded. `"held_variances"` shows the slope of
 the log-likelihood at each variance held at zero with its interval of 2.58
 standard errors, the test of the fit, and `"screen"` shows the screen of short
@@ -1303,29 +1308,29 @@ scales of the check for other maxima, the log-likelihood estimated at each short
 scale and the exact lower bound there, against the estimate and the limit with
 independent location effects. Each says why when it has nothing to show. A fit
 now records the exact bound at each scale of the screen and, with the spatial
-variance at zero and a nugget, over the scales and spatial shares, where it
-kept only the largest, and `summary()` of the checks gives them. Estimates and
-the decisions of a fit are unchanged.
+variance at zero and a nugget, over the scales and spatial shares, where it kept
+only the largest, and `summary()` of the checks gives them. Estimates and the
+decisions of a fit are unchanged.
 
-- `plot()` of the checks from `check_fit()` returns one object and draws
+- `plot()` of the checks from `check_computation()` returns one object and draws
 nothing until it is printed (#213), as the other `plot()` methods do. One
 panel is a ggplot and several are a patchwork in two columns. It used to print
 the panels itself and return the list of them invisibly, so a figure could not
 be saved or changed before it was drawn.
 
-- `check_fit()` measures its evidence on other maxima from the estimate. When the
-check for other maxima had kept another candidate than the first fit, or had
-compared them on four times as many draws, "Largest exact lower bound", "Limit
-with independent location effects" and the short scales were above the first fit
-on the first draws, although they said above the estimate. In one fit without a
-maximum the limit was given as 4.3 above the estimate and is 1.3 above it. In the
-panel `"screen"` the gate is 0.25 below the first fit where another replaced it,
-and the subtitle says "first fit" where the fit was repeated, also when an exact
-bound repeated it behind a closed gate. The finding of an exact alarm no longer
-says "at another spatial scale", since the bound can be that of the limit with
-independent location effects. The warning of a fit that is numerically one of
-independent location effects no longer gives a variance, which was that of the
-limit and not of the estimate. Estimates are unchanged.
+- `check_computation()` measures its evidence on other maxima from the estimate.
+When the check for other maxima had kept another candidate than the first fit,
+or had compared them on four times as many draws, "Largest exact lower bound",
+"Limit with independent location effects" and the short scales were above the
+first fit on the first draws, although they said above the estimate. In one fit
+without a maximum the limit was given as 4.3 above the estimate and is 1.3 above
+it. In the panel `"screen"` the gate is 0.25 below the first fit where another
+replaced it, and the subtitle says "first fit" where the fit was repeated, also
+when an exact bound repeated it behind a closed gate. The finding of an exact
+alarm no longer says "at another spatial scale", since the bound can be that of
+the limit with independent location effects. The warning of a fit that is
+numerically one of independent location effects no longer gives a variance,
+which was that of the limit and not of the estimate. Estimates are unchanged.
 
 - `summary()` of the checks says "not assessed" where the likelihood was not
 compared with the limit of independent location effects, instead of "no", and
@@ -1355,11 +1360,11 @@ step increases the objective at a point that is not a mode, and a failed search
 from the previous mode is repeated from zero, so the next search starts from a
 mode that was found. An importance distribution that is not finite is an error,
 which gives that parameter value no weight, as other failures to build one do.
-`check_fit()` reports how many searches started again from zero. The three runs
-on that survey that stopped now fit, within 0.05 standard errors of a Markov
-chain reference, and two are certified. The third reaches the largest budget
-of 16,000 draws with a bound of 0.18. Fits whose searches never went wrong are
-unchanged, as on two other surveys of the same study.
+`check_computation()` reports how many searches started again from zero. The
+three runs on that survey that stopped now fit, within 0.05 standard errors of a
+Markov chain reference, and two are certified. The third reaches the largest
+budget of 16,000 draws with a bound of 0.18. Fits whose searches never went
+wrong are unchanged, as on two other surveys of the same study.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
@@ -1439,8 +1444,8 @@ a hint to make it again.
 - `set_control_mcml()` takes `initial_draws`, `validation_draws` and
 `max_draws` in place of `initial_samples`, `validation_samples` and
 `max_samples`, the words of `summary(fit)$mcml` and of the messages, and the
-hints of `summary()` and `check_fit()` name them. A control stored with a fit
-made before, with the old names, still serves its refits.
+hints of `summary()` and `check_computation()` name them. A control stored with
+a fit made before, with the old names, still serves its refits.
 - Binomial and Poisson models with a nugget and `re()` terms none of whose levels
 can be integrated out, as levels that span locations, stopped with the internal
 error "A switching engine needs a sampled and an integrated form of the same
@@ -2126,9 +2131,9 @@ generator, so `set.seed()` before the call reproduces it, and returns it as
 `settings$seed`. The draw is the only change to the session's stream. A
 Gaussian profile, which has no bank, draws none. `seed` must be a
 non-negative integer. A profile that fails leaves the session's stream as it
-was. The profiles of `check_fit(extra = "profile")` keep their own seed,
+was. The profiles of `check_computation(extra = "profile")` keep their own seed,
 derived from the fit's.
-- `check_fit()` takes `cores` before `messages`, as `profile()` and
+- `check_computation()` takes `cores` before `messages`, as `profile()` and
 `parametric_bootstrap()` do, so that `cores` and `messages` come last in that
 order everywhere, after `seed` and `level` where a function has them.
 `parametric_bootstrap()` defaults to `cores = 1L`.
@@ -2158,15 +2163,15 @@ kept short. The 70 tests that took more than a second, apart from the outputs
 of binomial and Poisson fits, skip on CRAN, so its tests take about 80 seconds
 instead of six to eight minutes. They all still run when `NOT_CRAN=true`, as on
 CI, but not in R-hub's checks, which run as CRAN does. The examples of
-`check_fit()`, `summarise_mcmc()` and `plot_mcmc()` leave `\donttest{}`, since
-they run in under three seconds. The Gaussian example of
+`check_computation()`, `summarise_mcmc()` and `plot_mcmc()` leave `\donttest{}`,
+since they run in under three seconds. The Gaussian example of
 `parametric_bootstrap()` uses 10 simulations instead of 20. The examples that
 stay in `\donttest{}`, which `--as-cran` runs too, use 10 simulations in the
-binomial `parametric_bootstrap()` instead of 100, `plot_check()` checks the
-radius with a short profile of the scale instead of every extra check, the
-binomial example of `profile()` profiles the scale alone, and the joint
-profiles of `profile()` and `plot_profile()` use a grid of 7 by 7. Each example
-outside `\donttest{}` runs in under three seconds.
+binomial `parametric_bootstrap()` instead of 100, `plot_computation()` checks
+the radius with a short profile of the scale instead of every extra check, the
+binomial example of `profile()` profiles the scale alone, and the joint profiles
+of `profile()` and `plot_profile()` use a grid of 7 by 7. Each example outside
+`\donttest{}` runs in under three seconds.
 - RiskMap asks for R 4.5.0 or later instead of 3.5.0, because the current
 version of Deriv, which it imports, needs it. When 2.0.0 was prepared, CI checked
 R 4.5.3, which was oldrel-1, on pushes to main and weekly. The full test suite

@@ -56,7 +56,7 @@ test_that("bullets carry cli's symbols and wrap under their text", {
 })
 
 test_that("a function is linked to its help page only where links work", {
-  expect_identical(out_fun("check_fit"), "`check_fit()`")
+  expect_identical(out_fun("check_computation"), "`check_computation()`")
   withr::local_options(cli.hyperlink = TRUE, cli.hyperlink_help = TRUE)
   linked <- out_fun("summary", "summary.RiskMap")
   expect_match(linked, "x-r-help:RiskMap::summary.RiskMap", fixed = TRUE)

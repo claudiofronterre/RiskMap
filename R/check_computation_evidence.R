@@ -278,15 +278,15 @@ tabulate_maxima_check <- function(check, units) {
 
 ##' @title Summarise the Checks on a Fitted Model
 ##' @description Summary method for objects of class `"RiskMap_check"` from
-##'   [check_fit()]. Where `print()` gives the verdict, `summary()` gives the
-##'   evidence, the finding of each check in full with the numbers behind it,
-##'   the certificate and the certification draws of each stage with the
-##'   largest change in the estimates from the stage before, and the full
+##'   [check_computation()]. Where `print()` gives the verdict, `summary()`
+##'   gives the evidence, the finding of each check in full with the numbers
+##'   behind it, the certificate and the certification draws of each stage with
+##'   the largest change in the estimates from the stage before, and the full
 ##'   results of the extra checks that ran. For the check of other maxima the
 ##'   numbers include, at each short scale of the screen, the log-likelihood
 ##'   estimated on the fitting draws and its exact lower bound, both above the
-##'   estimate, and for a fit with the spatial variance at zero and a nugget
-##'   the exact bound by scale and spatial share.
+##'   estimate, and for a fit with the spatial variance at zero and a nugget the
+##'   exact bound by scale and spatial share.
 ##' @param object An object of class `"RiskMap_check"`.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
@@ -294,7 +294,7 @@ tabulate_maxima_check <- function(check, units) {
 ##'   `checks` table, the `results` of the default and extra checks in the
 ##'   order of the table, the `stages` table with the column `largest_move`,
 ##'   and the `draws`, `fit_seconds` and `not_computed` of `object`.
-##' @seealso [check_fit()], [plot_check()]
+##' @seealso [check_computation()], [plot_computation()]
 ##' @examples
 ##' data(italy_sim)
 ##'
@@ -305,7 +305,7 @@ tabulate_maxima_check <- function(check, units) {
 ##'   messages = FALSE
 ##' )
 ##'
-##' summary(check_fit(fit))
+##' summary(check_computation(fit))
 ##' @method summary RiskMap_check
 ##' @export
 summary.RiskMap_check <- function(object, ...) {

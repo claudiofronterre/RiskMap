@@ -1,4 +1,4 @@
-##' The extra check `"radius"` of `check_fit()`
+##' The extra check `"radius"` of `check_computation()`
 ##'
 ##' Predicts, at a fitted binomial or Poisson model, how often the radius of
 ##' its Monte Carlo certificate is too small. Short Markov chains on the

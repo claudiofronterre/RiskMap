@@ -317,8 +317,8 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   logit (19 surveys) and log for Poisson counts (16) in `radius-results.md`,
 ##'   probit in `family-object-radius.md` and log for negative binomial counts
 ##'   in `family-object-radius-nb.md`. The same note measured one link given
-##'   as a function, that of an imperfect test. `check_fit()` says when a fit's
-##'   link is on neither list.
+##'   as a function, that of an imperfect test. `check_computation()` says when
+##'   a fit's link is on neither list.
 ##' @noRd
 riskmap_families <- list(
   gaussian = list(
@@ -891,7 +891,7 @@ read_family <- function(family, invlink = NULL,
 ##' every count when it is not given. As \eqn{\theta} grows the model tends
 ##' to the Poisson model with the same mean, and a fit whose size goes to that
 ##' limit holds it there, as a variance estimated as zero is held, and says so
-##' in [check_fit()]. A fit that estimates the size reports it in
+##' in [check_computation()]. A fit that estimates the size reports it in
 ##' [coef()][coef.RiskMap()], [print()][print.RiskMap()] and
 ##' [summary()][summary.RiskMap()] as `theta`. Its start is the size of the
 ##' negative binomial regression without the random effects, or

@@ -11,7 +11,7 @@ just after, and the last ones when it is used to predict.
 \tabular{ll}{
 \strong{Question} \tab \strong{Function} \cr
 Are the data spatially correlated? \tab \code{\link[=variogram]{variogram()}} \cr
-Did the computation of the fit work? \tab \code{\link[=check_fit]{check_fit()}}, and
+Did the computation of the fit work? \tab \code{\link[=check_computation]{check_computation()}}, and
 \code{\link[=plot_mcmc]{plot_mcmc()}} and \code{\link[=summarise_mcmc]{summarise_mcmc()}} for its samples \cr
 How uncertain are the estimates? \tab \link[=summary.RiskMap]{summary()},
 \link[=profile.RiskMap]{profile()} and \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} \cr
@@ -26,9 +26,9 @@ How well would the predictions of a model do if the truth were known?
 }
 \details{
 \itemize{
-\item \code{\link[=check_fit]{check_fit()}} is about the computation and not about the model. It says
-whether the maximum of the likelihood was found, and how large the Monte
-Carlo error of the estimates is. A wrong model can pass it.
+\item \code{\link[=check_computation]{check_computation()}} is about the computation and not about the model. It
+says whether the maximum of the likelihood was found, and how large the
+Monte Carlo error of the estimates is. A wrong model can pass it.
 \item \code{\link[=assess_fit]{assess_fit()}} compares the data with datasets simulated from the model, to
 see whether the model misses a feature of them. It says nothing about
 predictions, and a model that passes is not shown to be right.

@@ -143,11 +143,11 @@ reference:
       the uncertainty of the estimates by profile likelihood or the
       parametric bootstrap.
     contents:
-      - check_fit
+      - check_computation
       - print.RiskMap_check
       - summary.RiskMap_check
       - print.summary.RiskMap_check
-      - plot_check
+      - plot_computation
       - plot_mcmc
       - summarise_mcmc
       - profile.RiskMap

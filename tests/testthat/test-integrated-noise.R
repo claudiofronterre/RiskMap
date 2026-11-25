@@ -465,12 +465,12 @@ test_that("a fit with integrate_noise reports the integrated locations", {
   expect_true(optimizer$mcml_integrate_noise)
   expect_identical(optimizer$mcml_integrated_locations, 10L)
   expect_null(optimizer$laplace_start)
-  expect_match(check_fit(fit)$draws,
+  expect_match(check_computation(fit)$draws,
                "The nugget was integrated out at 10 of 10 locations.")
   expect_true(is.finite(optimizer$mcml_history[[1]]$refit_change))
 })
 
-test_that("check_fit suggests integrating a sampled nugget out", {
+test_that("check_computation suggests integrating a sampled nugget out", {
   bank <- list(effective_draws = 40, pareto_k = 0.9)
   expect_match(fit_check_weights(bank, suggest_integration = TRUE)$fix,
                "integrate_noise = \"auto\"")
@@ -721,7 +721,7 @@ test_that("an automatic fit records the form of each stage", {
     "sampled"
   })
   expect_false(summarise_mcml_fit(fit)$suggest_integration)
-  expect_match(check_fit(fit)$draws, "The automatic choice")
+  expect_match(check_computation(fit)$draws, "The automatic choice")
   # Every validation bank combines the two forms, or records which it kept.
   second <- optimizer$mcml_history[[1L]]$second_validation
   expect_true(second$combined$used %in% c("both", "sampled", "integrated"))

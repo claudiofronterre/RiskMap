@@ -25,7 +25,7 @@ With RiskMap you can
 
 - choose a projection that keeps distances accurate, explore spatial
   correlation, and download population counts from WorldPop,
-- fit models with `glgpm()` and check them with `check_fit()`,
+- fit models with `glgpm()` and check them with `check_computation()`,
 - predict with `predict()` at new locations or over areas, for targets
   such as prevalence, the probability of exceeding a threshold or a
   population-weighted average,

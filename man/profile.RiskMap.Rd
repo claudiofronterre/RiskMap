@@ -174,6 +174,6 @@ plot(profiles)
 \seealso{
 The methods for a profile are \code{print()}, on this page, and
 \code{\link[=plot_profile]{plot_profile()}}, which \code{plot()} of the profile also calls.
-\code{\link[=check_fit]{check_fit()}} checks the profiles, and \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} gives
-bootstrap intervals.
+\code{\link[=check_computation]{check_computation()}} checks the profiles, and \code{\link[=parametric_bootstrap]{parametric_bootstrap()}}
+gives bootstrap intervals.
 }

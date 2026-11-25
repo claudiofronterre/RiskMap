@@ -9,7 +9,7 @@
 ##' \tabular{ll}{
 ##'   **Question** \tab **Function** \cr
 ##'   Are the data spatially correlated? \tab [variogram()] \cr
-##'   Did the computation of the fit work? \tab [check_fit()], and
+##'   Did the computation of the fit work? \tab [check_computation()], and
 ##'     [plot_mcmc()] and [summarise_mcmc()] for its samples \cr
 ##'   How uncertain are the estimates? \tab [summary()][summary.RiskMap()],
 ##'     [profile()][profile.RiskMap()] and [parametric_bootstrap()] \cr
@@ -23,9 +23,9 @@
 ##' }
 ##'
 ##' @details
-##' - [check_fit()] is about the computation and not about the model. It says
-##'   whether the maximum of the likelihood was found, and how large the Monte
-##'   Carlo error of the estimates is. A wrong model can pass it.
+##' - [check_computation()] is about the computation and not about the model. It
+##'   says whether the maximum of the likelihood was found, and how large the
+##'   Monte Carlo error of the estimates is. A wrong model can pass it.
 ##' - [assess_fit()] compares the data with datasets simulated from the model, to
 ##'   see whether the model misses a feature of them. It says nothing about
 ##'   predictions, and a model that passes is not shown to be right.

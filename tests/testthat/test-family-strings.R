@@ -4,7 +4,7 @@
 # table keyed by family, as in c(binomial = "a", poisson = "b")[[family]]. This
 # test reads every function in the installed package and fails if one that is
 # not the family's own does. Steps 1 to 5 of #253 converted the functions that
-# did, the last being the row "Link" of check_fit(). It reads the code, not
+# did, the last being the row "Link" of check_computation(). It reads the code, not
 # what it means, so a "gaussian" that is not a family, such as a Gaussian
 # correlation, would be counted too.
 

@@ -36,7 +36,7 @@ The exposure is given in the \code{denominator} of \code{\link[=glgpm]{glgpm()}}
 every count when it is not given. As \eqn{\theta} grows the model tends
 to the Poisson model with the same mean, and a fit whose size goes to that
 limit holds it there, as a variance estimated as zero is held, and says so
-in \code{\link[=check_fit]{check_fit()}}. A fit that estimates the size reports it in
+in \code{\link[=check_computation]{check_computation()}}. A fit that estimates the size reports it in
 \link[=coef.RiskMap]{coef()}, \link[=print.RiskMap]{print()} and
 \link[=summary.RiskMap]{summary()} as \code{theta}. Its start is the size of the
 negative binomial regression without the random effects, or

@@ -67,8 +67,8 @@ in the source repository.
 
 ### Checking a fit
 
-- `check_fit()` reports how a fit was computed and flags anything that needs
-  attention, `profile()` gives profile likelihoods and
+- `check_computation()` reports how a fit was computed and flags anything that
+  needs attention, `profile()` gives profile likelihoods and
   `parametric_bootstrap()` bootstrap intervals for the parameters.
 
 ### Prediction

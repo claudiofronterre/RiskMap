@@ -449,7 +449,7 @@ test_that("a fit integrates households out and reports them", {
   expect_true(optimizer$mcml_integrate_noise)
   expect_identical(optimizer$mcml_integrated_terms,
                    c("nugget", "re(household)"))
-  expect_match(check_fit(fit)$draws,
+  expect_match(check_computation(fit)$draws,
                "The random effect re\\(household\\) was integrated out at 90 of 90 levels.")
   expect_identical(summarise_mcml_fit(fit)$integration$integrated,
                    c(30L, 90L))

@@ -19,8 +19,8 @@
 ##' change of a factor at the last fixed refit of the last stage
 ##' (`refit_change`), whether to suggest integrating the nugget out
 ##' (`suggest_integration`, `suggests_integration()`), the number of checks
-##' of `check_fit()` that need a look (`checks_to_review`), and where the
-##' starting values came from (`starting_values`, `NULL` for a fit saved
+##' of `check_computation()` that need a look (`checks_to_review`), and where
+##' the starting values came from (`starting_values`, `NULL` for a fit saved
 ##' before it was recorded) and why (`starting_reason`,
 ##' `describe_starting_values()`).
 ##' @noRd
@@ -67,7 +67,7 @@ starting_reason <- function(diagnostics) {
   if (!is.null(diagnostics$fallback_reason)) "not_recorded"
 }
 
-##' Whether `check_fit()` suggests integrating the nugget out
+##' Whether `check_computation()` suggests integrating the nugget out
 ##'
 ##' For a fit that sampled a nugget whose variance is estimated, or fixed, at
 ##' `threshold` or more, or a random effect with such a variance and some
@@ -181,7 +181,7 @@ describe_mcml_certificate <- function(mcml) {
 ##' The bullet of the certificate of a fit, a tick only when it is certified
 ##'
 ##' Every other outcome is a problem in the check of the Monte Carlo accuracy
-##' of `check_fit()`, so it gets a cross.
+##' of `check_computation()`, so it gets a cross.
 ##' @noRd
 certificate_symbol <- function(mcml) {
   if (identical(mcml$outcome, "certified")) "v" else "x"
@@ -261,13 +261,13 @@ describe_noise_forms <- function(forms) {
 ##' @noRd
 describe_checks_to_review <- function(count) {
   if (is.null(count)) return(NULL)
-  check_fit <- out_fun("check_fit")
+  check_computation <- out_fun("check_computation")
   if (count == 0L) {
-    return(c(v = paste0("No check needs a look. See ", check_fit,
+    return(c(v = paste0("No check needs a look. See ", check_computation,
                         " for the details.")))
   }
   c("!" = paste0(count, if (count == 1L) " check needs" else " checks need",
-                 " a look. See ", check_fit, "."))
+                 " a look. See ", check_computation, "."))
 }
 
 ##' @title Print a Fitted RiskMap Model
@@ -277,7 +277,7 @@ describe_checks_to_review <- function(count) {
 ##'   the log-likelihood and, for binomial, Poisson and negative binomial models, whether the
 ##'   Monte Carlo error of the estimate is certified. Standard errors and
 ##'   confidence intervals are given by [summary.RiskMap()], and the
-##'   checks on the computation by [check_fit()].
+##'   checks on the computation by [check_computation()].
 ##' @param x An object of class `"RiskMap"`.
 ##' @param digits The number of significant digits of the estimates.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
