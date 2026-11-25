@@ -500,8 +500,8 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       abort_input("{.arg x} has no summary {.val {summary}} of {.val {quantity}} aggregated by {.val {aggregate}}.", arg = "quantity")
     }
     if (identical(summary, "exceedance")) {
-      threshold <- select_prediction_plot_value(
-        threshold, unique(candidates$threshold), "thresholds"
+      threshold <- select_prediction_threshold(
+        threshold, unique(candidates$threshold)
       )
       candidates <- candidates[candidates$threshold == threshold, ,
                                drop = FALSE]
@@ -527,10 +527,8 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     available_thresholds <- as.numeric(sub(
       paste0("^", quantity, "_exceedance_"), "", available
     ))
-    threshold <- select_prediction_plot_value(
-      threshold, available_thresholds, "thresholds"
-    )
-    available[[which.min(abs(available_thresholds - threshold))]]
+    threshold <- select_prediction_threshold(threshold, available_thresholds)
+    available[[match(threshold, available_thresholds)]]
   } else {
     if (!is.null(threshold)) {
       abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
@@ -559,6 +557,23 @@ select_prediction_plot_value <- function(value, available, argument) {
     abort_input("{.arg {argument}} must be one of {.or {.val {available}}}.", arg = argument)
   }
   value
+}
+
+#' Choose a threshold among those of the prediction
+#'
+#' The nearest one, when it differs from `value` by rounding only, as
+#' `seq(0.1, 0.5, 0.1)[3]` from 0.3, or as a threshold from its label in the
+#' names of the columns, which has seven digits.
+#' @noRd
+select_prediction_threshold <- function(value, available) {
+  if (is.numeric(value) && length(value) == 1L && is.finite(value)) {
+    nearest <- available[which.min(abs(available - value))]
+    if (length(nearest) &&
+        abs(nearest - value) <= 1e-6 * max(abs(nearest), abs(value))) {
+      return(nearest)
+    }
+  }
+  select_prediction_plot_value(value, available, "thresholds")
 }
 
 #' What a map shows, which determines its default colours

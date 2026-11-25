@@ -474,3 +474,42 @@ test_that("a north arrow and a scale bar ask for ggspatial, and only they do", {
   expect_identical(asked, "ggspatial")
   expect_length(decorated$layers, length(plain$layers) + 2L)
 })
+
+test_that("a threshold is found whatever the rounding of its last bits", {
+  thresholds <- seq(0.1, 0.5, 0.1)
+  expect_false(0.3 %in% thresholds)
+  prediction <- predict(
+    gaussian_model, prediction_data, boundaries = st_sf(geometry = squares),
+    aggregate = "mean", summaries = c("mean", "exceedance"),
+    thresholds = thresholds, seed = 1, messages = FALSE
+  ) |> suppressWarnings()
+  for (spatial_scale in c("location", "area", "both")) {
+    values <- lapply(list(0.3, thresholds[3]), function(threshold) {
+      map <- plot_prediction(prediction, summaries = "exceedance",
+                             spatial_scale = spatial_scale,
+                             thresholds = threshold)
+      layers <- lapply(ggplot2::ggplot_build(map)$data, `[[`, "fill")
+      unlist(layers)
+    })
+    expect_identical(values[[1]], values[[2]])
+  }
+  expect_identical(
+    prediction_plot_data(prediction, "response", "exceedance", NULL,
+                         0.3)$data$.prediction_value,
+    prediction$predictions$response_exceedance_0.3
+  )
+  area <- prediction_plot_data(prediction, "response", "exceedance", "mean", 0.3)
+  rows <- prediction$boundary_summary
+  expect_identical(
+    area$data$.prediction_value,
+    rows$value[rows$quantity == "response" & rows$threshold %in% thresholds[3]]
+  )
+  expect_input_error(
+    plot_prediction(prediction, summaries = "exceedance", thresholds = 0.31),
+    "thresholds"
+  )
+  # The columns of the locations have thresholds of seven digits.
+  third <- predict(gaussian_model, prediction_data, summaries = "exceedance",
+                   thresholds = c(1 / 3, 2 / 3), seed = 1, messages = FALSE)
+  expect_s3_class(plot(third, thresholds = 1 / 3), "ggplot")
+})

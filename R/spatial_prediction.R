@@ -147,14 +147,19 @@
 ##' `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
 ##' column `fixed` then reports the average fixed-effect contribution.
 ##'
-##' At the observed locations, the conditioned location-level Gaussian effect
-##' already includes the fitted nugget when the model has one. Consequently,
+##' At the observed locations of a binomial, Poisson or negative binomial fit
+##' with a nugget, the effect of each location is drawn given the data and
+##' already includes the nugget. At those of a Gaussian fit the prediction is of
+##' the spatial process \eqn{S(x)}, without the nugget, as it is at new
+##' locations, and [fitted()][fitted.RiskMap()] gives the fitted values with the
+##' nugget and the random effects of the data. For every family,
 ##' `include = "nugget"` is available only for predictions supplied through
 ##' `newdata`, where it represents a new independent nugget realization.
 ##'
 ##' `newdata` and `boundaries` are transformed internally to the fitted model
 ##' CRS without changing row order; returned geometries remain in their input
-##' CRS. Rows with missing required predictors are retained with `NA`
+##' CRS. Rows with missing required predictors, or with predictors that give the
+##' model a covariate that isn't finite, such as `log(0)`, are retained with `NA`
 ##' predictions and an informative warning.
 ##'
 ##' When `boundaries` are supplied, one prediction run produces both the
@@ -376,10 +381,15 @@ predict.RiskMap <- function(
   }
   observed_locations <- is.null(newdata)
   if (observed_locations && "nugget" %in% include) {
-    abort_input(c("{.arg include} can't contain {.val nugget} at the observed locations.", "i" = "There the effect of each location is drawn given the data, and it already includes the nugget."), arg = "include")
+    reason <- if (fit_is_exact(object)) {
+      "The prediction there is of the spatial process, without the nugget of the data, which {.fn fitted} includes. For a new realisation of it, give the locations as {.arg newdata}."
+    } else {
+      "There the effect of each location is drawn given the data, and it already includes the nugget."
+    }
+    abort_input(c("{.arg include} can't contain {.val nugget} at the observed locations.", "i" = reason), arg = "include")
   }
   prediction_input <- validate_prediction_data(
-    object, newdata, include, standardise
+    object, newdata, include, standardise, messages = messages
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
@@ -671,7 +681,8 @@ prediction_operation_requested <- function(operations, built_in) {
 #' @noRd
 validate_prediction_data <- function(object, newdata, include,
                                      standardise = NULL,
-                                     allow_new_levels = FALSE) {
+                                     allow_new_levels = FALSE,
+                                     messages = TRUE) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   data_arg <- if (is.null(newdata)) "object" else "newdata"
   check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
@@ -685,7 +696,9 @@ validate_prediction_data <- function(object, newdata, include,
   }
   output_data <- prediction_data
   if (!isTRUE(st_crs(prediction_data) == st_crs(object$data))) {
-    riskmap_inform("{.arg newdata} is projected to the coordinate reference system of the fit.")
+    if (messages) {
+      riskmap_inform("{.arg newdata} is projected to the coordinate reference system of the fit.")
+    }
     prediction_data <- st_transform(prediction_data, st_crs(object$data))
   }
   inter_f <- interpret_formula(fit_formula(object))
@@ -722,6 +735,15 @@ validate_prediction_data <- function(object, newdata, include,
   if (any(!valid_rows)) {
     riskmap_warn("{sum(!valid_rows)} prediction row{?s} {?has/have} missing values, so {?its/their} predictions are {.code NA}.")
   }
+  if (!is.null(newdata) && any(valid_rows)) {
+    finite <- prediction_design_is_finite(
+      object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
+    )
+    if (any(!finite)) {
+      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number, so {?its/their} predictions are {.code NA}.")
+      valid_rows[valid_rows] <- finite
+    }
+  }
   list(
     model_data = prediction_data[valid_rows, , drop = FALSE],
     output_data = output_data,
@@ -738,11 +760,15 @@ restore_prediction_rows <- function(values, valid_rows, n_rows) {
 }
 
 #' Assign prediction support to polygon boundaries
+#'
+#' `boundaries` are in the CRS of the fit and `supplied` as the user gave them.
 #' @noRd
-assign_prediction_locations <- function(model_data, boundaries) {
+assign_prediction_locations <- function(model_data, boundaries,
+                                        supplied = boundaries) {
   metadata <- attr(model_data, "grid_metadata", exact = TRUE)
   if (inherits(model_data, "RiskMap_grid") && !is.null(metadata)) {
-    return(assign_prediction_grid_cells(model_data, boundaries, metadata))
+    return(assign_prediction_grid_cells(model_data, boundaries, metadata,
+                                        supplied))
   }
 
   membership <- st_within(model_data, boundaries)
@@ -772,9 +798,32 @@ assign_prediction_locations <- function(model_data, boundaries) {
   )
 }
 
+#' Whether any of the supplied polygons overlap
+#'
+#' Projecting polygons moves their vertices and keeps the edges between them
+#' straight, so a polygon with a vertex on the edge of its neighbour, as at a
+#' T-junction, can overlap it slightly once projected. Pairs that overlap
+#' there (`pairs`, as `st_overlaps()` gives them) are compared as they were
+#' supplied, in the plane of their coordinates, where an overlap of up to a
+#' millionth of the smaller polygon is rounding.
+#' @noRd
+supplied_polygons_overlap <- function(supplied, pairs) {
+  shapes <- st_set_crs(st_geometry(supplied), NA)
+  any(vapply(seq_along(pairs), function(first) {
+    any(vapply(pairs[[first]][pairs[[first]] > first], function(second) {
+      tryCatch({
+        shared <- st_intersection(shapes[first], shapes[second])
+        sum(st_area(shared)) >
+          1e-6 * min(st_area(shapes[c(first, second)]))
+      }, error = function(error) TRUE)
+    }, logical(1)))
+  }, logical(1)))
+}
+
 #' Calculate exact polygon coverage for cells created by create_grid
 #' @noRd
-assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
+assign_prediction_grid_cells <- function(model_data, boundaries, metadata,
+                                         supplied = boundaries) {
   if (!identical(metadata$cell_shape, "square") ||
       !is.numeric(metadata$cellsize) || length(metadata$cellsize) != 1L ||
       !is.finite(metadata$cellsize) || metadata$cellsize <= 0 ||
@@ -795,7 +844,9 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   grid_boundaries <- st_transform(boundaries, grid_crs)
   overlaps <- st_overlaps(grid_boundaries)
   duplicates <- st_equals(grid_boundaries)
-  if (any(lengths(overlaps) > 0L) || any(lengths(duplicates) > 1L)) {
+  if (any(lengths(duplicates) > 1L) ||
+      (any(lengths(overlaps) > 0L) &&
+       supplied_polygons_overlap(supplied, overlaps))) {
     abort_input("The polygons of {.arg boundaries} must not overlap.", arg = "boundaries")
   }
 
@@ -889,14 +940,17 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
-    riskmap_inform("{.arg boundaries} are projected to the coordinate reference system of the fit.")
+    if (messages) {
+      riskmap_inform("{.arg boundaries} are projected to the coordinate reference system of the fit.")
+    }
     boundaries <- st_transform(boundaries, st_crs(object$data))
   }
   # Points on a grid that has lost its cells, in the CRS of newdata, are said
   # to be counted whole (#214)
   inform_point_assignment(prediction_input$output_data)
 
-  assignment <- assign_prediction_locations(model_data, boundaries)
+  assignment <- assign_prediction_locations(model_data, boundaries,
+                                            output_boundaries)
   assigned_data <- assignment$data
   area_id <- assignment$area_id
   coverage <- assignment$coverage
@@ -1557,16 +1611,33 @@ prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta
   as.numeric(design %*% beta)
 }
 
+#' Whether each row of prediction data gives a finite design row
+#'
+#' A row with log(0) or log(-1) doesn't. Every row is taken to be finite when
+#' the design can't be built, so that the prediction reports why.
+#' @noRd
+prediction_design_is_finite <- function(object, predictors) {
+  design <- tryCatch(
+    suppressWarnings(
+      prediction_design_matrix(object, predictors, na_action = na.pass)
+    ),
+    error = function(error) NULL
+  )
+  if (is.null(design)) return(rep(TRUE, nrow(predictors)))
+  unname(rowSums(!is.finite(design)) == 0)
+}
+
 #' Build a prediction design matrix using the fitted factor structure
 #' @noRd
-prediction_design_matrix <- function(object, predictors) {
+prediction_design_matrix <- function(object, predictors,
+                                     na_action = na.fail) {
   inter_f <- interpret_formula(fit_formula(object))
   fixed_formula <- update(inter_f$pf, NULL ~ .)
   fitted_frame <- model.frame(fixed_formula, data = object$data,
                               na.action = na.fail)
   fixed_terms <- attr(fitted_frame, "terms")
   model_frame <- model.frame(
-    fixed_terms, data = predictors, na.action = na.fail,
+    fixed_terms, data = predictors, na.action = na_action,
     xlev = stats::.getXlevels(fixed_terms, fitted_frame)
   )
   design <- as.matrix(model.matrix(
@@ -1791,13 +1862,13 @@ format_missing_location_predictions <- function(prediction_input, include,
   predictions <- prediction_input$output_data
   predictions$fixed <- NA_real_
   predictions$offset <- NA_real_
-  ordinary <- setdiff(names(summaries), c("cv", "exceedance"))
+  ordinary <- drop_prediction_operations(summaries, c("cv", "exceedance"))
   requested_names <- c(
-    paste("spatial", ordinary, sep = "_"),
+    prediction_summary_names("spatial", ordinary),
     if ("random_effects" %in% include)
-      paste("random_effects", ordinary, sep = "_"),
-    if ("nugget" %in% include) paste("nugget", ordinary, sep = "_"),
-    paste("link", ordinary, sep = "_"),
+      prediction_summary_names("random_effects", ordinary),
+    if ("nugget" %in% include) prediction_summary_names("nugget", ordinary),
+    prediction_summary_names("link", ordinary),
     prediction_summary_names("response", summaries, thresholds),
     unlist(lapply(names(transform), prediction_summary_names,
                   summaries = summaries, thresholds = thresholds),
@@ -2057,7 +2128,7 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
     }
     as.numeric(value)
   })
-  names(result) <- paste(quantity, names(ordinary), sep = "_")
+  names(result) <- prediction_summary_names(quantity, ordinary)
   if (prediction_operation_requested(summaries, "exceedance")) {
     exceedance <- lapply(thresholds, function(threshold) {
       rowMeans(values > threshold)
@@ -2074,7 +2145,8 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
 #' @noRd
 prediction_summary_names <- function(quantity, summaries, thresholds = NULL) {
   ordinary <- names(drop_prediction_operations(summaries, "exceedance"))
-  result <- paste(quantity, ordinary, sep = "_")
+  # No names when only the exceedance probabilities were asked for.
+  result <- paste(rep(quantity, length(ordinary)), ordinary, sep = "_")
   if (prediction_operation_requested(summaries, "exceedance")) {
     result <- c(result, paste(
       quantity, "exceedance", prediction_threshold_label(thresholds), sep = "_"
@@ -2084,9 +2156,18 @@ prediction_summary_names <- function(quantity, summaries, thresholds = NULL) {
 }
 
 #' Format thresholds for stable column names
+#'
+#' Each threshold is written on its own, so that its label doesn't depend on
+#' the others, with more digits only where two thresholds would have the same
+#' label.
 #' @noRd
 prediction_threshold_label <- function(thresholds) {
-  format(thresholds, scientific = FALSE, trim = TRUE)
+  for (digits in c(7L, 15L, 17L)) {
+    labels <- vapply(thresholds, format, character(1), digits = digits,
+                     scientific = FALSE)
+    if (!anyDuplicated(labels)) break
+  }
+  labels
 }
 
 #' Restore the block structure of stored fitted conditional samples
@@ -2397,25 +2478,17 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   object$D <- as.matrix(object$D)
   p <- ncol(object$D)
 
-  if (!all(object$cov_offset == 0)) {
-    if (obs_loc){
-      pred_cov_offset <- object$cov_offset
-    } else {
-      if (is.null(pred_cov_offset)) {
-        riskmap_bug("The offset must be given at the prediction locations.")
-      }
-      if (!is.numeric(pred_cov_offset)) {
-        abort_input("The offset column {.val {inter_f$offset}} of {.arg newdata} must be numeric.", arg = "newdata")
-      }
-      if (length(pred_cov_offset) != n_pred) {
-        riskmap_bug("The offset must have one value for each prediction location.")
-      }
-    }
-  } else {
-    if (!is.null(pred_cov_offset)) {
-      riskmap_warn("The offset of {.arg newdata} is ignored, because the offset of the fit is zero everywhere.")
-    }
+  if (obs_loc) {
+    pred_cov_offset <- object$cov_offset %||% 0
+  } else if (is.null(inter_f$offset)) {
     pred_cov_offset <- 0
+  } else {
+    if (!is.numeric(pred_cov_offset)) {
+      abort_input("The offset column {.val {inter_f$offset}} of {.arg newdata} must be numeric.", arg = "newdata")
+    }
+    if (length(pred_cov_offset) != n_pred) {
+      riskmap_bug("The offset must have one value for each prediction location.")
+    }
   }
 
   # ---------------------------------------------------------------------------

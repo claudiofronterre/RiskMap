@@ -149,13 +149,38 @@ test_that("optional random-effect and nugget components are explicit", {
                     "nugget_upper"))
 })
 
-test_that("the fitted nugget is not counted twice at observed locations", {
+test_that("the nugget of the data can't be included at observed locations", {
+  # A Gaussian prediction there is of the spatial process, as it is at new
+  # locations, and fitted() includes the nugget.
+  expect_input_error(
+    predict(gaussian_offset_model, include = "nugget", messages = FALSE),
+    "include"
+  )
   expect_error(
-    predict(
-      gaussian_offset_model,
-      include = "nugget",
-      messages = FALSE
-    ),
+    predict(gaussian_offset_model, include = "nugget", messages = FALSE),
+    "without the nugget"
+  )
+  parameters <- coef(gaussian_offset_model)
+  correlation <- matern_correlation(
+    as.matrix(dist(gaussian_offset_model$coords)), phi = parameters$phi,
+    kappa = gaussian_offset_model$kappa
+  )
+  residual <- gaussian_offset_model$y - gaussian_offset_model$cov_offset -
+    as.numeric(gaussian_offset_model$D %*% parameters$beta)
+  spatial <- parameters$sigma2 * correlation %*%
+    solve(parameters$sigma2 * correlation + diag(parameters$tau2, 10), residual)
+  prediction <- predict(
+    gaussian_offset_model, seed = 1, messages = FALSE,
+    control_mcmc = set_control_mcmc(n_draws = 20000, burnin = 0, thin = 1)
+  )
+  expect_equal(prediction$predictions$spatial_mean, as.numeric(spatial),
+               tolerance = 0.03)
+
+  # The conditional samples of a count fit have the nugget in them.
+  nugget_model <- poisson_model
+  nugget_model$estimate$nu2 <- log(0.5)
+  expect_error(
+    predict(nugget_model, include = "nugget", messages = FALSE),
     "already includes the nugget"
   )
 })
@@ -1408,4 +1433,186 @@ test_that("the conditional sampler matches MCMC at the estimate", {
   mcmc_mean <- colMeans(binomial_model$S_samples)
   mcmc_sd <- apply(binomial_model$S_samples, 2L, stats::sd)
   expect_lt(max(abs(colMeans(draws$samples) - mcmc_mean) / mcmc_sd), 0.5)
+})
+
+test_that("exceedance probabilities and CVs can be the only summaries", {
+  areas <- st_sf(geometry = squares)
+  for (summary in c("exceedance", "cv")) {
+    thresholds <- if (summary == "exceedance") c(0, 0.25)
+    all_of_them <- predict(
+      gaussian_model, prediction_data, summaries = c("mean", summary),
+      thresholds = thresholds, joint = TRUE, include = "random_effects",
+      seed = 1, transform = list(square = function(link) link^2),
+      messages = FALSE
+    )
+    alone <- predict(
+      gaussian_model, prediction_data, summaries = summary,
+      thresholds = thresholds, joint = TRUE, include = "random_effects",
+      seed = 1, transform = list(square = function(link) link^2),
+      messages = FALSE
+    )
+    columns <- grep(summary, names(all_of_them$predictions), value = TRUE)
+    expect_length(columns, if (summary == "exceedance") 4L else 2L)
+    expect_identical(st_drop_geometry(alone$predictions)[columns],
+                     st_drop_geometry(all_of_them$predictions)[columns])
+    expect_identical(
+      setdiff(names(alone$predictions), names(prediction_data)),
+      c("fixed", if ("offset" %in% names(prediction_data)) NULL else "offset",
+        columns)
+    )
+    expect_s3_class(
+      plot(alone, summaries = summary, thresholds = thresholds[1]), "ggplot"
+    )
+    expect_output(print(alone), summary)
+
+    # Without a usable row, and over areas, one of them without locations
+    missing <- prediction_data
+    missing$cov <- NA_real_
+    expect_warning(
+      empty <- predict(gaussian_model, missing, summaries = summary,
+                       thresholds = thresholds, messages = FALSE),
+      "missing values"
+    )
+    expect_identical(
+      grep("^(spatial|link|response)_", names(empty$predictions), value = TRUE),
+      grep("^response", columns, value = TRUE)
+    )
+    far <- st_sf(geometry = st_sfc(st_buffer(st_point(c(1e6, 1e6)), 10),
+                                   crs = 32637))
+    areal <- suppressWarnings(predict(
+      gaussian_model, prediction_data, boundaries = rbind(areas, far),
+      aggregate = "mean", summaries = summary, thresholds = thresholds,
+      messages = FALSE
+    ))
+    expect_setequal(areal$boundary_summary$summary, c("estimate", summary))
+    expect_setequal(
+      areal$boundary_summary$quantity[areal$boundary_summary$summary == summary],
+      "response"
+    )
+    expect_true(all(is.na(
+      areal$boundary_summary$value[areal$boundary_summary$boundary_id == 5]
+    )))
+  }
+})
+
+test_that("the label of a threshold doesn't depend on the others", {
+  expect_identical(prediction_threshold_label(c(0.2, 0.25)), c("0.2", "0.25"))
+  expect_identical(prediction_threshold_label(c(0.5, 10)), c("0.5", "10"))
+  expect_identical(prediction_threshold_label(seq(0.1, 0.5, 0.1)),
+                   c("0.1", "0.2", "0.3", "0.4", "0.5"))
+  # Two thresholds that differ never share a label.
+  expect_identical(
+    prediction_threshold_label(c(1, 1.00000001)), c("1", "1.00000001")
+  )
+  expect_length(unique(prediction_threshold_label(c(0.3, 0.1 + 0.2))), 2L)
+  prediction <- predict(
+    gaussian_model, prediction_data, summaries = "exceedance",
+    thresholds = c(0.2, 0.25), seed = 1, messages = FALSE
+  )
+  expect_true(all(c("response_exceedance_0.2", "response_exceedance_0.25") %in%
+                    names(prediction$predictions)))
+})
+
+test_that("rows whose covariates aren't finite have missing predictions", {
+  logged <- gaussian_data
+  logged$positive <- exp(logged$cov)
+  fit <- glgpm(y ~ log(positive) + gp(), data = logged, family = "gaussian",
+               fixed_pars = list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                                 sigma2_me = 0.1), messages = FALSE)
+  newdata <- prediction_data[1:4, ]
+  newdata$positive <- c(1, 0, -1, 2)
+  expect_warning(
+    result <- predict(fit, newdata, seed = 1, messages = FALSE),
+    "2 prediction rows give the model a covariate that isn't a finite number"
+  )
+  expect_identical(is.na(result$predictions$response_mean),
+                   c(FALSE, TRUE, TRUE, FALSE))
+  complete <- predict(fit, newdata[c(1, 4), ], seed = 1, messages = FALSE)
+  expect_identical(result$predictions$response_mean[c(1, 4)],
+                   complete$predictions$response_mean)
+  # Missing values have their own warning.
+  newdata$positive[4] <- NA
+  expect_warning(
+    expect_warning(predict(fit, newdata, messages = FALSE),
+                   "1 prediction row has missing values"),
+    "2 prediction rows give"
+  )
+  expect_warning(
+    assess_extrapolation(fit, newdata[1:3, ], spatial_threshold = 0.5),
+    "isn't a finite number"
+  )
+})
+
+test_that("an offset that is zero in the data is added in newdata", {
+  zero <- gaussian_data
+  zero$offset <- 0
+  fit <- glgpm(y ~ cov + offset(offset) + gp(), data = zero,
+               family = "gaussian", messages = FALSE)
+  newdata <- prediction_data[1:4, ]
+  newdata$offset <- c(0, 1, 2, -1)
+  result <- expect_no_warning(predict(fit, newdata, seed = 1, messages = FALSE))
+  newdata$offset <- 0
+  without <- predict(fit, newdata, seed = 1, messages = FALSE)
+  expect_equal(result$predictions$response_mean,
+               without$predictions$response_mean + c(0, 1, 2, -1))
+  expect_identical(result$predictions$offset, c(0, 1, 2, -1))
+  expect_identical(predict(fit, seed = 1, messages = FALSE)$predictions$offset,
+                   numeric(nrow(zero)))
+})
+
+test_that("messages = FALSE silences the projection of newdata and boundaries", {
+  elsewhere <- st_transform(prediction_data, 4326)
+  areas <- st_transform(st_sf(geometry = squares), 4326)
+  expect_no_message(suppressWarnings(predict(
+    gaussian_intercept_model, elsewhere, boundaries = areas,
+    aggregate = "mean", seed = 1, messages = FALSE
+  )), message = "projected")
+  expect_message(
+    expect_message(suppressWarnings(predict(
+      gaussian_intercept_model, elsewhere, boundaries = areas,
+      aggregate = "mean", seed = 1, messages = TRUE
+    )), "boundaries.*projected"),
+    "newdata.*projected"
+  )
+})
+
+test_that("polygons that meet at a T-junction in lon/lat don't overlap", {
+  box <- st_bbox(st_transform(st_buffer(gaussian_data, 2000), 4326))
+  middle <- c(mean(box[c(1, 3)]), mean(box[c(2, 4)]))
+  rectangle <- function(x0, x1, y0, y1) {
+    st_polygon(list(cbind(c(x0, x1, x1, x0, x0), c(y0, y0, y1, y1, y0))))
+  }
+  polygons <- function(shift = 0) {
+    st_sf(geometry = st_sfc(
+      rectangle(box[1], box[3], box[2], middle[2] + shift),
+      rectangle(box[1], middle[1], middle[2], box[4]),
+      rectangle(middle[1], box[3], middle[2], box[4]), crs = 4326
+    ))
+  }
+  areas <- polygons()
+  projected <- st_transform(areas, 32637)
+  # They overlap slightly once projected.
+  expect_gt(sum(lengths(st_overlaps(projected))), 0)
+  cells <- create_grid(st_sf(geometry = st_union(projected)), spacing = 1)
+  result <- suppressWarnings(predict(
+    gaussian_intercept_model, cells, boundaries = areas, aggregate = "mean",
+    seed = 1, messages = FALSE
+  ))
+  expect_false(anyNA(
+    result$boundary_summary$value[result$boundary_summary$quantity == "response"]
+  ))
+  # A real overlap is refused, and so is the same polygon twice.
+  expect_input_error(
+    suppressWarnings(predict(
+      gaussian_intercept_model, cells,
+      boundaries = polygons(1e-3 * (box[4] - box[2])), aggregate = "mean",
+      messages = FALSE
+    )), "boundaries"
+  )
+  expect_input_error(
+    suppressWarnings(predict(
+      gaussian_intercept_model, cells, boundaries = areas[c(1, 2, 2), ],
+      aggregate = "mean", messages = FALSE
+    )), "boundaries"
+  )
 })

@@ -344,3 +344,23 @@ test_that("the print of indicators states the classes and the thresholds", {
                                           sampling_noise = NA),
                      "sampling_noise")
 })
+
+test_that("the leverage of a cubic is computed from its QR decomposition", {
+  set.seed(2)
+  cubic <- gaussian_data[rep(1:10, 3), ]
+  cubic$el <- runif(30, 100, 2500)
+  fit <- glgpm(
+    y ~ el + I(el^2) + I(el^3) + gp(), data = cubic, family = "gaussian",
+    fixed_pars = list(beta = c(1, 0, 0, 0), sigma2 = 1, phi = 2,
+                      sigma2_me = 0.1), messages = FALSE
+  )
+  newdata <- prediction_data[1:5, ]
+  newdata$el <- c(100, 500, 1500, 2400, 4000)
+  result <- assess_extrapolation(fit, newdata, spatial_threshold = 0.5)
+  # The leverage doesn't depend on the basis of the polynomial.
+  basis <- poly(cubic$el, 3)
+  orthogonal <- cbind(1 / sqrt(30), basis)
+  leverage <- rowSums(cbind(1 / sqrt(30), predict(basis, newdata$el))^2)
+  expect_equal(result$covariate_leverage,
+               leverage / max(rowSums(orthogonal^2)), tolerance = 1e-6)
+})
