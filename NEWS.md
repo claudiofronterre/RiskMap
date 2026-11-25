@@ -89,6 +89,9 @@ in the source repository.
   test observations, next to its value under perfect calibration.
   `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses predictions on them.
+- In `assess_simulation()` every value belongs to a class, those beyond the
+  `breaks` to the end classes, covariates can have any name, and a prediction
+  at a sampled location uses what the data say about its nugget.
 
 ### Plots, printing and messages
 
