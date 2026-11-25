@@ -1778,7 +1778,9 @@ don't use.
   effect and the nugget is 0.048, which is that of the exact conditional mean,
   instead of 0.69. Draws at other locations are unchanged, apart from Gaussian
   candidates in areas that contain a sampled location, whose spatial effect is
-  drawn again. The other results are identical bit for bit.
+  drawn again. When areas are assessed, rows of the prediction grid with the same
+  coordinates share their new nugget, as the truth does, where each had its own.
+  The other results are identical bit for bit.
 - `assess_simulation()` stops before any fit when no area contains a prediction
   location, where the mean squared errors were `NaN`, and when a model to
   classify is called `"Class"`, whose results were lost. A covariate missing from

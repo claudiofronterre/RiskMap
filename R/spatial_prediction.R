@@ -3994,7 +3994,8 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##' prediction location that is also a sampled location, the true nugget is the
 ##' one of the data, so the prediction is of the spatial effect and that nugget
 ##' given the data. At any other location the nugget is a new one, as in
-##' [predict.RiskMap()]. Binomial, Poisson and negative binomial candidates are
+##' [predict.RiskMap()], and when areas are assessed the locations with the same
+##' coordinates share it. Binomial, Poisson and negative binomial candidates are
 ##' refitted with the denominators or exposures of the generating model, whatever
 ##' their own.
 ##'
@@ -4518,7 +4519,8 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
 ##' The simulated truth there has the nugget that the observations of the site
 ##' have, so the spatial effect and the nugget are replaced by draws of the
 ##' latent effect of the site, which is their sum, given the data. The nugget
-##' of any other location is a new one, as in [predict.RiskMap()].
+##' of any other location is a new one, as in [predict.RiskMap()], which joint
+##' draws share among the locations with the same coordinates.
 ##'
 ##' @param fit A `RiskMap` fit.
 ##' @param grid The prediction locations, in the CRS of the fit.
@@ -4531,11 +4533,12 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
 assessment_response_draws <- function(fit, grid, include, control_mcmc,
                                       groups = NULL) {
   coordinates <- coordinates_in_units(grid, fit$distance_units)
-  # The site of each location, NA where the location isn't sampled.
-  site <- index_coordinate_rows(rbind(fit$coords, coordinates))$index[
+  # The index of each distinct point, the sites of the fit first, and the site
+  # of each location, NA where the location isn't sampled.
+  point <- index_coordinate_rows(rbind(fit$coords, coordinates))$index[
     nrow(fit$coords) + seq_len(nrow(grid))
   ]
-  site[site > nrow(fit$coords)] <- NA
+  site <- ifelse(point > nrow(fit$coords), NA, point)
   sampled <- if ("nugget" %in% include) which(!is.na(site)) else integer()
 
   exact <- fit_is_exact(fit)
@@ -4555,10 +4558,21 @@ assessment_response_draws <- function(fit, grid, include, control_mcmc,
     fit, grid, if (is.null(groups)) "marginal" else "joint", include,
     control_mcmc, messages = FALSE, groups = groups
   )
-  if (!length(sampled)) return(components$response)
+  # Draws that are joint share a nugget among the locations with the same
+  # coordinates, as the truth does.
+  first <- match(point, point)
+  repeated <- if ("nugget" %in% include && !is.null(groups)) {
+    which(first != seq_along(first))
+  } else {
+    integer()
+  }
+  if (!length(sampled) && !length(repeated)) return(components$response)
 
   link <- components$link
-  if (exact) {
+  link[repeated, ] <- link[repeated, , drop = FALSE] -
+    components$nugget[repeated, , drop = FALSE] +
+    components$nugget[first[repeated], , drop = FALSE]
+  if (exact && length(sampled)) {
     drawn <- gaussian_site_draws(fit, coordinates, groups, sampled,
                                  n_samples = ncol(link))
     site_effects <- drawn$site_effects
@@ -4566,8 +4580,10 @@ assessment_response_draws <- function(fit, grid, include, control_mcmc,
     link[rows, ] <- link[rows, , drop = FALSE] + drawn$spatial -
       components$spatial[rows, , drop = FALSE]
   }
-  link[sampled, ] <- components$fixed[sampled] + components$offset[sampled] +
-    site_effects[site[sampled], , drop = FALSE]
+  if (length(sampled)) {
+    link[sampled, ] <- components$fixed[sampled] + components$offset[sampled] +
+      site_effects[site[sampled], , drop = FALSE]
+  }
   if (exact) return(link)
   matrix(fit$link_function$inv(as.numeric(link)), nrow = nrow(link))
 }
@@ -4600,18 +4616,21 @@ gaussian_site_draws <- function(fit, coordinates, groups, sampled, n_samples) {
   diag(covariance) <- diag(covariance) + fitted_nugget_variance(fit, pars)
   residual <- fit$y - as.numeric(as.matrix(fit$D) %*% pars$beta +
                                    fit$cov_offset)
+  if (is.null(fit$ID_re)) fit$ID_re <- matrix(0L, length(fit$y), 0L)
+  distribution <- gaussian_conditioning_distribution(fit, covariance, pars,
+                                                     residual)
+  # Without measurement error the data leave the effects of the sites no
+  # variance, or only that of the groups, so a jitter is expected.
   measurement_variance <- pars$sigma2_me %||% fit_fix_var_me(fit) %||% 0
-  site_effects <- if (measurement_variance == 0 && !length(fit$re)) {
-    # Without measurement error the data give the effects themselves.
-    matrix(residual[match(seq_len(nrow(fit$coords)), fit$ID_coords)],
-           nrow(fit$coords), n_samples)
-  } else {
-    if (is.null(fit$ID_re)) fit$ID_re <- matrix(0L, length(fit$y), 0L)
-    gaussian_conditioning_samples(
-      fit, spatial_covariance = covariance, par_hat = pars,
-      residual = residual, n_samples = n_samples
-    )$spatial
-  }
+  conditional_root <- factor_covariance(
+    distribution$covariance[distribution$spatial_rows,
+                            distribution$spatial_rows, drop = FALSE],
+    "conditional covariance of the sites", warn = measurement_variance > 0
+  )
+  site_effects <- sample_correlated_gaussian(
+    distribution$mean[distribution$spatial_rows], t(conditional_root),
+    n_samples
+  )
   if (is.null(groups)) {
     return(list(site_effects = site_effects, rows = integer(),
                 spatial = matrix(0, 0, n_samples)))

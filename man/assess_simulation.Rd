@@ -118,7 +118,8 @@ include it in their predictions when the generating model has one. At a
 prediction location that is also a sampled location, the true nugget is the
 one of the data, so the prediction is of the spatial effect and that nugget
 given the data. At any other location the nugget is a new one, as in
-\code{\link[=predict.RiskMap]{predict.RiskMap()}}. Binomial, Poisson and negative binomial candidates are
+\code{\link[=predict.RiskMap]{predict.RiskMap()}}, and when areas are assessed the locations with the same
+coordinates share it. Binomial, Poisson and negative binomial candidates are
 refitted with the denominators or exposures of the generating model, whatever
 their own.
 

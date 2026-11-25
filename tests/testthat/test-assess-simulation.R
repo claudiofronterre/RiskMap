@@ -275,8 +275,63 @@ test_that("draws of a Gaussian model without measurement error are its data", {
       draws <- assessment_response_draws(fit, nugget_grid, "nugget", control,
                                          groups)
     )
-    expect_equal(draws[c(1, 2, 5), ], matrix(sites$y[c(2, 7, 5)], 3, 20))
+    expect_equal(draws[c(1, 2, 5), ], matrix(sites$y[c(2, 7, 5)], 3, 20),
+                 tolerance = 1e-5)
     expect_gt(min(apply(draws[-c(1, 2, 5), ], 1, sd)), 0.5)
+  }
+
+  # With groups, the data leave only their variance.
+  grouped <- suppressWarnings(glgpm(
+    y ~ gp(nugget = TRUE) + re(group), data = sites, family = "gaussian",
+    messages = FALSE,
+    fixed_pars = list(beta = 0.5, sigma2 = 1, phi = 2, tau2 = 1.5,
+                      sigma2_me = 0, sigma2_re = 0.7)
+  ))
+  expect_no_warning(
+    draws <- assessment_response_draws(grouped, nugget_grid, "nugget", control)
+  )
+  # Sites 2 and 5 are in different groups, and 1 and 5 in the same.
+  group_effect <- sites$y[c(2, 7, 5)] - draws[c(1, 2, 5), ]
+  expect_gt(min(apply(group_effect, 1, sd)), 0.1)
+  same_group <- rbind(nugget_sites[c(1, 5), c("site", "cov")])
+  expect_no_warning(
+    draws <- assessment_response_draws(grouped, same_group, "nugget", control)
+  )
+  expect_equal(sites$y[1] - draws[1, ], sites$y[5] - draws[2, ],
+               tolerance = 1e-4)
+})
+
+test_that("joint draws share the nugget of a repeated location", {
+  # Its nugget is that of one point in the simulated truth too.
+  control <- set_control_mcmc(n_draws = 50, burnin = 100, thin = 2)
+  nugget_sites$cases <- rep(c(3, 12, 7, 9), 5)
+  fits <- list(
+    nugget_gaussian_fit(y ~ cov + gp(nugget = TRUE)),
+    suppressWarnings(glgpm(
+      cases ~ cov + gp(nugget = TRUE), data = nugget_sites, family = "binomial",
+      denominator = m, messages = FALSE,
+      fixed_pars = list(beta = c(0.2, 0.1), sigma2 = 0.3, phi = 2, tau2 = 1.5)
+    ))
+  )
+  for (fit in fits) {
+    for (rows in list(c(3, 3, 4), c(1, 1, 3, 3, 4))) {
+      grid <- nugget_grid[rows, ]
+      # Only the fixed part differs between the rows of a repeated location.
+      grid$cov[which(rows == 3)] <- c(0.15, 0.95)
+      set.seed(17)
+      # The prediction engine warns of the jitter that equal rows need.
+      draws <- suppressWarnings(
+        assessment_response_draws(fit, grid, "nugget", control,
+                                  rep(1L, length(rows))),
+        classes = "riskmap_warning_fit"
+      )
+      link <- if (fit$family == "gaussian") draws else qlogis(draws)
+      difference <- link[which(rows == 3), ]
+      slope <- coef(fit)$beta[[2]]
+      expect_equal(difference[2, ] - difference[1, ], rep(0.8 * slope, 50),
+                   tolerance = 1e-4)
+      expect_gt(sd(link[1, ] - link[length(rows), ]), 1)
+    }
   }
 })
 
