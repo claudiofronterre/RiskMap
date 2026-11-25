@@ -56,12 +56,34 @@ test_that("check_complete_data only checks the specified columns and names the c
 test_that("check_binomial functions correctly", {
 
   expect_no_error(check_binomial(0:3, NULL))
-  expect_no_error(check_binomial(0:3, 0:3))
+  expect_no_error(check_binomial(0:3, c(1, 1, 2, 3)))
   expect_no_error(check_binomial(0:3, 1:4))
   expect_no_error(check_binomial(c(0, 1.00000001, 2), NULL))
   expect_input_error(check_binomial(-1:2, NULL), "data")
   expect_input_error(check_binomial(c(0, 1.1, 2), NULL), "data")
-  expect_error(check_binomial(1:4, 0:3), "can't exceed their denominators")
+  expect_error(check_binomial(2:5, 1:4), "can't exceed their denominators")
+
+  # Denominators that aren't numbers of trials.
+  for (den in list(c(1, 2.5), c(1, 0), c(1, -1), c(1, NA), c(1, Inf))) {
+    expect_input_error(check_binomial(c(0, 0), den), "denominator")
+  }
+  expect_error(check_binomial(c(0, 0), c(1, 2.5)), "positive whole numbers")
+  expect_input_error(check_binomial(c(0, NA), c(1, 1)), "data")
+  # Whole to floating point, on either side.
+  expect_no_error(check_binomial(c(20, 20), 20 * c(1 - 1e-12, 1 + 1e-12)))
+  expect_no_error(check_binomial(20 * c(1 - 1e-12, 1 + 1e-12), c(20, 20)))
+})
+
+test_that("check_counts functions correctly", {
+
+  expect_no_error(check_counts(c(0, 3 + 1e-12), c(0.5, 2), "Poisson"))
+  for (count in list(c(1, 1.5), c(1, -1), c(1, NA), c(1, Inf))) {
+    expect_input_error(check_counts(count, c(1, 1), "Poisson"), "data")
+  }
+  for (exposure in list(c(1, 0), c(1, -2), c(1, NA), c(1, Inf))) {
+    expect_input_error(check_counts(c(1, 1), exposure, "Poisson"), "denominator")
+  }
+  expect_error(check_counts(1, 0, "Poisson"), "of a Poisson model")
 })
 
 test_that("check_data functions correctly", {

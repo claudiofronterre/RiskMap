@@ -69,6 +69,25 @@ test_that("glgpm produces errors", {
     "denominator"
   )
 
+  # Records that aren't of the family.
+  wrong <- list(
+    binomial = list(y = c(1.5, -1), denominator = c(2.5, 0, NA, Inf, -1)),
+    poisson = list(y = c(1.5, -1), denominator = c(0, NA, Inf, -1))
+  )
+  for (family in names(wrong)) {
+    for (column in c("y", "denominator")) {
+      for (value in wrong[[family]][[column]]) {
+        wrong_data <- if (family == "binomial") binomial_data else poisson_data
+        wrong_data$y[1] <- 0
+        wrong_data[[column]][1] <- value
+        expect_input_error(
+          glgpm(y ~ cov + gp(), data = wrong_data, family = family, denominator = denominator, messages = FALSE),
+          if (column == "y") "data" else column
+        )
+      }
+    }
+  }
+
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", distance_crs = 12345),
     "distance_crs", class = "riskmap_error_input"
@@ -486,6 +505,44 @@ test_that("glgpm produces expected output for binomial models", {
   expect_identical(re_starting_values$transformed_laplace, NA_real_)
   expect_match(re_starting_values$fallback_reason, "re() terms",
                fixed = TRUE)
+})
+
+test_that("responses and denominators of counts are whole to floating point", {
+  skip_on_cran()
+  fit <- function(data, family) {
+    glgpm(y ~ cov + gp(), data = data, family = family,
+          denominator = denominator, seed = fixture_seed,
+          fixed_pars = list(beta = c(0.2, 0.3), sigma2 = 0.5, phi = 2),
+          control_mcmc = control_mcmc, messages = FALSE)
+  }
+  # As a number found by a division may be.
+  nearly <- function(x) x * (1 + 1e-12)
+  data <- binomial_data
+  whole <- fit(data, "binomial")
+  data$y <- nearly(data$y)
+  data$denominator <- nearly(data$denominator)
+  rounded <- fit(data, "binomial")
+  expect_identical(rounded$y, whole$y)
+  expect_identical(rounded$units_m, whole$units_m)
+  expect_identical(rounded$S_samples, whole$S_samples)
+  # The simulation takes the denominators of the fit, as whole numbers.
+  expect_identical(simulated_values(simulate_glgpm(rounded, nsim = 2, seed = 1)),
+                   simulated_values(simulate_glgpm(whole, nsim = 2, seed = 1)))
+
+  # The start of a Poisson model regresses the rounded responses, which can be
+  # just below zero, and the exposures aren't rounded.
+  data <- poisson_data
+  data$denominator <- data$denominator + 0.5
+  data$y[1] <- 0
+  whole <- fit(data, "poisson")
+  data$y <- nearly(data$y)
+  data$y[1] <- 0.3 - 0.1 * 3
+  data$y[2] <- data$y[2] + 1.2e-8
+  expect_lt(data$y[1], 0)
+  rounded <- fit(data, "poisson")
+  expect_identical(rounded$y, whole$y)
+  expect_identical(rounded$units_m, data$denominator)
+  expect_identical(rounded$S_samples, whole$S_samples)
 })
 
 test_that("a model with re() terms keeps the default start without fitting a Gaussian model", {
