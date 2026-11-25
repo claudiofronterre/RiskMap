@@ -1667,8 +1667,9 @@ by the size of that noise. The draws of the linear predictor and the seeds are
 those of before, and Gaussian results are identical bit for bit. F is
 evaluated at every count up to 100 and on an adaptive grid beyond, where the
 sum over a cell is in closed form, with a relative error of about 10^-5 in the
-CRPS. With 2,000 draws the score of a count takes about 5 ms with 20 trials
-and 0.1 to 0.35 s for predicted counts of 1,000 to 100,000
+CRPS. With 2,000 draws the score of a count takes about 5 ms with 20 trials,
+25 ms with 100, and 0.1 to 0.5 s for predicted counts in the thousands or
+more, most where the draws of the mean are widely dispersed
 (`count_distribution()`). A rare event whose simulated counts were all zero
 has a SCRPS. A test set of counts is recorded as a failure if a draw of the
 mean is not finite, is outside the range of the family or gives counts above
