@@ -32,14 +32,14 @@
 ##'
 ##' The band is the 95% joint envelope of the simulated curves and the dashed
 ##' line their median at each value. The observed distribution function is the
-##' thick line, and the observed semivariances are the points. Where the observed
-##' curve is outside the band, it is orange. The band is joint, so that the whole curve
-##' of a dataset from the model is inside it with a probability of 95%, however
-##' many values or distance classes there are. Its edge depends on the
-##' simulations, so a single point near the edge says little, and the first
-##' distance classes often have few pairs. The points of the variogram are not
-##' joined by lines, as in [plot_variogram()]. Each model has its own points,
-##' because the residuals are those from its covariates.
+##' thick line, and the observed semivariances are the points. Where the
+##' observed curve is outside the band, it is orange. The band is joint, so that
+##' the whole curve of a dataset from the model is inside it with a probability
+##' of 95%, however many values or distance classes there are. Its edge depends
+##' on the simulations, so a single point near the edge says little, and the
+##' first distance classes often have few pairs. The points of the variogram are
+##' not joined by lines, as in [plot_variogram()]. Each model has its own
+##' points, because the residuals are those from its covariates.
 ##'
 ##' @return A \pkg{ggplot2} object, to which components can be added.
 ##'
@@ -155,10 +155,11 @@ plot_check_statistics <- function(x, models, colours) {
 
 ##' The bars of the histograms of simulated statistics
 ##'
-##' Each panel has its own bars, about 25 of them, and each bar is either below
-##' the observed value or at or above it. A statistic that takes equally spaced
-##' values, such as a proportion of locations, has bars that each hold the same
-##' number of these values.
+##' Each panel has its own bars, about 25 of them, and each bar holds values that
+##' are all below the observed one or all at or above it, as in
+##' `summarise_statistic()`. A statistic that takes equally spaced values, such as
+##' a proportion of locations, has bars that each hold the same number of these
+##' values.
 ##' @param simulated,observed Data frames with the `model` and the `statistic`,
 ##'   and with the `value` or the `observed` value.
 ##' @noRd
@@ -166,34 +167,33 @@ statistic_bars <- function(simulated, observed) {
   panel_of <- function(data) paste(data$model, data$statistic, sep = "\r")
   pieces <- lapply(split(simulated, panel_of(simulated)), function(panel) {
     value <- observed$observed[match(panel_of(panel[1L, ]), panel_of(observed))]
-    breaks <- histogram_breaks(panel$value, value)
-    n <- length(breaks)
-    bin <- findInterval(panel$value, breaks, rightmost.closed = TRUE)
-    middle <- (breaks[-n] + breaks[-1L]) / 2
+    above <- at_or_above(panel$value, value)
+    bins <- histogram_breaks(panel$value, above, value)
+    n <- length(bins$breaks)
+    bin <- findInterval(panel$value, bins$breaks, rightmost.closed = TRUE)
     data.frame(model = panel$model[1L], statistic = panel$statistic[1L],
-               from = breaks[-n], to = breaks[-1L],
-               count = tabulate(bin, n - 1L),
-               above = is.finite(value) & middle >= value)
+               from = bins$breaks[-n], to = bins$breaks[-1L],
+               count = tabulate(bin, n - 1L), above = bins$above)
   })
   out <- do.call(rbind, unname(pieces))
   out[out$count > 0, ]
 }
 
-##' The limits of the bars of a histogram
+##' The limits of the bars of a histogram, and whether each bar holds the values
+##' that are `above`
 ##'
 ##' @param values The values of the histogram.
-##' @param divide A value at which, or just below which when the values are
-##'   equally spaced, a bar ends, so that each bar is below it or at or above it.
-##'   It can be missing.
+##' @param above Whether each value is at or above the observed one.
+##' @param observed The observed value.
 ##' @noRd
-histogram_breaks <- function(values, divide = NA_real_, n_bars = 25L) {
-  distinct <- sort(unique(signif(values, 10L)))
+histogram_breaks <- function(values, above, observed, n_bars = 25L) {
   range <- range(values)
-  step <- if (length(distinct) > 1L) min(diff(distinct)) else 0
-  if (step == 0) {
-    width <- if (distinct == 0) 1 else 0.1 * abs(distinct)
-    return(distinct + c(-0.5, 0.5) * width)
+  distinct <- sort(unique(signif(values, 10L)))
+  if (length(distinct) == 1L) {
+    width <- if (range[1L] == 0) 1 else 0.1 * abs(range[1L])
+    return(list(breaks = range[1L] + c(-0.5, 0.5) * width, above = any(above)))
   }
+  step <- min(diff(distinct))
   multiples <- diff(distinct) / step
   spaced <- diff(range) / step < 1e3 &&
     all(abs(multiples - round(multiples)) < 1e-4)
@@ -201,19 +201,28 @@ histogram_breaks <- function(values, divide = NA_real_, n_bars = 25L) {
     # The bars go from half a step below a value.
     width <- step * ceiling((round(diff(range) / step) + 1) / n_bars)
     range <- range + c(-0.5, 0.5) * step
-    divide <- divide - 0.5 * step
   } else {
     width <- diff(range) / n_bars
   }
-  inside <- is.finite(divide) && divide > range[1L] && divide < range[2L]
-  start <- if (inside) {
-    divide - width * ceiling((divide - range[1L]) / width - 1e-6)
-  } else {
-    range[1L]
+  # A bar ends between the values below the observed one and the others, and at
+  # the observed one if it isn't at a value.
+  divide <- range[1L]
+  if (any(above) && !all(above)) {
+    between <- c(max(values[!above]), min(values[above]))
+    divide <- if (spaced) {
+      between[2L] - 0.5 * step
+    } else if (all(abs(observed - between) > 1e-6 * width)) {
+      observed
+    } else {
+      mean(between)
+    }
   }
+  start <- divide - width * ceiling((divide - range[1L]) / width - 1e-6)
   breaks <- start + width * (0:ceiling((range[2L] - start) / width - 1e-6))
   # The first and the last bar don't go beyond the values.
-  c(range[1L], breaks[-c(1L, length(breaks))], range[2L])
+  breaks <- c(range[1L], breaks[-c(1L, length(breaks))], range[2L])
+  middle <- (breaks[-1L] + breaks[-length(breaks)]) / 2
+  list(breaks = breaks, above = any(above) & (all(above) | middle > divide))
 }
 
 ##' The distribution of the data over the joint envelope of the simulated ones
@@ -272,6 +281,9 @@ plot_check_variogram <- function(x, models, colours) {
     abort_input(c("{.arg x} has no variogram, because no pair of locations is in a distance class.", "i" = "Give the distance classes in {.arg breaks} of {.fn assess_fit}."), arg = "x")
   }
   variogram <- rows_of_models(x$variogram, models)
+  if (!nrow(variogram)) {
+    abort_input("The covariates of {.val {models}} leave no residuals, so there is no variogram to draw.", arg = "model")
+  }
   # One distance class has an interval instead of a band.
   envelope <- if (length(unique(variogram$distance)) > 1L) {
     envelope_layers(colours)

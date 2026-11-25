@@ -56,7 +56,8 @@ those of the simulated datasets, the limits of the joint envelope,
 \item{variogram}{A data frame with the same columns for the semivariance of
 the residuals in each distance class, the mean \code{distance} of its pairs of
 locations and their number, \code{n_pairs}. \code{NULL} when no pair of locations
-is in a class.}
+is in a class, and without the models whose covariates leave no
+residuals.}
 \item{nsim, seed, breaks, distance_units, level}{The settings. \code{level} is
 the coverage of the joint envelopes, 0.95.}
 \item{family, response, quantity}{The family of each model, the response
@@ -117,13 +118,15 @@ The distribution is that of the same values as the default statistics, the
 prevalence of each location, or the rate or response of each observation.
 
 The variogram is that of the residuals from the covariates. The response is
-first put on the scale of the linear predictor, as the empirical logit for
-binomial models, the logarithm of the rate with 0.5 added to the count for
-models of counts, and the response itself for Gaussian models. It has one
-value for each location, where the observations are added up, or averaged
-for Gaussian models. The residuals are the differences between these values,
-less any offset, and their least squares fit on the covariates of the model.
-The regression is done again for each simulated dataset. The variogram of
+first transformed, to the empirical logit for binomial models and to the
+logarithm of the rate with 0.5 added to the count for models of counts,
+whatever their link. The response of Gaussian models is not transformed. There
+is one value for each location, where the observations are added up, or
+averaged for Gaussian models. The residuals are the differences between these
+values, less any offset, and their least squares fit on the covariates of the
+model. An offset under a link other than the canonical one is one of the
+covariates of this fit. The regression is done again for each simulated
+dataset. The variogram of
 the values themselves would be dominated by a strong trend, which the
 covariates explain, and would show little of the spatial correlation. Each
 model has its own residuals and so its own observed variogram.

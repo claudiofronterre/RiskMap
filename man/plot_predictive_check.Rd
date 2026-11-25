@@ -51,14 +51,14 @@ lighter or nearly all of it is darker. It doesn't have to be in the middle.
 \section{Distribution and variogram}{
 The band is the 95\% joint envelope of the simulated curves and the dashed
 line their median at each value. The observed distribution function is the
-thick line, and the observed semivariances are the points. Where the observed
-curve is outside the band, it is orange. The band is joint, so that the whole curve
-of a dataset from the model is inside it with a probability of 95\%, however
-many values or distance classes there are. Its edge depends on the
-simulations, so a single point near the edge says little, and the first
-distance classes often have few pairs. The points of the variogram are not
-joined by lines, as in \code{\link[=plot_variogram]{plot_variogram()}}. Each model has its own points,
-because the residuals are those from its covariates.
+thick line, and the observed semivariances are the points. Where the
+observed curve is outside the band, it is orange. The band is joint, so that
+the whole curve of a dataset from the model is inside it with a probability
+of 95\%, however many values or distance classes there are. Its edge depends
+on the simulations, so a single point near the edge says little, and the
+first distance classes often have few pairs. The points of the variogram are
+not joined by lines, as in \code{\link[=plot_variogram]{plot_variogram()}}. Each model has its own
+points, because the residuals are those from its covariates.
 }
 
 \examples{

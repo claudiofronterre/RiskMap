@@ -1754,11 +1754,12 @@ Gaussian response. They are of the observations, and of the locations for
 binomial models. Simulated datasets in which a statistic isn't finite are left
 out of its summary, with a warning.
 - The distribution is the empirical one of the same values, and the variogram
-that of the residuals from the covariates. The response is put on the scale of the
-linear predictor (empirical logit, log rate with 0.5 added to the count, or the
-Gaussian response), with one value for each location, and the offset and the least
-squares fit on the covariates are taken out, again in each simulated dataset. Both
-have the 95% joint envelope of `variogram()`, whose distance classes and pairs are
+that of the residuals from the covariates. The response is transformed (empirical
+logit, log rate with 0.5 added to the count, or the Gaussian response as it is),
+with one value for each location, and the offset and the least squares fit on the
+covariates are taken out, again in each simulated dataset. An offset under a link
+other than the canonical one is one of the covariates of that fit. Both have the
+95% joint envelope of `variogram()`, whose distance classes and pairs are
 now in internal functions that both use, with no change to `variogram()`.
 - The models share the seed, so their surfaces share random numbers, and the
 simulations are kept only with `return_simulations = TRUE`. `summary()` gives the

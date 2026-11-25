@@ -48,7 +48,8 @@
 ##'   \item{variogram}{A data frame with the same columns for the semivariance of
 ##'     the residuals in each distance class, the mean `distance` of its pairs of
 ##'     locations and their number, `n_pairs`. `NULL` when no pair of locations
-##'     is in a class.}
+##'     is in a class, and without the models whose covariates leave no
+##'     residuals.}
 ##'   \item{nsim, seed, breaks, distance_units, level}{The settings. `level` is
 ##'     the coverage of the joint envelopes, 0.95.}
 ##'   \item{family, response, quantity}{The family of each model, the response
@@ -98,13 +99,15 @@
 ##' prevalence of each location, or the rate or response of each observation.
 ##'
 ##' The variogram is that of the residuals from the covariates. The response is
-##' first put on the scale of the linear predictor, as the empirical logit for
-##' binomial models, the logarithm of the rate with 0.5 added to the count for
-##' models of counts, and the response itself for Gaussian models. It has one
-##' value for each location, where the observations are added up, or averaged
-##' for Gaussian models. The residuals are the differences between these values,
-##' less any offset, and their least squares fit on the covariates of the model.
-##' The regression is done again for each simulated dataset. The variogram of
+##' first transformed, to the empirical logit for binomial models and to the
+##' logarithm of the rate with 0.5 added to the count for models of counts,
+##' whatever their link. The response of Gaussian models is not transformed. There
+##' is one value for each location, where the observations are added up, or
+##' averaged for Gaussian models. The residuals are the differences between these
+##' values, less any offset, and their least squares fit on the covariates of the
+##' model. An offset under a link other than the canonical one is one of the
+##' covariates of this fit. The regression is done again for each simulated
+##' dataset. The variogram of
 ##' the values themselves would be dominated by a strong trend, which the
 ##' covariates explain, and would show little of the spatial correlation. Each
 ##' model has its own residuals and so its own observed variogram.
@@ -313,8 +316,9 @@ check_variogram_classes <- function(records, breaks, distance_units,
 ##' @param reset Whether the functions of `statistics` start from the seed, so
 ##'   that any random numbers they use are the same for every model.
 ##' @return A list with the `statistics`, the `values` whose distribution is
-##'   compared and the `residuals` whose variogram is. Each is a matrix with a dataset in each column, the observed
-##'   one first. `simulation` is the simulation, if asked for.
+##'   compared and the `residuals` whose variogram is, `NULL` if there are none.
+##'   Each is a matrix with a dataset in each column, the observed one first.
+##'   `simulation` is the simulation, if asked for.
 ##' @noRd
 describe_simulations <- function(fit, name, statistics, records, nsim,
                                  simulation_seed, reset, return_simulations,
@@ -328,6 +332,9 @@ describe_simulations <- function(fit, name, statistics, records, nsim,
   out <- list(values = described$values,
               residuals = residuals_from_covariates(described$field, fit,
                                                     records))
+  if (is.null(out$residuals)) {
+    riskmap_warn("Model {.val {name}} has as many coefficients as there are locations, so it has no residuals and no variogram.")
+  }
   out$statistics <- if (is.null(statistics)) {
     progress_tick(bar, nsim)
     default_statistics(out$values, records$quantity)
@@ -339,8 +346,8 @@ describe_simulations <- function(fit, name, statistics, records, nsim,
   out
 }
 
-##' The values whose distribution is compared, and the responses on the scale of
-##' the linear predictor
+##' The values whose distribution is compared, and the responses transformed for
+##' the variogram
 ##'
 ##' @param responses A matrix with an observation in each row and a dataset in
 ##'   each column.
@@ -368,24 +375,39 @@ describe_locations <- function(responses, records) {
 ##'
 ##' One projection for all the datasets, so that it costs a matrix product. A
 ##' covariate that varies between the observations at a location has its mean
-##' there.
+##' there, weighted by the denominators. An offset is subtracted. Under a link
+##' other than the canonical one, it isn't on the scale of the field, and is one
+##' of the covariates instead.
 ##' @param field A matrix with a location in each row and a dataset in each
 ##'   column.
-##' @return A matrix of the size of `field`.
+##' @return A matrix of the size of `field`, or `NULL` when the covariates leave
+##'   no residuals.
 ##' @noRd
 residuals_from_covariates <- function(field, fit, records) {
   at_locations <- function(rows) {
     rows <- rowsum(as.matrix(rows) * records$weights, records$index)
     unname(rows[records$used, , drop = FALSE])
   }
-  if (!is.null(fit$cov_offset)) {
-    field <- field - as.numeric(at_locations(fit$cov_offset))
-  }
   design <- at_locations(fit$D)
+  offset <- fit$cov_offset
+  if (!is.null(offset) && any(offset != 0)) {
+    canonical <- is.null(fit$link_function) ||
+      identical(fit$link_function$name, "canonical")
+    if (!canonical) {
+      design <- cbind(design, at_locations(offset))
+    } else if (records$quantity == "rate") {
+      # The counts at a location are added up, and so are their exposures.
+      largest <- stats::ave(offset, records$index, FUN = max)
+      field <- field - as.numeric(at_locations(largest)) -
+        log(as.numeric(at_locations(exp(offset - largest))))
+    } else {
+      field <- field - as.numeric(at_locations(offset))
+    }
+  }
   if (!ncol(design)) return(field)
-  decomposition <- qr(design)
-  # As many coefficients as locations leave no residuals.
-  if (decomposition$rank >= nrow(design)) return(0 * field)
+  # The columns of a polynomial of a year, say, are nearly collinear.
+  decomposition <- qr(design, tol = 1e-12)
+  if (decomposition$rank >= nrow(design)) return(NULL)
   qr.resid(decomposition, field)
 }
 
@@ -540,12 +562,13 @@ check_envelope <- function(curves) {
 ##' The variograms of the models with their envelopes
 ##'
 ##' @param residuals A named list of matrices with a location in each row and a
-##'   dataset in each column.
+##'   dataset in each column, or `NULL` for a model without residuals.
 ##' @noRd
 check_variograms <- function(residuals, classes) {
   if (is.null(classes)) return(NULL)
   shown <- classes$n_pairs > 0L
   do.call(rbind, lapply(names(residuals), function(name) {
+    if (is.null(residuals[[name]])) return(NULL)
     curves <- binned_semivariances(residuals[[name]], classes)
     cbind(data.frame(model = name, distance = classes$distance[shown],
                      n_pairs = classes$n_pairs[shown]),
@@ -655,16 +678,25 @@ summarise_statistic <- function(observed, simulated) {
   } else {
     rep(NA_real_, 3L)
   }
-  # Values equal but for rounding are equal.
-  tolerance <- 1e-10 * max(abs(c(observed, finite)), 0)
   above <- if (is.finite(observed) && length(finite)) {
-    mean(finite >= observed - tolerance)
+    mean(at_or_above(finite, observed))
   } else {
     NA_real_
   }
   data.frame(observed = observed, median = interval[1L], lower = interval[2L],
              upper = interval[3L], at_or_above = above,
              n_not_finite = length(simulated) - length(finite))
+}
+
+##' Whether simulated values are at or above the observed one
+##'
+##' Values equal but for rounding are equal. None is above an observed value that
+##' isn't finite.
+##' @noRd
+at_or_above <- function(simulated, observed) {
+  if (!is.finite(observed)) return(rep(FALSE, length(simulated)))
+  tolerance <- 1e-10 * max(abs(c(observed, simulated)))
+  simulated >= observed - tolerance
 }
 
 ##' @title Print the assessment of models against simulated data

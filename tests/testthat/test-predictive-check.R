@@ -95,6 +95,75 @@ test_that("the offset is taken out of the residuals", {
                expected$semivariance[expected$n_pairs > 0])
 })
 
+test_that("a model whose covariates leave no residuals has no variogram", {
+  data <- gaussian_data
+  data$site <- factor(seq_len(nrow(data)))
+  fit <- suppressWarnings(
+    glgpm(y ~ site + gp(), data = data, family = "gaussian", messages = FALSE,
+          fixed_pars = list(sigma2 = 0.5, phi = 2, sigma2_me = 0.1))
+  )
+  expect_warning(
+    check <- assess_fit(list(saturated = fit, b = gaussian_intercept_model),
+                        nsim = 19, seed = 1),
+    "as many coefficients"
+  )
+  expect_identical(unique(check$variogram$model), "b")
+  expect_input_error(plot(check, type = "variogram", model = "saturated"),
+                     "model", "no residuals")
+  expect_s3_class(plot(check, type = "variogram"), "ggplot")
+  expect_warning(alone <- assess_fit(fit, nsim = 19, seed = 1),
+                 "as many coefficients")
+  expect_null(alone$variogram)
+  expect_output(print(alone), "inside|outside")
+})
+
+test_that("nearly collinear covariates are all taken out of the residuals", {
+  data <- gaussian_data
+  data$year <- 2000 + 2 * (1:10)
+  raw <- fit <- gaussian_intercept_model
+  raw$D <- cbind(1, data$year, data$year^2, data$year^3)
+  fit$D <- cbind(1, scale(data$year), scale(data$year)^2, scale(data$year)^3)
+  field <- matrix(rnorm(20), 10)
+  records <- check_records(fit, "response")
+  expect_equal(residuals_from_covariates(field, raw, records),
+               residuals_from_covariates(field, fit, records), tolerance = 1e-4)
+})
+
+test_that("offsets are taken out on the scale of the link", {
+  set.seed(8)
+  population <- rep(c(10, 1000), 10)
+  records <- check_records(poisson_twice, "rate")
+  total <- as.numeric(rowsum(check_data_twice$count, records$index))
+  people <- check_data_twice$exposure * population
+  # A count with an offset has the residuals of one with a denominator.
+  fit <- poisson_twice
+  fit$cov_offset <- log(population)
+  as_denominator <- poisson_twice
+  as_denominator$units_m <- people
+  for (model in c("fit", "as_denominator")) {
+    candidate <- get(model)
+    records <- check_records(candidate, "rate")
+    field <- describe_locations(matrix(candidate$y), records)$field
+    candidate$D <- candidate$D[, 1, drop = FALSE]
+    assign(paste0("residuals_", model),
+           residuals_from_covariates(field, candidate, records))
+  }
+  expect_equal(residuals_fit, residuals_as_denominator)
+
+  # Binomial, with the canonical link and with another one, for which the offset
+  # is one of the covariates.
+  records <- check_records(binary_twice, "prevalence")
+  fit <- binary_twice
+  fit$cov_offset <- rnorm(20)
+  offset <- as.numeric(tapply(fit$cov_offset, records$index, mean))
+  field <- matrix(rnorm(10), 10)
+  expect_equal(residuals_from_covariates(field, fit, records),
+               matrix(resid(lm(field[, 1] - offset ~ 1))))
+  fit$link_function$name <- "custom"
+  expect_equal(residuals_from_covariates(field, fit, records),
+               matrix(resid(lm(field[, 1] ~ offset))))
+})
+
 test_that("observations at a location are added up, or averaged", {
   index <- rep(1:10, each = 2)
   locations <- check_data_twice[2 * (1:10), ]
@@ -415,10 +484,11 @@ test_that("few locations have no variogram, or one class of it", {
     plot_predictive_check(one_class, type = "variogram")
   ))
   # As many coefficients as locations leave no residuals.
-  fit$D <- cbind(1, c(0, 1))
-  none <- assess_fit(fit, breaks = c(0, 1e3), nsim = 19, seed = 1)
-  expect_identical(none$variogram$observed, 0)
-  expect_false(none$variogram$outside)
+  saturated <- fit
+  saturated$D <- cbind(1, c(0, 1))
+  saturated$estimate$beta <- fit$estimate$beta
+  expect_null(residuals_from_covariates(matrix(1:2), saturated,
+                                        check_records(saturated, "response")))
 })
 
 test_that("a location without anyone examined is left out of rates", {
@@ -519,56 +589,66 @@ test_that("plot_predictive_check() checks its arguments", {
                class = "riskmap_error_input")
 })
 
-test_that("the bars of a histogram hold equally spaced values alike", {
-  # Proportions of 90 locations, up to 12 of them.
-  values <- rep(0:12, 1:13) / 90
-  breaks <- histogram_breaks(values)
-  expect_equal(diff(breaks), rep(1 / 90, 13))
-  bars <- statistic_bars(
-    data.frame(model = "a", statistic = "s", value = values),
-    data.frame(model = "a", statistic = "s", observed = 3 / 90)
-  )
-  expect_identical(bars$count, 1:13)
-  expect_identical(bars$above, 0:12 >= 3)
-  # Up to 80 of them, four in a bar, one of which starts at the observed one.
-  values <- (0:80) / 90
-  breaks <- histogram_breaks(values)
-  expect_equal(diff(breaks), c(rep(4, 20), 1) / 90)
-  breaks <- histogram_breaks(values, 6 / 90)
-  expect_true(any(abs(breaks - 5.5 / 90) < 1e-6))
-  # The bars start and end with the values.
-  expect_equal(range(breaks), c(-0.5, 80.5) / 90)
-  bars <- statistic_bars(
-    data.frame(model = "a", statistic = "s", value = values),
-    data.frame(model = "a", statistic = "s", observed = 6 / 90)
-  )
-  expect_identical(sum(bars$count[bars$above]), 75L)
-
-  # Values that aren't equally spaced.
-  set.seed(1)
-  values <- rnorm(100)
-  expect_length(histogram_breaks(values), 26L)
-  expect_identical(range(histogram_breaks(values, 0.3)), range(values))
-  for (observed in c(-10, -1, 0.3, 1, 10)) {
-    bars <- statistic_bars(
-      data.frame(model = "a", statistic = "s", value = values),
-      data.frame(model = "a", statistic = "s", observed = observed)
-    )
-    expect_identical(sum(bars$count), 100L)
-    expect_identical(sum(bars$count[bars$above]), sum(values >= observed))
+test_that("the darker bars of a histogram are the values at or above the observed", {
+  bars_of <- function(values, observed) {
+    statistic_bars(data.frame(model = "a", statistic = "s", value = values),
+                   data.frame(model = "a", statistic = "s", observed = observed))
   }
-  # Only one value, and an observed one that is missing.
-  expect_equal(histogram_breaks(rep(2, 5)), c(1.9, 2.1))
-  expect_equal(histogram_breaks(0), c(-0.5, 0.5))
-  bars <- statistic_bars(
-    data.frame(model = "a", statistic = "s", value = c(2, 2)),
-    data.frame(model = "a", statistic = "s", observed = 2)
-  )
-  expect_true(bars$above)
+  expect_shaded <- function(values, observed) {
+    bars <- bars_of(values, observed)
+    expect_identical(sum(bars$count), length(values))
+    expect_identical(sum(bars$count[bars$above]),
+                     sum(at_or_above(values, observed)))
+  }
+  # Proportions, with the observed one among them, between them and outside.
+  set.seed(1)
+  for (n in c(7, 20, 47, 90, 333)) {
+    for (p in c(0.05, 0.4, 0.9)) {
+      values <- rbinom(200, n, p) / n
+      for (observed in c(values[1:3], range(values), mean(values), 0, 1, -2, 3)) {
+        expect_shaded(values, observed)
+      }
+    }
+  }
+  expect_shaded((0:11) / 20, 10 / 20)
+  expect_shaded(c(0.1, 0.2), 0.15)
+  expect_shaded(c(1, 1, 1, 2), 1.5)
+  # One value, equal to the observed one but for rounding or not.
+  expect_shaded(rep(1 / 3, 99), 1 / 3)
+  expect_shaded(rep(0.3, 5), 0.1 + 0.2)
+  expect_shaded(rep(0, 5), 0)
+  expect_shaded(rep(2, 5), 3)
+  # Values that aren't equally spaced.
+  values <- rnorm(100)
+  for (observed in c(values[1:5], -10, -1, 0.3, 1, 10)) {
+    expect_shaded(values, observed)
+  }
+  # A bar ends at an observed value that isn't simulated.
+  expect_true(any(abs(bars_of(values, 0.3)$from - 0.3) < 1e-12))
+  # Without an observed value.
   bars <- statistic_bars(
     data.frame(model = "a", statistic = "s", value = c(2, 3)),
     data.frame(model = character(), statistic = character(),
                observed = numeric())
   )
   expect_false(any(bars$above))
+})
+
+test_that("the bars of a histogram hold equally spaced values alike", {
+  breaks_of <- function(values, observed = NA) {
+    histogram_breaks(values, at_or_above(values, observed), observed)$breaks
+  }
+  # Proportions of 90 locations, up to 12 of them, and up to 80.
+  expect_equal(breaks_of((0:12) / 90), (0:13 - 0.5) / 90)
+  expect_equal(diff(breaks_of((0:80) / 90)), c(rep(4, 20), 1) / 90)
+  breaks <- breaks_of((0:80) / 90, 6 / 90)
+  expect_true(any(abs(breaks - 5.5 / 90) < 1e-6))
+  # The bars start and end with the values.
+  expect_equal(range(breaks), c(-0.5, 80.5) / 90)
+  set.seed(1)
+  values <- rnorm(100)
+  expect_length(breaks_of(values), 26L)
+  expect_identical(range(breaks_of(values, 0.3)), range(values))
+  expect_equal(breaks_of(rep(2, 5)), c(1.9, 2.1))
+  expect_equal(breaks_of(0), c(-0.5, 0.5))
 })
