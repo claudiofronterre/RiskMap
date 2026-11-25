@@ -3736,7 +3736,7 @@ plot_grid <- function(grid, values, legend_title, colours, limits, role,
     tile_height <- tile_width
   }
 
-  tiles <- if (tiles_cover(grid, tile_width * tile_height)) {
+  tiles <- if (tiles_cover(grid_coordinates, tile_width * tile_height)) {
     geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
               width = tile_width, height = tile_height)
   } else {
@@ -3776,18 +3776,21 @@ grid_spacing <- function(coordinates) {
 ##' regular grid is far below the distance between neighbours, so tiles of that
 ##' size can't be seen.
 ##'
-##' @param grid An `sf` or `sfc` object of points.
+##' @param coordinates Matrix of the coordinates of the points.
 ##' @param tile_area The area of a tile.
 ##' @return `TRUE` or `FALSE`.
 ##' @noRd
-tiles_cover <- function(grid, tile_area) {
-  points <- unique(st_geometry(grid))
-  if (length(points) < 2L) return(TRUE)
-  neighbours <- st_nearest_feature(points)
-  coordinates <- st_coordinates(points)
-  squared_distance <- rowSums(
-    (coordinates - coordinates[neighbours, , drop = FALSE])^2
-  )
+tiles_cover <- function(coordinates, tile_area) {
+  coordinates <- index_coordinate_rows(coordinates)$coordinates
+  n_points <- nrow(coordinates)
+  if (n_points < 2L) return(TRUE)
+  # The distance of at most 200 points, spread over the rows, to their nearest
+  # neighbours, which is quick on large grids.
+  points <- unique(round(seq(1, n_points, length.out = 200L)))
+  squared_distance <- vapply(points, function(i) {
+    min((coordinates[-i, 1L] - coordinates[i, 1L])^2 +
+          (coordinates[-i, 2L] - coordinates[i, 2L])^2)
+  }, numeric(1))
   tile_area > 0.25 * stats::median(squared_distance)
 }
 
