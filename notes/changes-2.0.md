@@ -1034,6 +1034,14 @@ coefficient, where it was fitted with a warning. The trace that
 `messages = TRUE` shows is of the standardised response. A value of `sigma2_me` or `sigma2_re` in
 `start_pars` without one of `sigma2` no longer starts `sigma2` too, which it did
 in models of every family. Other fits of count models are unchanged.
+On the golden battery 68 of the 82 tasks are identical, with every fit of counts.
+In the 14 Gaussian ones the estimates move by at most 1.2e-7 of their value and
+the log-likelihoods by at most 6e-12, except three bootstrap estimates of a
+variance at zero (below 1e-9). In the Gaussian fits of the book's Chapters 3 and
+5 the log-likelihoods move by at most 2e-8 and the estimates by at most 6e-5 of
+their value, except two measurement error variances estimated at zero in the
+Galicia profile over kappa (from 1.2e-10 to 7.8e-11 and from 6.1e-10 to
+3.7e-10).
 
 - On the Woodbury path of Gaussian fits, which `glgpm()` takes above three
 records per latent effect unless the nugget is held at a positive value or the
