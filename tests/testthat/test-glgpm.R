@@ -318,10 +318,20 @@ test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
 
 test_that("glgpm estimates a nugget in replicated gaussian models with the Woodbury path", {
   # replicated locations separate the nugget from the measurement error, and
-  # give enough observations per latent effect to avoid glgpm_lm_direct
-  set.seed(2)
-  replicated_data <- do.call(rbind, replicate(5, gaussian_data, simplify = FALSE))
-  replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
+  # give enough observations per latent effect to avoid glgpm_lm_direct. The
+  # spatial correlation reaches several locations, so that it separates the
+  # nugget from the spatial variance and their covariance is well determined.
+  set.seed(4)
+  sites <- cbind(runif(40, 0, 10000), runif(40, 0, 10000))
+  spatial <- crossprod(chol(2 * exp(-as.matrix(dist(sites)) / 3000)),
+                       rnorm(40))
+  site <- rep(seq_len(40), 4)
+  replicated_data <- data.frame(x = sites[site, 1], z = sites[site, 2],
+                                cov = rnorm(160))
+  replicated_data$y <- 1 + 0.5 * replicated_data$cov + spatial[site] +
+    rnorm(40, sd = 0.7)[site] + rnorm(160, sd = 0.3)
+  replicated_data <- st_as_sf(replicated_data, coords = c("x", "z"),
+                              crs = 32637)
 
   woodbury_fit <- with_mocked_bindings(
     glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
