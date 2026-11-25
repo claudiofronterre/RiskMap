@@ -436,6 +436,60 @@ test_that("assess_simulation predicts the realised nugget at sampled sites", {
                tolerance = 0.03)
 })
 
+# An offset that differs between the data and the grid -------------------------
+
+test_that("assess_simulation adds an offset that is zero at the samples", {
+  assess_offset <- function(value, formula, family, parameters) {
+    nugget_sites$exposure <- 0
+    nugget_sites$count <- rep(c(3, 12, 7, 9), 5)
+    nugget_grid$exposure <- value
+    model <- specify_glgpm(formula, nugget_sites, family, parameters)
+    candidate <- suppressWarnings(glgpm(
+      formula, data = nugget_sites, family = family, messages = FALSE,
+      fixed_pars = parameters
+    ))
+    sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
+                          prediction_grid = nugget_grid, seed = 3)
+    result <- suppressWarnings(assess_simulation(
+      sim, models = list(model = candidate),
+      spatial_scale = c("location", "area"), aggregate = "mean",
+      boundaries = named_areas, label = "name", objective = "mse",
+      control_mcmc = control_mcmc, seed = fixture_seed, messages = FALSE
+    ))
+    list(data = sim$samples$data[, , "response"],
+         surface = sim$samples$surface[, , "mean"],
+         mse = lapply(result$objective, function(scale) unname(scale$mse)),
+         status = result$fits$status)
+  }
+  parameters <- list(beta = c(0.5, 1), sigma2 = 1, phi = 2)
+  gaussian <- c(parameters, sigma2_me = 0.2)
+  cases <- list(
+    list(count ~ cov + gp() + offset(exposure), "gaussian", gaussian),
+    # Three of the grid locations are sampled sites, whose draws use their nugget.
+    list(count ~ cov + gp(nugget = TRUE) + offset(exposure), "gaussian",
+         c(gaussian, tau2 = 1.5)),
+    list(count ~ cov + gp(nugget = TRUE) + offset(exposure), "poisson",
+         c(parameters, tau2 = 1.5))
+  )
+  for (case in cases) {
+    zero <- do.call(assess_offset, c(0, case))
+    one <- do.call(assess_offset, c(1, case))
+    expect_identical(names(zero$mse), c("location", "area"))
+    expect_identical(zero$status, c("ok", "ok"))
+    expect_identical(one$status, c("ok", "ok"))
+    expect_identical(one$data, zero$data)
+    # An offset of 1 adds 1 to the surface and its predictions with an identity
+    # link, and multiplies them by exp(1) with a log link.
+    if (case[[2]] == "gaussian") {
+      expect_equal(one$surface, zero$surface + 1)
+      expect_equal(one$mse, zero$mse)
+    } else {
+      expect_equal(one$surface, exp(1) * zero$surface)
+      expect_equal(one$mse, lapply(zero$mse, `*`, exp(2)))
+    }
+  }
+})
+
 # Edge cases -------------------------------------------------------------------
 
 edge_model <- specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
