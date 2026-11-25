@@ -1666,12 +1666,14 @@ The engine behind it draws the effect of such a level from its distribution,
 for the assessment of predictions (`allow_new_levels` of
 `validate_prediction_data()`).
 - `predict()` takes `"exceedance"` or `"cv"` as the only summary. The
-components, such as the spatial effect, then have no summaries. Both stopped.
+components, such as the spatial effect, then have no summaries, and `print()`
+doesn't list them. Both stopped. The call that `print()` suggests for the map of
+an exceedance probability gives a threshold when there are several.
 - A row of `newdata` that gives the model a covariate that isn't finite has `NA`
 predictions, with a warning, as a row with missing values has. `log(0)` gave a
 prevalence of exactly 0 and `log(-1)` an error about missing values in an
 object of `model.frame()`. The indicators of `assess_extrapolation()` are `NA`
-there too.
+there too. A row of `standardise` that gives such a covariate stops.
 - An offset that is zero at every record of the data is added in `newdata`. It
 was ignored with a warning.
 - The column of an exceedance probability is named by its own threshold, as the
@@ -1688,9 +1690,11 @@ the other families. The predictions are unchanged.
 `newdata` and `boundaries`. The message on grid points that are counted whole
 (#214) still shows, since it is about the result.
 - Polygons that overlap once projected, because one has a vertex on the edge of
-its neighbour in longitude and latitude, are no longer refused. The overlap is
-looked for as they were supplied, where up to a millionth of the smaller polygon
-is rounding. Real overlaps and repeated polygons still stop.
+its neighbour in longitude and latitude, are no longer refused. They are
+projected again with vertices added along their edges, so that the edges stay
+together and no cell counts in two polygons. An overlap of up to a millionth of
+the smaller polygon is rounding. Real overlaps and repeated polygons still stop,
+and polygons that don't overlap when projected are projected as before.
 - `assess_extrapolation()` computes the leverage from the QR decomposition of the
 design, so `el + I(el^2) + I(el^3)` is no longer reported as singular. Other
 leverages change in the last digits.

@@ -390,7 +390,8 @@ predict.RiskMap <- function(
     abort_input(c("{.arg include} can't contain {.val nugget} at the observed locations.", "i" = reason), arg = "include")
   }
   prediction_input <- validate_prediction_data(
-    object, newdata, include, standardise, messages = messages
+    object, newdata, include, standardise, messages = messages,
+    check_finite = TRUE
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
@@ -649,6 +650,15 @@ validate_prediction_standardise <- function(object, standardise) {
       any(weights < 0) || sum(weights) <= 0) {
     abort_input("The column {.code .weight} of {.arg standardise} must hold finite, non-negative values with a positive total.", arg = "standardise")
   }
+  # Each profile with the other covariates of a record of the data
+  profiles <- st_drop_geometry(object$data)[rep(1L, nrow(standardise)), ,
+                                            drop = FALSE]
+  profiles <- as.data.frame(profiles)
+  profiles[reference_names] <- standardise[reference_names]
+  infinite <- !prediction_design_is_finite(object, profiles)
+  if (any(infinite)) {
+    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number.", arg = "standardise")
+  }
   list(
     data = standardise,
     weights = weights / sum(weights),
@@ -679,11 +689,13 @@ prediction_operation_requested <- function(operations, built_in) {
 #' `allow_new_levels` is `TRUE`, for the assessment of predictions, whose test
 #' sets can have levels of their own. Their effects are then drawn from the
 #' distribution of the random effect (`draw_prediction_samples()`).
+#' With `check_finite`, rows of `newdata` whose covariates give a term that
+#' isn't finite are left out as those with missing values are.
 #' @noRd
 validate_prediction_data <- function(object, newdata, include,
                                      standardise = NULL,
                                      allow_new_levels = FALSE,
-                                     messages = TRUE) {
+                                     messages = TRUE, check_finite = FALSE) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   data_arg <- if (is.null(newdata)) "object" else "newdata"
   check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
@@ -736,7 +748,7 @@ validate_prediction_data <- function(object, newdata, include,
   if (any(!valid_rows)) {
     riskmap_warn("{sum(!valid_rows)} prediction row{?s} {?has/have} missing values, so {?its/their} predictions are {.code NA}.")
   }
-  if (!is.null(newdata) && any(valid_rows)) {
+  if (check_finite && !is.null(newdata) && any(valid_rows)) {
     finite <- prediction_design_is_finite(
       object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
     )
@@ -799,26 +811,39 @@ assign_prediction_locations <- function(model_data, boundaries,
   )
 }
 
-#' Whether any of the supplied polygons overlap
+#' Whether any polygons overlap by more than rounding
 #'
-#' Projecting polygons moves their vertices and keeps the edges between them
-#' straight, so a polygon with a vertex on the edge of its neighbour, as at a
-#' T-junction, can overlap it slightly once projected. Pairs that overlap
-#' there (`pairs`, as `st_overlaps()` gives them) are compared as they were
-#' supplied, in the plane of their coordinates, where an overlap of up to a
-#' millionth of the smaller polygon is rounding.
+#' An overlap of up to a millionth of the smaller polygon is rounding.
 #' @noRd
-supplied_polygons_overlap <- function(supplied, pairs) {
-  shapes <- st_set_crs(st_geometry(supplied), NA)
+polygons_overlap <- function(polygons) {
+  pairs <- st_overlaps(polygons)
+  shapes <- st_geometry(polygons)
   any(vapply(seq_along(pairs), function(first) {
     any(vapply(pairs[[first]][pairs[[first]] > first], function(second) {
       tryCatch({
-        shared <- st_intersection(shapes[first], shapes[second])
-        sum(st_area(shared)) >
-          1e-6 * min(st_area(shapes[c(first, second)]))
+        shared <- sum(as.numeric(
+          st_area(st_intersection(shapes[first], shapes[second]))
+        ))
+        shared > 1e-6 * min(as.numeric(st_area(shapes[c(first, second)])))
       }, error = function(error) TRUE)
     }, logical(1)))
   }, logical(1)))
+}
+
+#' Project polygons along their edges
+#'
+#' Projecting polygons moves their vertices and keeps the edges between them
+#' straight, so a polygon with a vertex on the edge of its neighbour, as at a
+#' T-junction, overlaps it once projected, or leaves a gap. Edges with vertices
+#' added along them, in the plane of the supplied coordinates, stay together.
+#' @noRd
+project_polygon_edges <- function(polygons, crs) {
+  shapes <- st_set_crs(st_geometry(polygons), NA)
+  box <- st_bbox(shapes)
+  longest <- max(box[["xmax"]] - box[["xmin"]], box[["ymax"]] - box[["ymin"]])
+  shapes <- st_segmentize(shapes, dfMaxLength = longest / 1000)
+  st_geometry(polygons) <- st_set_crs(shapes, st_crs(polygons))
+  st_transform(polygons, crs)
 }
 
 #' Calculate exact polygon coverage for cells created by create_grid
@@ -843,11 +868,15 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata,
   }
   grid_crs <- st_crs(metadata$grid_crs)
   grid_boundaries <- st_transform(boundaries, grid_crs)
-  overlaps <- st_overlaps(grid_boundaries)
+  # Polygons that only their projection makes overlap are projected again
+  # along their edges.
+  overlapping <- any(lengths(st_overlaps(grid_boundaries)) > 0L)
+  if (overlapping) {
+    grid_boundaries <- project_polygon_edges(supplied, grid_crs)
+    overlapping <- polygons_overlap(grid_boundaries)
+  }
   duplicates <- st_equals(grid_boundaries)
-  if (any(lengths(duplicates) > 1L) ||
-      (any(lengths(overlaps) > 0L) &&
-       supplied_polygons_overlap(supplied, overlaps))) {
+  if (overlapping || any(lengths(duplicates) > 1L)) {
     abort_input("The polygons of {.arg boundaries} must not overlap.", arg = "boundaries")
   }
 
@@ -1667,18 +1696,61 @@ prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta
 
 #' Whether each row of prediction data gives a finite design row
 #'
-#' A row with log(0) or log(-1) doesn't. Every row is taken to be finite when
-#' the design can't be built, so that the prediction reports why.
+#' A row with log(0) or log(-1) doesn't. A term such as `ns(log(x), 2)` stops
+#' where `log(x)` isn't finite, so when the design can't be built the rows where
+#' a part of a term isn't finite are left out. Every row is taken to be finite
+#' when the design can't be built without them either, so that the prediction
+#' reports why.
 #' @noRd
 prediction_design_is_finite <- function(object, predictors) {
-  design <- tryCatch(
-    suppressWarnings(
-      prediction_design_matrix(object, predictors, na_action = na.pass)
-    ),
-    error = function(error) NULL
-  )
-  if (is.null(design)) return(rep(TRUE, nrow(predictors)))
-  unname(rowSums(!is.finite(design)) == 0)
+  finite_rows <- function(rows) {
+    design <- tryCatch(
+      suppressWarnings(prediction_design_matrix(
+        object, predictors[rows, , drop = FALSE], na_action = na.pass
+      )),
+      error = function(error) NULL
+    )
+    if (!is.null(design)) unname(rowSums(!is.finite(design)) == 0)
+  }
+  every <- rep(TRUE, nrow(predictors))
+  finite <- finite_rows(every)
+  if (!is.null(finite)) return(finite)
+  parts <- prediction_parts_are_finite(object, predictors)
+  if (!any(parts)) return(parts)
+  finite <- if (!all(parts)) finite_rows(parts)
+  if (is.null(finite)) return(every)
+  parts[parts] <- finite
+  parts
+}
+
+#' Whether the parts of the model's terms are finite at each row
+#'
+#' The parts are the calls and variables inside the variables of the terms,
+#' such as `log(x)` in `ns(log(x), 2)`, that give a number for each row.
+#' @noRd
+prediction_parts_are_finite <- function(object, predictors) {
+  terms <- stats::terms(update(interpret_formula(fit_formula(object))$pf,
+                               NULL ~ .))
+  finite <- rep(TRUE, nrow(predictors))
+  check_parts <- function(expression) {
+    if (!is.call(expression)) return(invisible(NULL))
+    parts <- as.list(expression)[-1L]
+    # Without empty arguments, as in x[, 1]
+    for (part in parts[!vapply(parts, identical, logical(1), quote(expr = ))]) {
+      values <- tryCatch(
+        suppressWarnings(eval(part, predictors, environment(terms))),
+        error = function(error) NULL
+      )
+      if (is.numeric(values) && length(values) == length(finite)) {
+        finite <<- finite & is.finite(as.numeric(values))
+      }
+      check_parts(part)
+    }
+  }
+  for (variable in as.list(attr(terms, "variables"))[-1L]) {
+    check_parts(variable)
+  }
+  finite
 }
 
 #' Build a prediction design matrix using the fitted factor structure

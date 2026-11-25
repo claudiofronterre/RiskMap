@@ -1463,7 +1463,12 @@ test_that("exceedance probabilities and CVs can be the only summaries", {
     expect_s3_class(
       plot(alone, summaries = summary, thresholds = thresholds[1]), "ggplot"
     )
-    expect_output(print(alone), summary)
+    printed <- capture.output(print(alone))
+    expect_match(printed, "Quantities +response, square$", all = FALSE)
+    suggested <- regmatches(printed, regexpr("plot\\(x.*?\\)", printed, perl = TRUE))
+    expect_s3_class(
+      eval(str2lang(suggested), list(x = alone)), "ggplot"
+    )
 
     # Without a usable row, and over areas, one of them without locations
     missing <- prediction_data
@@ -1541,6 +1546,40 @@ test_that("rows whose covariates aren't finite have missing predictions", {
     assess_extrapolation(fit, newdata[1:3, ], spatial_threshold = 0.5),
     "isn't a finite number"
   )
+
+  # A basis that can't be computed where its variable isn't finite
+  spline <- update(fit, y ~ splines::ns(log(positive), 2) + gp(),
+                   fixed_pars = list(beta = c(1, 0.5, 0.5), sigma2 = 1,
+                                     phi = 2, sigma2_me = 0.1))
+  newdata$positive <- c(1, 0, -1, 2)
+  expect_warning(
+    result <- predict(spline, newdata, seed = 1, messages = FALSE),
+    "2 prediction rows give"
+  )
+  complete <- predict(spline, newdata[c(1, 4), ], seed = 1, messages = FALSE)
+  expect_identical(result$predictions$response_mean[c(1, 4)],
+                   complete$predictions$response_mean)
+  expect_true(all(is.na(result$predictions$response_mean[2:3])))
+  # Another problem with a covariate still stops.
+  newdata$positive <- letters[1:4]
+  expect_error(predict(spline, newdata, messages = FALSE))
+
+  # The profiles of a reference population, whatever their order
+  newdata$positive <- 1:4
+  for (values in list(c(0, 1), c(1, 0), c(1, -1))) {
+    expect_input_error(
+      predict(fit, newdata, standardise = data.frame(positive = values),
+              messages = FALSE),
+      "standardise"
+    )
+  }
+  expect_no_warning(
+    predict(fit, newdata, standardise = data.frame(positive = c(1, 2)),
+            messages = FALSE)
+  )
+  # Other callers, such as assess_simulation(), keep every row.
+  newdata$positive <- c(1, 0, 1, 1)
+  expect_true(all(validate_prediction_data(fit, newdata, character())$valid_rows))
 })
 
 test_that("an offset that is zero in the data is added in newdata", {
@@ -1577,23 +1616,36 @@ test_that("messages = FALSE silences the projection of newdata and boundaries", 
 })
 
 test_that("polygons that meet at a T-junction in lon/lat don't overlap", {
-  box <- st_bbox(st_transform(st_buffer(gaussian_data, 2000), 4326))
-  middle <- c(mean(box[c(1, 3)]), mean(box[c(2, 4)]))
   rectangle <- function(x0, x1, y0, y1) {
     st_polygon(list(cbind(c(x0, x1, x1, x0, x0), c(y0, y0, y1, y1, y0))))
   }
   polygons <- function(shift = 0) {
     st_sf(geometry = st_sfc(
-      rectangle(box[1], box[3], box[2], middle[2] + shift),
-      rectangle(box[1], middle[1], middle[2], box[4]),
-      rectangle(middle[1], box[3], middle[2], box[4]), crs = 4326
+      rectangle(36.5, 41.5, 38, 39.75 + shift),
+      rectangle(36.5, 39, 39.75, 41.5),
+      rectangle(39, 41.5, 39.75, 41.5), crs = 4326
     ))
   }
   areas <- polygons()
   projected <- st_transform(areas, 32637)
-  # They overlap slightly once projected.
+  # They overlap once projected.
   expect_gt(sum(lengths(st_overlaps(projected))), 0)
-  cells <- create_grid(st_sf(geometry = st_union(projected)), spacing = 1)
+  # A grid of the area with the edges where they are in lon/lat
+  outline <- st_set_crs(st_segmentize(
+    st_sfc(rectangle(36.5, 41.5, 38, 41.5)), dfMaxLength = 0.01
+  ), 4326)
+  cells <- create_grid(st_sf(geometry = st_transform(outline, 32637)),
+                       spacing = 20)
+  assignment <- assign_prediction_locations(cells, projected, areas)
+  coverage <- tapply(assignment$coverage, assignment$prediction_row, sum)
+  expect_lt(max(coverage), 1.001)
+  # Cells within the outline are covered whole.
+  inside <- lengths(st_within(
+    st_buffer(st_geometry(cells), 15000, endCapStyle = "SQUARE"),
+    st_transform(outline, 32637)
+  )) > 0
+  expect_gt(min(coverage[as.character(which(inside))]), 0.999)
+
   result <- suppressWarnings(predict(
     gaussian_intercept_model, cells, boundaries = areas, aggregate = "mean",
     seed = 1, messages = FALSE
@@ -1602,17 +1654,18 @@ test_that("polygons that meet at a T-junction in lon/lat don't overlap", {
     result$boundary_summary$value[result$boundary_summary$quantity == "response"]
   ))
   # A real overlap is refused, and so is the same polygon twice.
-  expect_input_error(
-    suppressWarnings(predict(
-      gaussian_intercept_model, cells,
-      boundaries = polygons(1e-3 * (box[4] - box[2])), aggregate = "mean",
-      messages = FALSE
-    )), "boundaries"
-  )
-  expect_input_error(
-    suppressWarnings(predict(
-      gaussian_intercept_model, cells, boundaries = areas[c(1, 2, 2), ],
-      aggregate = "mean", messages = FALSE
-    )), "boundaries"
+  for (overlapping in list(polygons(0.01), areas[c(1, 2, 2), ])) {
+    expect_input_error(
+      suppressWarnings(predict(
+        gaussian_intercept_model, cells, boundaries = overlapping,
+        aggregate = "mean", messages = FALSE
+      )), "boundaries"
+    )
+  }
+  # Polygons that share every edge are projected as they are.
+  shared <- st_sf(geometry = squares)
+  expect_identical(
+    assign_prediction_locations(grid, shared, NULL)$coverage,
+    assign_prediction_locations(grid, shared)$coverage
   )
 })

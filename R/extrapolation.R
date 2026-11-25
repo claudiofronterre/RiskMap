@@ -101,7 +101,8 @@
 ##'     \item{extrapolation}{Factor with levels `"Supported"`, `"Spatial"`,
 ##'       `"Covariate"` and `"Spatial and covariate"`.}
 ##'   }
-##'   Rows with missing covariates have missing indicators. The attribute
+##'   Rows with missing covariates, or with ones that give the model a covariate
+##'   that isn't finite, such as `log(0)`, have missing indicators. The attribute
 ##'   `spatial_threshold` holds the threshold used, and `covariate_ranges` the
 ##'   range of each covariate in the data. Map the result with
 ##'   [plot_extrapolation()], or `plot()`, which does the same.
@@ -127,7 +128,8 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
                 arg = "spatial_threshold")
   }
   check_logical(sampling_noise, arg = "sampling_noise")
-  prediction <- validate_prediction_data(object, newdata, include = character())
+  prediction <- validate_prediction_data(object, newdata, include = character(),
+                                         check_finite = TRUE)
   model_data <- prediction$model_data
   valid_rows <- prediction$valid_rows
 

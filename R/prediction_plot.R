@@ -321,7 +321,12 @@ format_prediction <- function(x) {
   draws <- if (!is.null(x$joint)) {
     paste0(", with ", if (isTRUE(x$joint)) "joint" else "marginal", " draws")
   }
-  quantities <- unique(c("response", x$transform, "link", "spatial"))
+  # The components have no exceedance probabilities and no CV.
+  components <- if (!length(x$summaries) ||
+                    any(!x$summaries %in% c("cv", "exceedance"))) {
+    c("link", "spatial")
+  }
+  quantities <- unique(c("response", x$transform, components))
   settings <- c(
     Quantities = paste(quantities, collapse = ", "),
     Summaries = if (length(x$summaries)) paste(x$summaries, collapse = ", "),
@@ -332,8 +337,13 @@ format_prediction <- function(x) {
       paste(x$aggregate, collapse = ", ")
     }
   )
-  map <- paste0("`plot(x, summaries = \"", default_prediction_summary(x),
-                "\")` maps it",
+  summary <- default_prediction_summary(x)
+  map <- paste0("`plot(x, summaries = \"", summary, "\"",
+                if (identical(summary, "exceedance") &&
+                    length(x$thresholds) > 1L) {
+                  paste0(", thresholds = ", x$thresholds[1L])
+                },
+                ")` maps it",
                 if (!is.null(x$boundaries)) {
                   ", and `spatial_scale = \"both\"` adds the areas"
                 }, ".")
