@@ -37,10 +37,11 @@
 ##' a family object that names a link other than logit or log. Custom links
 ##' are experimental, and how they are given and checked may change in a
 ##' minor release.
-##' @param denominator Optional denominator for binomial distributions, or
-##' exposure for Poisson and negative binomial ones, the mean of a count being
-##' the exposure times the inverse link of the linear predictor.
-##' Passed as a bare/unquoted column name present in `data`.
+##' @param denominator Optional denominator for binomial distributions, the
+##' number of trials, or exposure for Poisson and negative binomial ones, the
+##' mean of a count being the exposure times the inverse link of the linear
+##' predictor. A fit needs positive whole numbers of trials, and positive
+##' exposures. Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1`.
 ##' @param distance_crs The projected coordinate reference system in which
 ##' distances, and so `phi`, are measured, for example an EPSG code. `data`
@@ -363,6 +364,9 @@ glgpm <- function(formula,
     }
     if (is.integer(units_m)) units_m <- as.numeric(units_m)
     model$validate(y, units_m)
+    # Counts and numbers of trials are whole to a tolerance.
+    y <- round(y)
+    if (model$whole_denominator) units_m <- round(units_m)
     check_control(control_mcmc, "set_control_mcmc")
   }
 

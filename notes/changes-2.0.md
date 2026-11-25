@@ -330,6 +330,18 @@ observation when there is one observation per location. `predict()`,
 `parametric_bootstrap()` and `check_computation()` take the size of a fit, and
 `maxim_integrand()` takes the family with its size. Its log-likelihood leaves
 out the same terms as that of a Poisson fit, so the two can be compared.
+- `glgpm()` checks the denominators of binomial and Poisson models and the
+responses of Poisson ones, as it did for a negative binomial model. Binomial
+denominators must be positive whole numbers, Poisson responses non-negative whole
+numbers and Poisson exposures positive and finite. Responses of counts and
+binomial denominators are whole to 1.5e-8, and are rounded, where a response that
+wasn't exactly whole stopped the final sampling. Denominators and responses that
+were refused only by that sampling, after the fit, such as a denominator of zero
+or a Poisson response of 1.5, or not at all with `return_samples = FALSE`, stop
+before it. So do a binomial denominator of 10.5, which was fitted with the
+warning of `glm()`, a negative Poisson exposure, fitted with warnings of `log()`,
+and missing or infinite denominators, which gave an error of R that didn't name
+the argument.
 - Several `re()` calls in a formula are now combined, so `re(a) + re(b)` is the
 same model as `re(a, b)`. Previously only the last call was fitted, with no
 warning. A second, different `gp()` term, which also used to replace the first

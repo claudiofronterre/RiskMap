@@ -419,8 +419,9 @@ riskmap_families <- list(
 ##' the family's methods for its data, each the arithmetic its caller used
 ##' before (#253, step 1c). For records with `y` events of `units_m` trials,
 ##' or counts with exposure `units_m`, or Gaussian responses `y`,
-##' - `validate(y, units_m)`, stops if the responses are not of the family
-##'   (`check_binomial()`), and otherwise returns TRUE invisibly.
+##' - `validate(y, units_m)`, stops if the responses or the denominators are not
+##'   of the family (`check_binomial()`, `check_counts()`), and otherwise
+##'   returns TRUE invisibly.
 ##' - `start_coefficients(y, units_m, D, cov_offset, link, formula, data)`,
 ##'   the starting regression coefficients of `glgpm()`, from
 ##'   `binomial_start_regression()` with the link named `link`, or a Poisson
@@ -542,7 +543,7 @@ family_traits <- function(family) {
       score_limit = function(y, units_m, means, parameters) units_m
     ),
     poisson = list(
-      validate = function(y, units_m) invisible(TRUE),
+      validate = function(y, units_m) check_counts(y, units_m, "Poisson"),
       start_coefficients = function(y, units_m, D, cov_offset, link, formula,
                                     data) {
         pf_aux <- update(formula, . ~ . + offset(log(units_m)) +
@@ -576,7 +577,9 @@ family_traits <- function(family) {
       }
     ),
     negative_binomial = list(
-      validate = function(y, units_m) check_counts(y, units_m),
+      validate = function(y, units_m) {
+        check_counts(y, units_m, "negative binomial")
+      },
       # On the records of engine_records().
       start_coefficients = function(y, units_m, D, cov_offset, link, formula,
                                     data) {
@@ -687,18 +690,19 @@ family_size <- function(parameters) {
 
 ##' Check counts and their exposures
 ##'
-##' Stops unless the responses `y` are finite non-negative whole numbers, as
-##' the conditional sampler of the fit needs them exactly
-##' (`laplace_sampling_mcmc()`), and the exposures `units_m` positive finite
-##' numbers, as the negative binomial family needs, whose records have the
-##' offset `log(units_m / theta)`.
+##' Stops unless the responses `y` are finite non-negative whole numbers, to the
+##' tolerance of `is_whole()`, and the exposures `units_m` positive finite
+##' numbers, since their log is an offset of the model. The conditional sampler
+##' of the fit needs the responses exactly (`laplace_sampling_mcmc()`), so they
+##' have to be rounded before they are used.
+##' @param family The name of the family in the messages.
 ##' @noRd
-check_counts <- function(y, units_m) {
-  if (!all(is.finite(y)) || !all(y >= 0) || !all(y == round(y))) {
-    abort_input("The responses of a negative binomial model must be non-negative whole numbers.", arg = "data")
+check_counts <- function(y, units_m, family) {
+  if (!all(is_whole(y)) || !all(round(y) >= 0)) {
+    abort_input("The responses of a {family} model must be non-negative whole numbers.", arg = "data")
   }
   if (!all(is.finite(units_m)) || !all(units_m > 0)) {
-    abort_input("The denominators of a negative binomial model must be positive finite numbers.", arg = "denominator")
+    abort_input("The denominators of a {family} model must be positive finite numbers.", arg = "denominator")
   }
   invisible(TRUE)
 }
