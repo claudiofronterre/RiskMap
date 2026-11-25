@@ -1005,9 +1005,8 @@ format_checks <- function(x) {
 
 ##' @title Plot the Checks on a Fitted Model
 ##' @description Plots the checks of a fit from [check_computation()], as
-##' `plot()` of
-##'   the result does. It makes the figures of the checks that were computed,
-##'   and never computes anything itself, so an extra check runs once in
+##'   `plot()` of the result does. It makes the figures of the checks that were
+##'   computed, and never computes anything itself, so an extra check runs once in
 ##'   [check_computation()]. By stage of certified Monte Carlo maximum
 ##'   likelihood, the panels show the bound on the Monte Carlo error against the
 ##'   tolerance (`"certificate"`), the effective certification draws

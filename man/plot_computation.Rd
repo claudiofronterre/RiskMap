@@ -32,9 +32,8 @@ drawn until the object is printed, so it can be saved or changed first.
 }
 \description{
 Plots the checks of a fit from \code{\link[=check_computation]{check_computation()}}, as
-\code{plot()} of
-the result does. It makes the figures of the checks that were computed,
-and never computes anything itself, so an extra check runs once in
+\code{plot()} of the result does. It makes the figures of the checks that were
+computed, and never computes anything itself, so an extra check runs once in
 \code{\link[=check_computation]{check_computation()}}. By stage of certified Monte Carlo maximum
 likelihood, the panels show the bound on the Monte Carlo error against the
 tolerance (\code{"certificate"}), the effective certification draws

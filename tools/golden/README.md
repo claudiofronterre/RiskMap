@@ -137,6 +137,8 @@ Compare PRs against `arms/main-eb2345b` on Wayland, all 76 tasks of `main` at eb
 | `main-9822eae` | `main` after #326 (the Woodbury start of step 2b) | 76 | identical to `main-99fb030` but for `D_gaussian_re_bootstrap`, whose replicate estimates and printed bootstrap move (`^D_gaussian_re_bootstrap ^/boot/estimates$`, `^D_gaussian_re_bootstrap ^/text/[12]$`), by at most 2e-7 of their value except a cluster variance estimated near 1e-10. It is identical to the arm of #326 itself, `woodbury-79dfb8d` |
 | `main-99fb030` | `main` after #317 and #318 | 76 | identical to `golden-707e26e` in 72 tasks, F46 among them. F42 to F45, whose households #317 integrates, are within a tolerance of 0.01 standard errors, 5% on the standard errors and 0.02 on the log-likelihood (largest shift 0.0064 standard errors), with the sentences and check that report the integration declared (`^F4[2-5] ^/text/[34]$`, `^F4[2-5] ^/check/draws$`) and, for F44, the bank its certificate's radius comes from (`^F44 radius_from$`) |
 
+The printed text of fits and the findings of the checks name `check_computation()`, which was `check_fit()` in arms made before #374, so a comparison across the rename shows those texts as different.
+
 A PR that changes no number keeps the reference. A PR that moves numbers or adds tasks takes a new one at its merge commit, noted here.
 
 ## Adding a task
