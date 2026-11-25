@@ -325,7 +325,7 @@ test_that("the spinner doesn't change a Gaussian fit", {
   }
   local_terminal()
   # Without a held position of the optimiser, and with one.
-  for (held in list(list(sigma2_me = 0), list(sigma2 = 1))) {
+  for (held in list(list(sigma2_me = 0), list(sigma2_me = 0, sigma2 = 1))) {
     still <- fit(fixed_pars = held, messages = FALSE)
     expect_identical(fit(fixed_pars = held, messages = TRUE), still)
   }
