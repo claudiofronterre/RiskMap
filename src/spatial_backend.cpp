@@ -97,7 +97,7 @@ NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values,
                                        const IntegerVector second_index,
                                        const IntegerVector bin_index,
                                        const int number_bins) {
-  // The only caller, variogram(), validates the values and builds zero-based
+  // The only caller, binned_semivariances(), is given finite values and zero-based
   // pair and bin indices of equal length, so they are not rechecked here
   const int number_values = permuted_values.nrow();
   const int number_pairs = first_index.length();

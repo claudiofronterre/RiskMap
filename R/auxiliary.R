@@ -1156,9 +1156,10 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' results or polygon predictions into a table that renders directly in
 ##' Quarto, R Markdown, HTML, LaTeX and the R console.
 ##' @param object A fit from [glgpm()] or its [summary()][summary.RiskMap()],
-##' a cross-validation from [assess_prediction()] or its
-##' [summary()][summary.RiskMap_cross_validation()], or a prediction over
-##' `boundaries` from [predict()][predict.RiskMap()] (see
+##' an assessment of fits from [assess_fit()] or its
+##' [summary()][summary.RiskMap_predictive_check()], a cross-validation from
+##' [assess_prediction()] or its [summary()][summary.RiskMap_cross_validation()],
+##' or a prediction over `boundaries` from [predict()][predict.RiskMap()] (see
 ##' [to_table.RiskMap_prediction()]).
 ##' @param digits A non-negative integer giving the number of decimal places
 ##' used to display numeric results. Small values get more (see Details).
@@ -1168,7 +1169,8 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' [summary()][summary.RiskMap_cross_validation()].
 ##' @param ... Additional arguments passed to [knitr::kable()].
 ##' @details This function creates a presentation-ready summary table from a
-##' fitted "RiskMap" model or cross-validation results for multiple models.
+##' fitted "RiskMap" model, an assessment of fits or cross-validation results for
+##' multiple models.
 ##' Use [coef()][coef.RiskMap()] or [summary()][summary.RiskMap()] when numeric
 ##' results are required for further analysis.
 ##'
@@ -1232,7 +1234,7 @@ to_table.summary.RiskMap <- function(object, digits = 3, col_names = NULL,
 ##' @rdname to_table
 ##' @export
 to_table.default <- function(object, ...) {
-  abort_input("{.arg object} must be a {.cls RiskMap} fit or its summary, a {.cls RiskMap_cross_validation} result or its summary, or a {.cls RiskMap_prediction} over {.arg boundaries}, not {.obj_type_friendly {object}}.", arg = "object")
+  abort_input("{.arg object} must be a {.cls RiskMap} fit or its summary, a {.cls RiskMap_predictive_check} or {.cls RiskMap_cross_validation} result or its summary, or a {.cls RiskMap_prediction} over {.arg boundaries}, not {.obj_type_friendly {object}}.", arg = "object")
 }
 
 ##' The table of a fit, formatted for `kable()`

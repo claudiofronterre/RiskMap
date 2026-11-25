@@ -150,6 +150,7 @@ test_that("every result records the version of RiskMap that made it", {
   stamped(predict(gaussian_intercept_model, grid, messages = FALSE))
   stamped(predict(gaussian_intercept_model, grid, boundaries = areal,
                   aggregate = "mean", messages = FALSE))
+  stamped(assess_fit(gaussian_intercept_model, nsim = 19, seed = 1))
   stamped(cross_validation)
   stamped(cross_validation$test_sets)
   stamped(create_test_sets(gaussian_data))

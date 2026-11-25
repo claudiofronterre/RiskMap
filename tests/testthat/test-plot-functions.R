@@ -29,6 +29,11 @@ plot_cases <- function() {
     bootstrap = list(fun = plot_bootstrap, x = bootstrap,
                      args = list(parameters = "phi", log_scale = TRUE),
                      made_by = "parametric_bootstrap"),
+    predictive_check = list(
+      fun = plot_predictive_check, made_by = "assess_fit",
+      x = assess_fit(gaussian_intercept_model, nsim = 19, seed = 1),
+      args = list(type = "variogram", colour = "darkblue")
+    ),
     cross_validation = list(fun = plot_cross_validation, x = cross_validation,
                             args = list(type = "score", score = "SCRPS"),
                             made_by = "assess_prediction"),

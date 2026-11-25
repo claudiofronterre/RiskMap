@@ -4,9 +4,9 @@
 #' RiskMap shows how far a long computation has gone and about how long it
 #' has left.
 #'
-#' - [parametric_bootstrap()], [profile.RiskMap()], [assess_prediction()] and
-#'   [assess_simulation()] show a progress bar with the work done and an
-#'   estimate of the time left.
+#' - [parametric_bootstrap()], [profile.RiskMap()], [assess_fit()],
+#'   [assess_prediction()] and [assess_simulation()] show a progress bar with the
+#'   work done and an estimate of the time left.
 #' - [predict.RiskMap()] shows a bar while it predicts at many locations in
 #'   blocks, and while it propagates parameter uncertainty over its parameter
 #'   draws.
