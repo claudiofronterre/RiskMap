@@ -389,7 +389,7 @@ test_that("the start of each family is the regression its caller ran", {
   )
 })
 
-test_that("the family's simulator and scoring support take the draws of their callers", {
+test_that("the family's simulator, distribution function and scoring limit take the draws of their callers", {
   means <- c(0.2, 0.7, 0.5)
   units_m <- c(4, 10, 6)
   set.seed(3)
@@ -414,10 +414,10 @@ test_that("the family's simulator and scoring support take the draws of their ca
   expect_identical(binomial$score_limit(2, 10, means, NULL), 10)
   # The larger of the response and of a count that the largest mean exceeds
   # with a probability of at most 10^-10.
-  limit <- qpois(1e-10, 2 * 0.9, lower.tail = FALSE)
+  limit <- qpois(1e-10, 2 * max(means), lower.tail = FALSE)
   expect_identical(poisson$score_limit(4, 2, means, NULL), limit)
   expect_identical(poisson$score_limit(limit + 5, 2, means, NULL), limit + 5)
-  expect_lte(1 - ppois(limit, 2 * 0.9), 1.1e-10)
+  expect_lte(1 - ppois(limit, 2 * max(means)), 1.1e-10)
   # The distribution function at the mean of each draw.
   expect_identical(binomial$distribution_function(3, means, 10, NULL),
                    pbinom(3, 10, means))

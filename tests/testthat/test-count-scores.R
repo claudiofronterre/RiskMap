@@ -195,9 +195,23 @@ test_that("a mean at the limit of its range is scored", {
   expect_identical(count_crps(2, distribution), 1)
   zero <- count_distribution(3, 1, c(0, 0), NULL, family_traits("poisson"))
   expect_identical(count_crps(3, zero), 3)
-  # Means far above any count that can be told from its neighbours.
-  huge <- count_distribution(3, 1, c(1, 1e30), NULL, family_traits("poisson"))
-  expect_equal(count_crps(3, huge), 1e30 / 4, tolerance = 1e-3)
+})
+
+test_that("counts too large to be told apart stop, and those below are scored", {
+  traits <- family_traits("poisson")
+  large <- count_distribution(3, 1, c(1, 1e15), NULL, traits)
+  expect_equal(count_crps(3, large), 1e15 / 4, tolerance = 1e-3)
+  for (mean in c(1e16, 1e30, 1e180, 1e308)) {
+    expect_no_warning(expect_error(
+      count_distribution(5, 1, c(1, 1, mean), NULL, traits),
+      "too large to be scored", class = "riskmap_error"
+    ))
+    expect_no_warning(expect_error(
+      count_distribution(5, 1, c(1, 1, mean), list(theta = 0.5),
+                         family_traits("negative_binomial")),
+      "too large to be scored", class = "riskmap_error"
+    ))
+  }
 })
 
 test_that("draws of the mean that can't be scored stop", {
@@ -219,10 +233,12 @@ test_that("draws of the mean that can't be scored stop", {
   expect_error(check_count_means(matrix(1e308, 1, 2), 10, poisson),
                "2 draws of the mean at 1 test observation aren't finite")
   # A denominator that isn't a number of trials.
-  expect_no_warning(expect_error(
-    count_distribution(1, 2.5, c(0.2, 0.3), NULL, binomial),
-    "denominator of 2.5 is not a number", class = "riskmap_error"
-  ))
+  for (trials in c(2.5, 250.5)) {
+    expect_no_warning(expect_error(
+      count_distribution(1, trials, c(0.2, 0.3), NULL, binomial),
+      "must be whole numbers", class = "riskmap_error"
+    ))
+  }
 })
 
 # A fit and a mocked prediction whose draws of the linear predictor are given.

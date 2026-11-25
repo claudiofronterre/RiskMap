@@ -15,7 +15,9 @@
 ##' the draws put probability, whether their means are close together or
 ##' differ by orders of magnitude, and the relative error of the CRPS and of
 ##' its expected value is of the order of `tolerance` or less. Cells of one
-##' count are exact, as is every F when the largest count is at most 100.
+##' count are exact, as is every F when the largest count is at most 100. Stops
+##' if the largest count is above 2^53, or F is not a number, as for a binomial
+##' denominator that is not whole.
 ##'
 ##' @param y The observed count.
 ##' @param units_m Its number of trials or exposure.
@@ -33,13 +35,19 @@ count_distribution <- function(y, units_m, means, parameters, traits,
     values <- suppressWarnings(vapply(counts, function(count) {
       mean(traits$distribution_function(count, means, units_m, parameters))
     }, numeric(1)))
-    # As for a number of trials that isn't whole.
     if (anyNA(values)) {
-      riskmap_abort("The predictive distribution of a count with a denominator of {units_m} is not a number.")
+      riskmap_abort(c("The predictive distribution of a count with a denominator of {units_m} is not a number.", "i" = if (traits$whole_denominator) "The denominators of the family must be whole numbers to score its counts."))
     }
     values
   }
-  limit <- traits$score_limit(y, units_m, means, parameters)
+  # NaN, with a warning, for means near the largest number.
+  limit <- suppressWarnings(
+    traits$score_limit(y, units_m, means, parameters)
+  )
+  # Beyond 2^53 neighbouring numbers are more than one count apart.
+  if (!isTRUE(limit <= 2^53)) {
+    riskmap_abort("The predicted counts of a test observation are too large to be scored.")
+  }
   counts <- sort(unique(c(-1, 0:min(limit, 100), y - 1, y, limit)))
   values <- cummax(c(0, average(counts[-1])))
   repeat {
@@ -47,12 +55,10 @@ count_distribution <- function(y, units_m, means, parameters, traits,
     lower <- counts[-length(counts)]
     upper <- counts[-1]
     middle <- floor((lower + upper) / 2)
-    # Far beyond 10^15 neighbouring numbers are more than one count apart, and
-    # a cell between two of them has no middle.
-    wide <- middle > lower & middle < upper
     largest <- tolerance * min(count_crps(y, distribution),
                                count_expected_crps(distribution))
-    added <- middle[wide & (upper - lower) * diff(values) > largest]
+    added <- middle[upper - lower > 1 &
+                      (upper - lower) * diff(values) > largest]
     if (!length(added)) return(distribution)
     position <- order(c(counts, added))
     values <- cummax(c(values, average(added))[position])

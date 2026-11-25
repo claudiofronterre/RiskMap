@@ -189,7 +189,9 @@ sets is simulated once and scored under each, as the observed value is. A
 
 A failed refit or prediction does not stop the assessment: the scores of
 that test set are missing and a warning reports the failures. So are those
-of a test set of counts in which a draw of the mean is not finite. Test
+of a test set of counts that can't be scored, because a draw of the mean is
+not finite, is outside the range of the family or gives counts above
+\eqn{2^{53}}, or because a binomial denominator is not a whole number. Test
 observations with missing values in a variable used by any of the models
 are left out. The predictive distributions of the test observations do not
 yet include random effects, so the scores of models with \code{re()} terms are

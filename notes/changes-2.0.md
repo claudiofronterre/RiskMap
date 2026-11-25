@@ -1670,9 +1670,10 @@ sum over a cell is in closed form, with a relative error of about 10^-5 in the
 CRPS. With 2,000 draws the score of a count takes about 5 ms with 20 trials
 and 0.1 to 0.35 s for predicted counts of 1,000 to 100,000
 (`count_distribution()`). A rare event whose simulated counts were all zero
-has a SCRPS. A test set of counts with a draw of the mean that is not finite
-or is outside the range of the family is recorded as a failure, where a
-binomial fit with such a draw was scored without it.
+has a SCRPS. A test set of counts is recorded as a failure if a draw of the
+mean is not finite, is outside the range of the family or gives counts above
+2^53, or if a binomial denominator is not a whole number. A binomial fit was
+scored without such a draw, and its scores with such a denominator were wrong.
 - The families have the trait `distribution_function()`, which `check_family()`
 compares with the density, and `score_limit()`, the largest count that is
 scored, instead of `score_support()`, which needed the simulated counts.
