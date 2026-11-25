@@ -3358,7 +3358,8 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##' @seealso The methods for the result are
 ##'   [print()][print.RiskMap_assess_simulation()] and
 ##'   [summary()][summary.RiskMap_assess_simulation()]. [specify_glgpm()] and
-##'   [simulate_glgpm()] make the simulations.
+##'   [simulate_glgpm()] make the simulations. [assessment] says which function
+##'   answers which question about a model.
 ##' @export
 assess_simulation <- function(simulation,
                               models,

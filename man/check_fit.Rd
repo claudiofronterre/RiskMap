@@ -171,4 +171,5 @@ The methods for the result are \link[=print.RiskMap_check]{print()},
 \link[=summary.RiskMap_check]{summary()} and \code{\link[=plot_check]{plot_check()}}, which \code{plot()}
 of the result also calls. \code{\link[=summary.RiskMap]{summary.RiskMap()}} gives the estimates, and
 \code{\link[=profile.RiskMap]{profile.RiskMap()}} and \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} their uncertainty.
+\link{assessment} says which function answers which question about a model.
 }

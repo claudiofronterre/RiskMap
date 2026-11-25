@@ -146,5 +146,6 @@ extrapolation
 table(extrapolation$extrapolation)
 }
 \seealso{
-\code{\link[=plot_extrapolation]{plot_extrapolation()}}, \code{\link[=predict.RiskMap]{predict.RiskMap()}}
+\code{\link[=plot_extrapolation]{plot_extrapolation()}}, \code{\link[=predict.RiskMap]{predict.RiskMap()}}, and \link{assessment} for
+the other assessments of a model.
 }

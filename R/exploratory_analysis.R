@@ -149,6 +149,91 @@ global_rank_envelope <- function(curves, level) {
        upper = apply(curves[, retained, drop = FALSE], 1L, max))
 }
 
+#' Check the lag-distance breakpoints given by the user
+#' @noRd
+check_distance_breaks <- function(breaks, call = rlang::caller_env()) {
+  if (!is.numeric(breaks) || length(breaks) < 2L || any(!is.finite(breaks))) {
+    abort_input("{.arg breaks} must be at least two finite numbers.", arg = "breaks", call = call)
+  }
+  if (any(diff(breaks) <= 0)) {
+    abort_input("{.arg breaks} must be strictly increasing.", arg = "breaks", call = call)
+  }
+  if (min(breaks) < 0) {
+    abort_input("{.arg breaks} must be non-negative.", arg = "breaks", call = call)
+  }
+  invisible(breaks)
+}
+
+#' The distance classes of an empirical variogram and the pairs in them
+#'
+#' @param d Distances between the locations, in the order of `dist()`.
+#' @param n The number of locations.
+#' @param breaks The lag-distance breakpoints, valid as in
+#'   `check_distance_breaks()`.
+#' @param distance_units The units of `d`, for messages.
+#' @param hint What to check when classes have no pairs, in cli markup.
+#' @param call The call named in input errors.
+#' @return A list with the mean `distance` of the pairs of each class, `NA` for
+#'   a class without pairs, their number, `n_pairs`, the zero-based locations
+#'   (`first_index` and `second_index`) and class (`bin_index`) of each pair
+#'   that is in a class, and the number of classes, `number_bins`.
+#' @noRd
+distance_classes <- function(d, n, breaks, distance_units, hint,
+                             call = rlang::caller_env()) {
+  distance_class <- as.integer(cut(d, breaks = breaks,
+                                   include.lowest = TRUE, right = TRUE))
+  included <- !is.na(distance_class)
+  if (!any(included)) {
+    range_d <- signif(range(d), 3)
+    abort_input(c("No pair of locations falls within the distance classes.", "i" = "Distances between locations range from {range_d[1]} to {range_d[2]} {distance_units}.", "i" = hint), arg = "breaks", call = call)
+  }
+  # Classes are closed on the right, so a class whose lower limit is at or
+  # beyond the largest distance cannot contain any pair
+  number_beyond <- sum(breaks[-length(breaks)] >= max(d))
+  if (number_beyond > 0L) {
+    largest <- signif(max(d), 3)
+    riskmap_warn(c("{number_beyond} distance class{?es} {?lies/lie} beyond the largest distance between locations, {largest} {distance_units}, and {cli::qty(number_beyond)}{?has/have} no pairs.", "i" = hint))
+  }
+
+  d <- d[included]
+  distance_class <- distance_class[included]
+  number_bins <- length(breaks) - 1L
+  n_pairs <- tabulate(distance_class, nbins = number_bins)
+  distance_sum <- numeric(number_bins)
+  summed_distances <- rowsum(d, distance_class, reorder = FALSE)
+  distance_sum[as.integer(rownames(summed_distances))] <- summed_distances[, 1L]
+  mean_distance <- distance_sum / n_pairs
+  mean_distance[n_pairs == 0L] <- NA_real_
+
+  first_index <- integer(n * (n - 1L) / 2L)
+  second_index <- integer(length(first_index))
+  position <- 1L
+  for (second in seq_len(n - 1L)) {
+    length_block <- n - second
+    indices <- position:(position + length_block - 1L)
+    first_index[indices] <- (second + 1L):n
+    second_index[indices] <- second
+    position <- position + length_block
+  }
+  list(distance = mean_distance, n_pairs = n_pairs,
+       first_index = first_index[included] - 1L,
+       second_index = second_index[included] - 1L,
+       bin_index = distance_class - 1L, number_bins = number_bins)
+}
+
+#' Empirical semivariances of several datasets at the same locations
+#'
+#' @param values A matrix with a location in each row and a dataset in each
+#'   column.
+#' @param classes Output from `distance_classes()`.
+#' @return A matrix with a distance class in each row and a dataset in each
+#'   column.
+#' @noRd
+binned_semivariances <- function(values, classes) {
+  cpp_binned_semivariances(values, classes$first_index, classes$second_index,
+                           classes$bin_index, classes$number_bins)
+}
+
 
 ##' @title Empirical variogram with a global permutation envelope
 ##' @description Computes the empirical semivariogram using lag-distance
@@ -288,57 +373,13 @@ variogram <- function(data,
     upper_dist <- if (is.null(max_dist)) max(d) / 3 else max_dist
     breaks <- seq(0, upper_dist, length.out = n_bins + 1)
   } else {
-    if (!is.numeric(breaks) || length(breaks) < 2L || any(!is.finite(breaks))) {
-      abort_input("{.arg breaks} must be at least two finite numbers.", arg = "breaks")
-    }
-    if (any(diff(breaks) <= 0)) {
-      abort_input("{.arg breaks} must be strictly increasing.", arg = "breaks")
-    }
-    if (min(breaks) < 0) {
-      abort_input("{.arg breaks} must be non-negative.", arg = "breaks")
-    }
+    check_distance_breaks(breaks)
   }
-  distance_class <- as.integer(cut(d, breaks = breaks,
-                                   include.lowest = TRUE, right = TRUE))
-  included <- !is.na(distance_class)
-  if (!any(included)) {
-    range_d <- signif(range(d), 3)
-    abort_input(c("No pair of locations falls within the distance classes.", "i" = "Distances between locations range from {range_d[1]} to {range_d[2]} {distance_units}.", "i" = "Check {.arg breaks}, {.arg max_dist} and {.arg distance_units}."), arg = "breaks")
-  }
-  # Classes are closed on the right, so a class whose lower limit is at or
-  # beyond the largest distance cannot contain any pair
-  number_beyond <- sum(breaks[-length(breaks)] >= max(d))
-  if (number_beyond > 0L) {
-    largest <- signif(max(d), 3)
-    riskmap_warn(c("{number_beyond} distance class{?es} {?lies/lie} beyond the largest distance between locations, {largest} {distance_units}, and {cli::qty(number_beyond)}{?has/have} no pairs.", "i" = "Check {.arg breaks}, {.arg max_dist} and {.arg distance_units}."))
-  }
-
-  d <- d[included]
-  distance_class <- distance_class[included]
-  number_bins <- length(breaks) - 1L
-  number_pairs <- length(d)
-  n_pairs <- tabulate(distance_class, nbins = number_bins)
-  distance_sum <- numeric(number_bins)
-  summed_distances <- rowsum(d, distance_class, reorder = FALSE)
-  distance_sum[as.integer(rownames(summed_distances))] <- summed_distances[, 1L]
-  mean_distance <- distance_sum / n_pairs
-  mean_distance[n_pairs == 0L] <- NA_real_
-
   n <- nrow(data)
-  first_index <- integer(n * (n - 1L) / 2L)
-  second_index <- integer(length(first_index))
-  position <- 1L
-  for (second in seq_len(n - 1L)) {
-    length_block <- n - second
-    indices <- position:(position + length_block - 1L)
-    first_index[indices] <- (second + 1L):n
-    second_index[indices] <- second
-    position <- position + length_block
-  }
-
-  first_index <- first_index[included] - 1L
-  second_index <- second_index[included] - 1L
-  bin_index <- distance_class - 1L
+  classes <- distance_classes(
+    d, n, breaks, distance_units,
+    "Check {.arg breaks}, {.arg max_dist} and {.arg distance_units}."
+  )
 
   if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
@@ -353,17 +394,16 @@ variogram <- function(data,
     )
   }
   permuted_values <- matrix(values[permutations], nrow = n)
-  curves <- cpp_binned_semivariances(permuted_values, first_index,
-                                     second_index, bin_index, number_bins)
+  curves <- binned_semivariances(permuted_values, classes)
 
   variogram_data <- data.frame(
-    distance = mean_distance,
+    distance = classes$distance,
     semivariance = curves[, 1L],
-    n_pairs = n_pairs
+    n_pairs = classes$n_pairs
   )
   envelope_method <- NULL
   if (n_permutations > 0L) {
-    nonempty <- n_pairs > 0L
+    nonempty <- classes$n_pairs > 0L
     envelope <- global_rank_envelope(curves[nonempty, , drop = FALSE], level)
     variogram_data$lower_envelope <- NA_real_
     variogram_data$upper_envelope <- NA_real_

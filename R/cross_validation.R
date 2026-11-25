@@ -183,6 +183,7 @@
 ##'   cross-validation are [print()][print.RiskMap_cross_validation()],
 ##'   [summary()][summary.RiskMap_cross_validation()], [to_table()] and
 ##'   [plot_cross_validation()], which `plot()` of the result also calls.
+##'   [assessment] says which function answers which question about a model.
 ##'
 ##' @references
 ##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
@@ -342,10 +343,10 @@ check_same_data <- function(models, call) {
       abort_input("The models in {.arg models} must be fitted to data with the same rows in the same order, in the same coordinate reference system.", arg = "models", call = call)
     }
     if (!same_values(fit$y, first$y)) {
-      abort_input(c("The models in {.arg models} must have the same response.", "x" = "The responses of {.val {name}} and {.val {names(models)[1L]}} differ, so their scores can't be compared."), arg = "models", call = call)
+      abort_input(c("The models in {.arg models} must have the same response.", "x" = "The responses of {.val {name}} and {.val {names(models)[1L]}} differ, so they can't be compared."), arg = "models", call = call)
     }
     if (!same_values(assessed_denominators(fit), assessed_denominators(first))) {
-      abort_input(c("The models in {.arg models} must have the same denominators.", "x" = "The denominators of {.val {name}} and {.val {names(models)[1L]}} differ, so their scores can't be compared."), arg = "models", call = call)
+      abort_input(c("The models in {.arg models} must have the same denominators.", "x" = "The denominators of {.val {name}} and {.val {names(models)[1L]}} differ, so they can't be compared."), arg = "models", call = call)
     }
   }
   invisible(TRUE)
@@ -741,11 +742,11 @@ check_assessed_model <- function(model, models, arg, several = FALSE,
   if (!is.character(model) || anyNA(model) || !length(model) ||
       (!several && length(model) > 1L)) {
     what <- if (several) "names of models" else "the name of one model"
-    abort_input(c(paste0("{.arg {arg}} must be ", what, " of the cross-validation."), "i" = "Its models are {.val {models}}."), arg = arg, call = call)
+    abort_input(c(paste0("{.arg {arg}} must be ", what, " among those assessed."), "i" = "They are {.val {models}}."), arg = arg, call = call)
   }
   absent <- setdiff(model, models)
   if (length(absent)) {
-    abort_input(c("{.arg {arg}} must name {cli::qty(length(model))}{?a model/models} of the cross-validation.", "x" = "{.val {absent}} {cli::qty(length(absent))}{?is/are} not among them.", "i" = "Its models are {.val {models}}."), arg = arg, call = call)
+    abort_input(c("{.arg {arg}} must name {cli::qty(length(model))}{?a model/models} among those assessed.", "x" = "{.val {absent}} {cli::qty(length(absent))}{?is/are} not among them.", "i" = "They are {.val {models}}."), arg = arg, call = call)
   }
   invisible(model)
 }

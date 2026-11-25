@@ -1740,6 +1740,34 @@ and polygons that don't overlap when projected are projected as before.
 design, so `el + I(el^2) + I(el^3)` is no longer reported as singular. Other
 leverages change in the last digits.
 
+## Assessing a fit
+
+- `assess_fit()` takes `models`, a fit or a list of fits to the same data,
+`statistics`, `breaks`, `nsim`, `seed`, `return_simulations` and `messages`. It
+simulates datasets from each model with `simulate_glgpm()`, with new surfaces and
+the parameters at their estimates, and compares three features of them with those
+of the data.
+- The statistics are a function of a dataset, or a named list of functions, that
+gives named numbers. The default ones are the mean and the SD of the prevalence
+or rate and the proportion of zeros, or the mean, SD, minimum and maximum of a
+Gaussian response. They are of the observations, and of the locations for
+binomial models. Simulated datasets in which a statistic isn't finite are left
+out of its summary, with a warning.
+- The distribution is the empirical one of the same values, and the variogram
+that of the residuals from the covariates. The response is put on the scale of the
+linear predictor (empirical logit, log rate with 0.5 added to the count, or the
+Gaussian response), with one value for each location, and the offset and the least
+squares fit on the covariates are taken out, again in each simulated dataset. Both
+have the 95% joint envelope of `variogram()`, whose distance classes and pairs are
+now in internal functions that both use, with no change to `variogram()`.
+- The models share the seed, so their surfaces share random numbers, and the
+simulations are kept only with `return_simulations = TRUE`. `summary()` gives the
+observed value, the median and the 95% interval of the simulated ones and the
+proportion at or above the observed one, `to_table()` tabulates them, and
+`plot_predictive_check()`, or `plot()`, draws the statistics, the distribution or
+the variogram. There is no test and no mark that a model passes.
+- `?assessment` says which function answers which question about a model.
+
 ## Cross validation
 
 - `"user"` has been added as an option to `method` the parameter of

@@ -106,7 +106,8 @@
 ##'   `spatial_threshold` holds the threshold used, and `covariate_ranges` the
 ##'   range of each covariate in the data. Map the result with
 ##'   [plot_extrapolation()], or `plot()`, which does the same.
-##' @seealso [plot_extrapolation()], [predict.RiskMap()]
+##' @seealso [plot_extrapolation()], [predict.RiskMap()], and [assessment] for
+##'   the other assessments of a model.
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:150, ]

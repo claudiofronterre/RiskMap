@@ -171,9 +171,14 @@ reference:
 
   - title: Assessment
     desc: >
-      Assess the predictive performance of models by spatial cross-validation
-      and on simulated data.
+      See whether a model could have produced the data, and assess its
+      predictions by spatial cross-validation and on simulated data.
     contents:
+      - assessment
+      - assess_fit
+      - print.RiskMap_predictive_check
+      - summary.RiskMap_predictive_check
+      - plot_predictive_check
       - create_test_sets
       - print.RiskMap_test_sets
       - plot_test_sets

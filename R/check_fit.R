@@ -129,6 +129,7 @@
 ##'   [summary()][summary.RiskMap_check()] and [plot_check()], which `plot()`
 ##'   of the result also calls. [summary.RiskMap()] gives the estimates, and
 ##'   [profile.RiskMap()] and [parametric_bootstrap()] their uncertainty.
+##'   [assessment] says which function answers which question about a model.
 ##' @examples
 ##' data(italy_sim)
 ##'

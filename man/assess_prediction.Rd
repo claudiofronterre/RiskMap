@@ -241,4 +241,5 @@ A: Statistics in Society}.\doi{10.1093/jrsssa/qnag100}.
 cross-validation are \link[=print.RiskMap_cross_validation]{print()},
 \link[=summary.RiskMap_cross_validation]{summary()}, \code{\link[=to_table]{to_table()}} and
 \code{\link[=plot_cross_validation]{plot_cross_validation()}}, which \code{plot()} of the result also calls.
+\link{assessment} says which function answers which question about a model.
 }
