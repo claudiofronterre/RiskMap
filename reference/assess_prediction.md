@@ -203,9 +203,9 @@ A list of class `RiskMap_cross_validation`, containing:
 
 - failures:
 
-  A data frame with one row for each model and test set whose refit or
-  prediction failed, with columns `model`, `test_set` and `message`. The
-  scores of these test sets are `NA`.
+  A data frame with one row for each model and test set whose refit,
+  prediction or scores failed, with columns `model`, `test_set` and
+  `message`. The scores of these test sets are `NA`.
 
 ## Details
 
@@ -219,6 +219,23 @@ predictive distribution \\F\\. This is the negative of the scaled CRPS
 of Bolin and Wallin (2023), whose scores are higher for better
 predictions, so that the CRPS and the SCRPS share one orientation. The
 SCRPS can be negative.
+
+The predictive distribution of a binomial, Poisson or negative binomial
+count \\Y\\ is the distribution of the family given the mean, averaged
+over the \\J\\ draws of the mean from its own predictive distribution,
+\$\$F(k) = \frac{1}{J} \sum\_{j=1}^{J} P(Y \le k \mid \mu_j), \quad k =
+0, 1, 2, \ldots\$\$ Here \\\mu_j\\ is the \\j\\th draw of the prevalence
+or rate, and \\P(Y \le k \mid \mu_j)\\ also depends on the denominator
+and, for a negative binomial model, on its size. The scores come from
+\\F\\, with \$\$\mathrm{CRPS}(F, y) = \sum\_{k \ge 0} \[F(k) - 1(k \ge
+y)\]^2, \quad c = \sum\_{k \ge 0} F(k) \[1 - F(k)\],\$\$ and so does the
+calibration curve, from \\F(y - 1)\\ and \\F(y)\\. The scores of counts
+have no random step beyond the draws of the mean, as no counts are
+simulated for them. A model therefore gets the same scores whatever its
+position in `models`. Where counts above 100 are predicted, \\F\\ is
+computed on a grid of counts and is linear in between. The grid is fine
+enough for a relative error of about \\10^{-4}\\ or less in the CRPS and
+in \\c\\.
 
 `PIT_area` is the area between the calibration curve and the diagonal,
 from 0 for a perfectly calibrated curve to at most 0.5. It is computed
@@ -234,10 +251,14 @@ observed value is. A `PIT_area` well above `PIT_area_expected` points to
 miscalibration.
 
 A failed refit or prediction does not stop the assessment: the scores of
-that test set are missing and a warning reports the failures. Test
-observations with missing values in a variable used by any of the models
-are left out. The predictive distributions of the test observations do
-not yet include random effects, so the scores of models with
+that test set are missing and a warning reports the failures. So are
+those of a test set of counts that can't be scored, because a draw of
+the mean is not finite, is outside the range of the family or gives
+counts above \\2^{53}\\, or because a binomial denominator is not a
+whole number. Test observations with missing values in a variable used
+by any of the models are left out. The predictive distributions of the
+test observations do not yet include random effects, so the scores of
+models with
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
 terms are not reliable, and a warning says so.
 
