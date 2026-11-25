@@ -34,15 +34,21 @@ are left out.
 
 ## Details
 
+The observed value is unusual for the model when it is outside the
+interval.
+
 The proportion at or above the observed value is not a p-value. The
 parameters are estimated from the same data, so that it is closer to 0.5
 than a p-value would be, and a statistic that the model was fitted to
-can hardly have an extreme one. See
+can hardly have an extreme one. It counts the simulated values equal to
+the observed one, and where there are many of them it can be 1, or near
+1, for a value that isn't unusual. See
 [`assess_fit()`](https://claudiofronterre.github.io/RiskMap/reference/assess_fit.md).
 
 The printed summary also says in how many distance classes the observed
-variogram is outside its joint envelope, and where the observed
-distribution is.
+variogram is outside its joint envelope, where the observed distribution
+is, and, for binomial models, whether the prevalences are those of
+observations or of locations.
 
 ## See also
 

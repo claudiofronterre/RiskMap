@@ -3,23 +3,25 @@
 simulated from the model at the observed locations, and features of the
 simulated datasets are compared with the same features of the observed
 one. The features are
-statistics of a dataset, such as the standard deviation of prevalence
-between locations or the proportion of zero counts,
+statistics of a dataset, such as the standard deviation of the
+prevalence or the proportion of zero counts,
 the distribution of the prevalence, the rate or the response,
 the variogram of the residuals from the covariates, which shows
 whether the model describes the spatial correlation that they leave.
 
-"><meta property="og:description" content="Checks whether a fitted model could have produced the data. Datasets are
+
+All of them are compared by default, and statistics says which."><meta property="og:description" content="Checks whether a fitted model could have produced the data. Datasets are
 simulated from the model at the observed locations, and features of the
 simulated datasets are compared with the same features of the observed
 one. The features are
-statistics of a dataset, such as the standard deviation of prevalence
-between locations or the proportion of zero counts,
+statistics of a dataset, such as the standard deviation of the
+prevalence or the proportion of zero counts,
 the distribution of the prevalence, the rate or the response,
 the variogram of the residuals from the covariates, which shows
 whether the model describes the spatial correlation that they leave.
 
-"><meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png"><meta property="og:image:alt" content="RiskMap, model-based geostatistics in R"></head><body>
+
+All of them are compared by default, and statistics says which."><meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png"><meta property="og:image:alt" content="RiskMap, model-based geostatistics in R"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -63,12 +65,13 @@ whether the model describes the spatial correlation that they leave.
     <p>Checks whether a fitted model could have produced the data. Datasets are
 simulated from the model at the observed locations, and features of the
 simulated datasets are compared with the same features of the observed
-one. The features are</p><ul><li><p><strong>statistics</strong> of a dataset, such as the standard deviation of prevalence
-between locations or the proportion of zero counts,</p></li>
+one. The features are</p><ul><li><p><strong>statistics</strong> of a dataset, such as the standard deviation of the
+prevalence or the proportion of zero counts,</p></li>
 <li><p>the <strong>distribution</strong> of the prevalence, the rate or the response,</p></li>
 <li><p>the <strong>variogram</strong> of the residuals from the covariates, which shows
 whether the model describes the spatial correlation that they leave.</p></li>
-</ul></div>
+</ul><p>All of them are compared by default, and <code>statistics</code> says which.</p>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
@@ -93,17 +96,20 @@ names of the list name the models in the results.</p></dd>
 
 
 <dt id="arg-statistics">statistics<a class="anchor" aria-label="anchor" href="#arg-statistics"></a></dt>
-<dd><p>A function that takes a dataset, as <code><a href="simulated_data.html">simulated_data()</a></code>
-returns it, and gives named numbers, or a named list of such functions.
-The default, <code>NULL</code>, calculates statistics that depend on the family (see
-Details).</p></dd>
+<dd><p>What to compare, the names of statistics, among <code>"mean"</code>,
+<code>"sd"</code>, <code>"min"</code>, <code>"max"</code>, <code>"zeros"</code>, <code>"distribution"</code> and <code>"variogram"</code>, a
+function that takes a dataset, as <code><a href="simulated_data.html">simulated_data()</a></code> returns it, and gives
+named numbers, or a list of names and functions. The default, <code>NULL</code>, is
+numbers that depend on the family (see Details), the distribution and the
+variogram.</p></dd>
 
 
 <dt id="arg-breaks">breaks<a class="anchor" aria-label="anchor" href="#arg-breaks"></a></dt>
 <dd><p>Optional breakpoints of the distance classes of the variogram,
-in the distance units of the (first) model, as in <code><a href="variogram.html">variogram()</a></code>. By
-default, 14 classes of equal width up to a third of the largest distance
-between locations.</p></dd>
+in the distance units of the (first) model, as in <code><a href="variogram.html">variogram()</a></code>, whose
+default is used otherwise, 14 classes of equal width up to a third of the
+largest distance between locations. An error if <code>statistics</code> doesn't include
+the variogram.</p></dd>
 
 
 <dt id="arg-nsim">nsim<a class="anchor" aria-label="anchor" href="#arg-nsim"></a></dt>
@@ -132,7 +138,7 @@ if it is not set.</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A list of class <code>RiskMap_predictive_check</code>, containing</p><dl><dt>observed</dt>
 <dd><p>A data frame with the observed <code>value</code> of each <code>statistic</code>
-for each <code>model</code>.</p></dd>
+that is a number for each <code>model</code>.</p></dd>
 
 <dt>simulated</dt>
 <dd><p>A data frame with the <code>value</code> of each <code>statistic</code> in each
@@ -142,23 +148,25 @@ for each <code>model</code>.</p></dd>
 <dd><p>A data frame with the distribution function of the
 observed data for each <code>model</code>, at the values <code>value</code>, the <code>median</code> of
 those of the simulated datasets, the limits of the joint envelope,
-<code>lower</code> and <code>upper</code>, and whether the observed one is <code>outside</code> it.</p></dd>
+<code>lower</code> and <code>upper</code>, and whether the observed one is <code>outside</code> it. <code>NULL</code>
+if not in <code>statistics</code>.</p></dd>
 
 <dt>variogram</dt>
 <dd><p>A data frame with the same columns for the semivariance of
 the residuals in each distance class, the mean <code>distance</code> of its pairs of
-locations and their number, <code>n_pairs</code>. <code>NULL</code> when no pair of locations
-is in a class, and without the models whose covariates leave no
-residuals.</p></dd>
+locations and their number, <code>n_pairs</code>. <code>NULL</code> if not in <code>statistics</code> or
+when no pair of locations is in a class, and without the models whose
+covariates leave no residuals.</p></dd>
 
 <dt>nsim, seed, breaks, distance_units, level</dt>
 <dd><p>The settings. <code>level</code> is
 the coverage of the joint envelopes, 0.95.</p></dd>
 
-<dt>family, response, quantity</dt>
-<dd><p>The family of each model, the response
-of the formula, and the quantity whose distribution is calculated,
-<code>"prevalence"</code>, <code>"rate"</code> or <code>"response"</code>.</p></dd>
+<dt>family, response, quantity, unit</dt>
+<dd><p>The family of each model, the
+response of the formula, the quantity whose distribution is calculated,
+<code>"prevalence"</code>, <code>"rate"</code> or <code>"response"</code>, and whether each value of it is
+that of an <code>"observation"</code> or of a <code>"location"</code>.</p></dd>
 
 <dt>n_locations, n_observations</dt>
 <dd><p>The numbers of locations and of
@@ -184,25 +192,33 @@ can miss what is wrong with the model.</p>
     </div>
     <div class="section level2">
     <h2 id="statistics">Statistics<a class="anchor" aria-label="anchor" href="#statistics"></a></h2>
-    <p>By default they are the mean and the standard deviation of the empirical
-prevalence or rate and the proportion of zeros (<code>mean_prevalence</code>,
-<code>sd_prevalence</code> and <code>zeros</code>, or <code>mean_rate</code>, <code>sd_rate</code> and <code>zeros</code>), and for
-Gaussian models the mean, the standard deviation, the minimum and the maximum
-of the response (<code>mean</code>, <code>sd</code>, <code>min</code> and <code>max</code>). They are those of the
-observations for Gaussian, Poisson and negative binomial models. For binomial
-models they are those of the locations, where the positives and the
-denominators are added up first, because the prevalence of a single
-individual is only 0 or 1.</p>
-<p>A function in <code>statistics</code> can calculate anything from a dataset, such as a
-correlation with a covariate, and can return a vector of named numbers, a
-list of them or a data frame with one row. A function in a named list that
-returns one number gives it the name of the list. Simulated datasets in
-which a statistic isn't finite are left out of its summary, with a warning.</p>
+    <p>The numbers with a name are the mean, the standard deviation, the minimum
+and the maximum of the empirical prevalence, the rate or the Gaussian
+response, and the proportion of zeros. The default ones are <code>"mean"</code>, <code>"sd"</code>
+and <code>"zeros"</code>, and for Gaussian models <code>"mean"</code>, <code>"sd"</code>, <code>"min"</code> and <code>"max"</code>.
+In the result the names say what the statistic is of, such as
+<code>sd_prevalence</code>.</p>
+<p>These numbers are those of the observations. The exception is a binomial
+model whose denominators are all 1, because the prevalence of a single
+individual is only 0 or 1. The positives and the denominators are then added
+up at each location, and the numbers are those of the locations. With
+other denominators the observations are not added up, because that would
+hide the variation between those at the same location.</p>
+<p>A function can calculate anything from a dataset, such as a correlation with
+a covariate, and can return a vector of named numbers, a list of them or a
+data frame with one row. The names of a list are those of its statistics, so
+that a function in it that returns one number has the name that it has in the
+list. Simulated datasets in which a statistic isn't finite are left out of its
+summary, with a warning.</p>
     </div>
     <div class="section level2">
     <h2 id="distribution-and-variogram">Distribution and variogram<a class="anchor" aria-label="anchor" href="#distribution-and-variogram"></a></h2>
-    <p>The distribution is that of the same values as the default statistics, the
-prevalence of each location, or the rate or response of each observation.</p>
+    <p>These are curves and not numbers, and each has a plot of its own. They are
+calculated by default, and with a given <code>statistics</code> only if they are in it.</p>
+<p>The distribution is that of the same values as the numbers with a name,
+the prevalence, the rate or the response of each observation, or the
+prevalence of each location when the denominators of a binomial model are all
+1.</p>
 <p>The variogram is that of the residuals from the covariates. The response is
 first transformed, to the empirical logit for binomial models and to the
 logarithm of the rate with 0.5 added to the count for models of counts,
@@ -237,9 +253,13 @@ same model differ a lot from each other, and the check has little power.</p>
 moves it, and a single point near the edge, on either side of it, says
 little. The first distance classes often have few pairs, so a single point
 outside the envelope there needs care.</p>
-<p>Nothing here is a p-value or a mark that a model passes or fails. The
-proportion of simulated values at or above the observed one says where it
-lies among them.</p>
+<p>Nothing here is a p-value or a mark that a model passes or fails. An observed
+statistic is unusual for the model when it is outside the interval that holds
+95% of the simulated ones. The proportion of simulated values at or above the
+observed one says where it lies among them. It says little when many
+simulated values are equal to the observed one. When the data have no zeros,
+for example, the proportion of zeros of every simulated dataset is at or
+above theirs, also for a model that seldom gives any.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -283,20 +303,21 @@ answers which question about a model.</p></div>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  intercept   12.923 13.233 11.294 to 16.348       61.3%</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  covariate   12.923 12.884 11.977 to 13.936       46.7%</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> At or above is the percentage of simulated values at or above the observed</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   one. Near 0% or 100% the observed value is unusual for the model, and 50% is</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   not a target.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> At or above is the percentage of simulated values that are equal to the</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   observed one or above it. An observed value outside the 95% interval is</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   unusual for the model, and 50% is not a target.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> The observed variogram of the residuals is outside the 95% joint envelope in</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   0 (intercept) and 0 (covariate) of 12 distance classes.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> The observed distribution is inside the 95% joint envelope.</span>
 <span class="r-in"><span><span class="fu"><a href="plot_predictive_check.html">plot_predictive_check</a></span><span class="op">(</span><span class="va">result</span>, type <span class="op">=</span> <span class="st">"variogram"</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="assess_fit-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># A statistic of one's own</span></span></span>
+<span class="r-in"><span><span class="co"># Numbers by name, one of one's own, and the variogram</span></span></span>
 <span class="r-in"><span><span class="va">describe</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">data</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>correlation <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/cor.html" class="external-link">cor</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">y</span>, <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">data</span><span class="op">$</span><span class="va">pop_dens</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
-<span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">assess_fit</span><span class="op">(</span><span class="va">models</span>, <span class="va">describe</span>, nsim <span class="op">=</span> <span class="fl">199</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu">assess_fit</span><span class="op">(</span><span class="va">models</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="va">describe</span>, <span class="st">"variogram"</span><span class="op">)</span>, nsim <span class="op">=</span> <span class="fl">199</span>,</span></span>
+<span class="r-in"><span>                     seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="plot_predictive_check.html">plot_predictive_check</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="assess_fit-2.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>

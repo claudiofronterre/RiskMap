@@ -9,13 +9,7 @@ result does.
 ## Usage
 
 ``` r
-plot_predictive_check(
-  x,
-  type = c("statistic", "distribution", "variogram"),
-  model = NULL,
-  colour = "#00857F",
-  ...
-)
+plot_predictive_check(x, type = NULL, model = NULL, colour = "#00857F", ...)
 
 # S3 method for class 'RiskMap_predictive_check'
 plot(x, ...)
@@ -30,9 +24,12 @@ plot(x, ...)
 
 - type:
 
-  What to draw, each `"statistic"` (the default), the `"distribution"`
-  of the prevalence, the rate or the response, or the `"variogram"` of
-  the residuals from the covariates.
+  What to draw, each `"statistic"` that is a number, the
+  `"distribution"` of the prevalence, the rate or the response, or the
+  `"variogram"` of the residuals from the covariates. By default, the
+  first of these that `x` has, which is the variogram when it is the
+  only one in `statistics` of
+  [`assess_fit()`](https://claudiofronterre.github.io/RiskMap/reference/assess_fit.md).
 
 - model:
 
@@ -60,9 +57,11 @@ The histograms are those of the simulated datasets, with the models in
 rows, and the vertical line is the observed value. The darker bars are
 the simulated values at or above the observed one, whose proportion
 [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_predictive_check.md)
-gives. The observed value is unusual for the model when nearly all of
-the histogram is lighter or nearly all of it is darker. It doesn't have
-to be in the middle.
+gives. The observed value is unusual for the model when it is in a tail
+of the histogram, beyond nearly all of the bars. It doesn't have to be
+in the middle. A bar at the observed value is darker, so the whole
+histogram is when the observed value is the smallest possible one, such
+as a proportion of zeros of 0, which need not be unusual.
 
 ## Distribution and variogram
 
@@ -97,4 +96,9 @@ plot_predictive_check(result)
 plot_predictive_check(result, type = "distribution")
 
 plot_predictive_check(result, type = "variogram")
+
+
+# Only the variogram, which is then what is drawn
+result <- assess_fit(fit, "variogram", nsim = 199, seed = 1)
+plot(result)
 ```

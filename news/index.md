@@ -138,7 +138,7 @@ in the source repository.
   residuals from the covariates with those of datasets simulated from
   the model, which
   [`plot_predictive_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_predictive_check.md)
-  draws.
+  draws. The statistics can be given by name or as functions.
   [`?assessment`](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
   says which function answers which question about a model.
 - [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)

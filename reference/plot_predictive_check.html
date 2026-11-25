@@ -48,13 +48,7 @@ result of <code><a href="assess_fit.html">assess_fit()</a></code>, as <code><a h
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">plot_predictive_check</span><span class="op">(</span></span>
-<span>  <span class="va">x</span>,</span>
-<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"statistic"</span>, <span class="st">"distribution"</span>, <span class="st">"variogram"</span><span class="op">)</span>,</span>
-<span>  model <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  colour <span class="op">=</span> <span class="st">"#00857F"</span>,</span>
-<span>  <span class="va">...</span></span>
-<span><span class="op">)</span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">plot_predictive_check</span><span class="op">(</span><span class="va">x</span>, type <span class="op">=</span> <span class="cn">NULL</span>, model <span class="op">=</span> <span class="cn">NULL</span>, colour <span class="op">=</span> <span class="st">"#00857F"</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'RiskMap_predictive_check'</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
@@ -69,9 +63,11 @@ result of <code><a href="assess_fit.html">assess_fit()</a></code>, as <code><a h
 
 
 <dt id="arg-type">type<a class="anchor" aria-label="anchor" href="#arg-type"></a></dt>
-<dd><p>What to draw, each <code>"statistic"</code> (the default), the
+<dd><p>What to draw, each <code>"statistic"</code> that is a number, the
 <code>"distribution"</code> of the prevalence, the rate or the response, or the
-<code>"variogram"</code> of the residuals from the covariates.</p></dd>
+<code>"variogram"</code> of the residuals from the covariates. By default, the first of
+these that <code>x</code> has, which is the variogram when it is the only one in
+<code>statistics</code> of <code><a href="assess_fit.html">assess_fit()</a></code>.</p></dd>
 
 
 <dt id="arg-model">model<a class="anchor" aria-label="anchor" href="#arg-model"></a></dt>
@@ -99,9 +95,11 @@ plot with <code>+</code>.</p></dd>
     <p>The histograms are those of the simulated datasets, with the models in rows,
 and the vertical line is the observed value. The darker bars are the simulated
 values at or above the observed one, whose proportion
-<a href="summary.RiskMap_predictive_check.html">summary()</a> gives. The
-observed value is unusual for the model when nearly all of the histogram is
-lighter or nearly all of it is darker. It doesn't have to be in the middle.</p>
+<a href="summary.RiskMap_predictive_check.html">summary()</a> gives. The observed value is
+unusual for the model when it is in a tail of the histogram, beyond nearly all
+of the bars. It doesn't have to be in the middle. A bar at the observed value
+is darker, so the whole histogram is when the observed value is the smallest
+possible one, such as a proportion of zeros of 0, which need not be unusual.</p>
     </div>
     <div class="section level2">
     <h2 id="distribution-and-variogram">Distribution and variogram<a class="anchor" aria-label="anchor" href="#distribution-and-variogram"></a></h2>
@@ -134,6 +132,11 @@ points, because the residuals are those from its covariates.</p>
 <span class="r-plt img"><img src="plot_predictive_check-2.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span><span class="fu">plot_predictive_check</span><span class="op">(</span><span class="va">result</span>, type <span class="op">=</span> <span class="st">"variogram"</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="plot_predictive_check-3.png" alt="" width="700" height="433"></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Only the variogram, which is then what is drawn</span></span></span>
+<span class="r-in"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="fu"><a href="assess_fit.html">assess_fit</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"variogram"</span>, nsim <span class="op">=</span> <span class="fl">199</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">result</span><span class="op">)</span></span></span>
+<span class="r-plt img"><img src="plot_predictive_check-4.png" alt="" width="700" height="433"></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
