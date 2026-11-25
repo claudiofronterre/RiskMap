@@ -154,12 +154,11 @@ test_that("the traits of the negative binomial family give its closed forms", {
                    pnbinom(4, size = 1.5, mu = 2 * means))
   expect_error(traits$distribution_function(4, means, 2, NULL),
                class = "riskmap_error_internal")
-  expect_true(traits$validate(c(0, 5), c(0.5, 2)))
+  # A response that glgpm() rounds is whole.
+  expect_true(traits$validate(c(0, 3 + 1e-10), c(0.5, 2)))
   expect_input_error(traits$validate(c(0, 1.5), c(1, 1)), "data",
                      "whole numbers")
   expect_input_error(traits$validate(c(0, Inf), c(1, 1)), "data",
-                     "whole numbers")
-  expect_input_error(traits$validate(c(0, 3 + 1e-10), c(1, 1)), "data",
                      "whole numbers")
   expect_input_error(traits$validate(c(0, 1), c(1, 0)), "denominator",
                      "positive")
