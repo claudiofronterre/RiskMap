@@ -458,7 +458,8 @@ test_that("assess_simulation adds an offset that is zero at the samples", {
     ))
     list(data = sim$samples$data[, , "response"],
          surface = sim$samples$surface[, , "mean"],
-         mse = lapply(result$objective, function(scale) unname(scale$mse)))
+         mse = lapply(result$objective, function(scale) unname(scale$mse)),
+         status = result$fits$status)
   }
   parameters <- list(beta = c(0.5, 1), sigma2 = 1, phi = 2)
   gaussian <- c(parameters, sigma2_me = 0.2)
@@ -474,6 +475,8 @@ test_that("assess_simulation adds an offset that is zero at the samples", {
     zero <- do.call(assess_offset, c(0, case))
     one <- do.call(assess_offset, c(1, case))
     expect_identical(names(zero$mse), c("location", "area"))
+    expect_identical(zero$status, c("ok", "ok"))
+    expect_identical(one$status, c("ok", "ok"))
     expect_identical(one$data, zero$data)
     # An offset of 1 adds 1 to the surface and its predictions with an identity
     # link, and multiplies them by exp(1) with a log link.
