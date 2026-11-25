@@ -40,7 +40,7 @@ test_that("every family and link of the table passes its checks", {
   }
 })
 
-test_that("the checks find a wrong score, curvature, density or simulator", {
+test_that("the checks find a wrong score, curvature, density, distribution or simulator", {
   skip_on_cran()
   terms <- canonical_binomial_terms
   traits <- family_traits
@@ -91,6 +91,49 @@ test_that("the checks find a wrong score, curvature, density or simulator", {
   expect_match(check_family("gaussian",
                             parameters = list(sigma2_me = 0.5))$problems,
                "The draws of the simulator do not have the mean", all = FALSE)
+  # Distribution functions that leave out the exposure, the last trial or the
+  # square root of the variance, and counts that stop too soon.
+  wrong_trait <- function(family, name, trait, parameters = NULL) {
+    local_mocked_bindings(family_traits = function(family) {
+      result <- traits(family)
+      result[[name]] <- trait
+      result
+    })
+    check_family(family, parameters = parameters)$problems
+  }
+  expect_match(
+    wrong_trait("poisson", "distribution_function",
+                function(y, mean, units_m, parameters) ppois(y, mean)),
+    "The distribution function is not the sum", all = FALSE
+  )
+  expect_match(
+    wrong_trait("binomial", "distribution_function",
+                function(y, mean, units_m, parameters) {
+                  pbinom(y, units_m - 1, mean)
+                }),
+    "The distribution function is not the sum", all = FALSE
+  )
+  expect_match(
+    wrong_trait("negative_binomial", "distribution_function",
+                function(y, mean, units_m, parameters) {
+                  ppois(y, units_m * mean)
+                }, list(theta = 2)),
+    "The distribution function is not the sum", all = FALSE
+  )
+  expect_match(
+    wrong_trait("gaussian", "distribution_function",
+                function(y, mean, units_m, parameters) {
+                  pnorm(y, mean, parameters$sigma2_me)
+                }, list(sigma2_me = 0.5)),
+    "The distribution function is not the sum", all = FALSE
+  )
+  expect_match(
+    wrong_trait("poisson", "score_limit",
+                function(y, units_m, means, parameters) {
+                  qpois(0.999, units_m * max(means))
+                }),
+    "The counts that are scored leave out some probability", all = FALSE
+  )
   local_mocked_bindings(family_traits = traits)
 
   # A link whose mean leaves the range of the family.

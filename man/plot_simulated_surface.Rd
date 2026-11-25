@@ -53,8 +53,10 @@ same.
 }
 \details{
 The colours and the legend follow \code{\link[=plot_prediction]{plot_prediction()}}, and the
-legend title names the mapped component. The returned object can be
-modified further with standard \pkg{ggplot2} functions.
+legend title names the mapped component. A prediction grid that is regular
+in the CRS of the model is drawn with tiles, and other prediction locations
+as points. The returned object can be modified further with standard
+\pkg{ggplot2} functions.
 }
 \examples{
 data(italy_sim)

@@ -883,10 +883,12 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
 #' or custom, so the assessment needs no knowledge of that link.
 #'
 #' @param object A `RiskMap_simulation` containing data and surface draws.
-#' @return A list with the simulated datasets (`data_sim`), the prediction
-#'   grid (`grid`), the simulated mean at each grid location with one column
-#'   per simulation (`mean_sim`), and the family, distance units and whether
-#'   the generating model has a nugget.
+#' @return A list with the simulated datasets (`data_sim`), each with the
+#'   simulated response and the denominators of the generating model in the
+#'   reserved columns `.riskmap_response` and `.riskmap_denominator`, the
+#'   prediction grid (`grid`), the simulated mean at each grid location with
+#'   one column per simulation (`mean_sim`), and the family, distance units and
+#'   whether the generating model has a nugget.
 #' @noRd
 simulation_assessment_data <- function(object) {
   check_simulation(object, NULL)
@@ -904,10 +906,12 @@ simulation_assessment_data <- function(object) {
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator
+  # The other columns of the data, including one called as the response of the
+  # generating model, may be covariates of a candidate.
   data <- lapply(seq_len(object$nsim), function(i) {
-    x <- simulated_data(object, i)
-    x$y <- as.numeric(object$samples$data[, i, "response"])
-    x$units_m <- den
+    x <- object$locations$data
+    x$.riskmap_response <- as.numeric(object$samples$data[, i, "response"])
+    x$.riskmap_denominator <- den
     x
   })
   mean_sim <- object$samples$surface[, , "mean"]

@@ -1201,6 +1201,9 @@ build_prediction_components <- function(object, prediction_setup, include,
   if (!is.matrix(spatial)) {
     spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
   }
+  # Samples of the distinct locations give each row those of its location.
+  location <- prediction_setup$location_index
+  if (!is.null(location)) spatial <- spatial[location, , drop = FALSE]
   n_locations <- nrow(spatial)
   n_samples <- ncol(spatial)
   fixed <- prediction_row_values(prediction_setup$mu_pred, n_locations)
@@ -2414,11 +2417,13 @@ gaussian_random_effect_samples <- function(latent, prediction_weights,
 #' `mcmc_seed`, after which the caller's random number state is restored, so
 #' the predictive draws that follow start from that state.
 #'
-#' The spatial samples have a row for each prediction row. At the observed
-#' locations and in joint predictions they are drawn once for each distinct
-#' location (`location_index`), so that records at one location share them.
-#' The effect of a level of an `re()` term that isn't in the fit is drawn from
-#' its distribution, independently of the data.
+#' At the observed locations, and in joint predictions with several rows at some
+#' location, the spatial samples have a row for each distinct location, and
+#' `location_index` gives the location of each prediction row, so that the rows
+#' at one location share its samples (`build_prediction_components()`).
+#' Otherwise they have a row for each prediction row. The effect of a level of
+#' an `re()` term that isn't in the fit is drawn from its distribution,
+#' independently of the data.
 #' @noRd
 draw_prediction_samples <- function(object, prediction_data, prediction,
                                     include, control_mcmc = NULL,
@@ -2890,9 +2895,6 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     out$re <- list(levels = random_levels$levels, samples = re_samples)
   }
 
-  if (!is.null(location_index)) {
-    out$S_samples <- out$S_samples[location_index, , drop = FALSE]
-  }
   out["location_index"] <- list(location_index)
   out$obs_loc  <- obs_loc
   if (obs_loc){
@@ -2930,9 +2932,9 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 #'
 #' @param predictive A list with one element for each scored test set, each
 #'   holding `rows`, the observation of each test point, and `values`, its
-#'   predictive distributions: a list of distribution functions over 0, 1, ...
-#'   for a discrete family, or the means `mean` and standard deviations `sd`
-#'   of the Gaussian predictive distributions.
+#'   predictive distributions, a list of those of `count_distribution()` for a
+#'   discrete family, or the means `mean` and standard deviations `sd` of the
+#'   Gaussian predictive distributions.
 #' @param discrete Whether the family is discrete.
 #' @param u The probability levels at which the curves are evaluated.
 #' @param n_replicates The number of simulated sets of observations.
@@ -2947,20 +2949,18 @@ expected_pit_area <- function(predictive, discrete, u, n_replicates = 200L) {
                     n_replicates, length(distinct))
   n_points <- length(rows)
   if (discrete) {
-    cdf <- unlist(lapply(predictive, `[[`, "values"), recursive = FALSE)
+    distributions <- unlist(lapply(predictive, `[[`, "values"),
+                            recursive = FALSE)
     # The count whose distribution function first reaches the uniform draw
     counts <- vapply(seq_along(distinct), function(k) {
-      findInterval(uniform[, k], cdf[[first[k]]], left.open = TRUE)
+      count_quantile(distributions[[first[k]]], uniform[, k])
     }, numeric(n_replicates))
     counts <- matrix(counts, n_replicates)
     curves <- matrix(0, n_replicates, length(u))
     for (e in seq_len(n_points)) {
-      Fk <- cdf[[e]]
       y <- counts[, row_index[e]]
-      # F(y - 1), which is 0 for a count of 0, and F(y), both beyond the
-      # support taken as its last value
-      below <- c(0, Fk)[pmin(y, length(Fk)) + 1L]
-      at <- Fk[pmin(y + 1, length(Fk))]
+      below <- count_distribution_at(distributions[[e]], y - 1)
+      at <- count_distribution_at(distributions[[e]], y)
       width <- at - below
       value <- pmin(pmax(outer(-below, u, `+`) / width, 0), 1)
       step <- !(width > 0)
@@ -3130,7 +3130,7 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'   }
 ##'   \item{keep_par_fixed}{The value of `keep_par_fixed`.}
 ##'   \item{failures}{A data frame with one row for each model and test set
-##'   whose refit or prediction failed, with columns `model`, `test_set` and
+##'   whose refit, prediction or scores failed, with columns `model`, `test_set` and
 ##'   `message`. The scores of these test sets are `NA`.}
 ##' }
 ##'
@@ -3146,6 +3146,24 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' Wallin (2023), whose scores are higher for better predictions, so that the
 ##' CRPS and the SCRPS share one orientation. The SCRPS can be negative.
 ##'
+##' The predictive distribution of a binomial, Poisson or negative binomial
+##' count \eqn{Y} is the distribution of the family given the mean, averaged
+##' over the \eqn{J} draws of the mean from its own predictive distribution,
+##' \deqn{F(k) = \frac{1}{J} \sum_{j=1}^{J} P(Y \le k \mid \mu_j), \quad
+##'   k = 0, 1, 2, \ldots}
+##' Here \eqn{\mu_j} is the \eqn{j}th draw of the prevalence or rate, and
+##' \eqn{P(Y \le k \mid \mu_j)} also depends on the denominator and, for a
+##' negative binomial model, on its size. The scores come from \eqn{F}, with
+##' \deqn{\mathrm{CRPS}(F, y) = \sum_{k \ge 0} [F(k) - 1(k \ge y)]^2, \quad
+##'   c = \sum_{k \ge 0} F(k) [1 - F(k)],}
+##' and so does the calibration curve, from \eqn{F(y - 1)} and \eqn{F(y)}. The
+##' scores of counts have no random step beyond the draws of the mean, as no
+##' counts are simulated for them. A model therefore gets the same scores
+##' whatever its position in `models`. Where counts above 100 are predicted,
+##' \eqn{F} is computed on a grid of counts and is linear in between. The grid
+##' is fine enough for a relative error of about \eqn{10^{-4}} or less in the
+##' CRPS and in \eqn{c}.
+##'
 ##' `PIT_area` is the area between the calibration curve and the diagonal,
 ##' from 0 for a perfectly calibrated curve to at most 0.5. It is computed
 ##' once, from the curve of all test observations together, which is the
@@ -3159,7 +3177,10 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' `PIT_area` well above `PIT_area_expected` points to miscalibration.
 ##'
 ##' A failed refit or prediction does not stop the assessment: the scores of
-##' that test set are missing and a warning reports the failures. Test
+##' that test set are missing and a warning reports the failures. So are those
+##' of a test set of counts that can't be scored, because a draw of the mean is
+##' not finite, is outside the range of the family or gives counts above
+##' \eqn{2^{53}}, or because a binomial denominator is not a whole number. Test
 ##' observations with missing values in a variable used by any of the models
 ##' are left out. The predictive distributions of the test observations do not
 ##' yet include random effects, so the scores of models with `re()` terms are
@@ -3264,12 +3285,6 @@ assess_prediction <- function(models,
     z <- (y - mu) / sigma
     2 * dnorm(z) + z * (2 * pnorm(z) - 1) - 1 / sqrt(pi)
   }
-  crps_discrete <- function(y, Fk) {
-    k <- seq_along(Fk) - 1
-    sum((Fk - as.numeric(k >= y))^2)
-  }
-  # E_{Y ~ F} CRPS(F, Y) = sum_k F(k) (1 - F(k)), which equals E|X - X'| / 2
-  exp_crps_discrete <- function(Fk) sum(Fk * (1 - Fk))
   # The negative of the SCRPS of Bolin and Wallin (2023), so that lower is
   # better as for the CRPS, undefined for a degenerate predictive
   scrps <- function(crps, exp_crps) {
@@ -3277,9 +3292,9 @@ assess_prediction <- function(models,
   }
   u_val <- seq(0, 1, length.out = 1000)
   # Nonrandomized PIT curve of one discrete observation (Czado et al., 2009)
-  npit_curve <- function(y, Fk) {
-    F_below <- if (y == 0) 0 else Fk[y]
-    F_at <- Fk[y + 1]
+  npit_curve <- function(y, distribution) {
+    F_below <- count_distribution_at(distribution, y - 1)
+    F_at <- count_distribution_at(distribution, y)
     if (F_at > F_below) {
       pmin(pmax((u_val - F_below) / (F_at - F_below), 0), 1)
     } else {
@@ -3721,7 +3736,6 @@ assess_prediction <- function(models,
       mu_samp <- linkfun(eta_samp)
 
       n_pred <- nrow(eta_samp)
-      n_draw <- ncol(eta_samp)
       crps_i   <- numeric(n_pred)
       y_crps_i <- numeric(n_pred)
       scrps_i  <- numeric(n_pred)
@@ -3731,11 +3745,12 @@ assess_prediction <- function(models,
         sd_i <- numeric(n_pred)
       } else {
         anpit_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
-        cdf_i <- vector("list", n_pred)
+        distribution_i <- vector("list", n_pred)
       }
 
       units_m_i <- fit0$units_m[out_id_i]
       y_i       <- fit0$y      [out_id_i]
+      if (traits$discrete) check_count_means(mu_samp, units_m_i, traits)
 
       for (j in seq_len(n_pred)) {
         if (!traits$discrete) {
@@ -3754,16 +3769,13 @@ assess_prediction <- function(models,
             pit_i[j]    <- as.numeric(y_i[j] >= mu_j)
           }
         } else {
-          y_samp  <- traits$simulate(mu_samp[j, ], units_m_i[j],
-                                     family_values)
-          support <- traits$score_support(y_samp, y_i[j], units_m_i[j],
-                                          mu_samp[j, ], family_values)
-          pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
-          Fk <- cumsum(pk)
-          crps_i[j]   <- crps_discrete(y_i[j], Fk)
-          y_crps_i[j] <- exp_crps_discrete(Fk)
-          anpit_i[, j] <- npit_curve(y_i[j], Fk)
-          cdf_i[[j]] <- Fk
+          distribution <- count_distribution(y_i[j], units_m_i[j],
+                                             mu_samp[j, ], family_values,
+                                             traits)
+          crps_i[j]   <- count_crps(y_i[j], distribution)
+          y_crps_i[j] <- count_expected_crps(distribution)
+          anpit_i[, j] <- npit_curve(y_i[j], distribution)
+          distribution_i[[j]] <- distribution
         }
         scrps_i[j] <- scrps(crps_i[j], y_crps_i[j])
       }
@@ -3773,7 +3785,7 @@ assess_prediction <- function(models,
              predictive = list(mean = mean_i, sd = sd_i))
       } else {
         list(CRPS = crps_i, y_CRPS = y_crps_i, SCRPS = scrps_i,
-             AnPIT = rowMeans(anpit_i), predictive = cdf_i)
+             AnPIT = rowMeans(anpit_i), predictive = distribution_i)
       }
     }
 
@@ -3885,8 +3897,10 @@ assess_prediction <- function(models,
 ##'
 ##' @return A `ggplot` object.
 ##' @details
-##' The colours and the legend follow [plot_prediction()]. The returned
-##' object can be modified further with standard \pkg{ggplot2} functions.
+##' The colours and the legend follow [plot_prediction()]. A prediction grid
+##' that is regular in the CRS of the model is drawn with tiles, and other
+##' prediction locations as points. The returned object can be modified further
+##' with standard \pkg{ggplot2} functions.
 ##'
 ##' @seealso [simulated_surface()], [plot_simulated_surface()]
 ##' @examples
@@ -3928,12 +3942,13 @@ plot_simulation <- function(x, simulation = 1, quantity = "mean",
 ##' @export
 plot.RiskMap_simulation <- function(x, ...) plot_simulation(x, ...)
 
-##' Map values over a regular grid of points
+##' Map values over a grid of points
 ##'
-##' Draws each grid point as a tile, with the fill scale and legend of the
-##' prediction maps of [plot_prediction()].
+##' Draws each point of a regular grid as a tile, with the fill scale and legend
+##' of the prediction maps of [plot_prediction()]. Other points, such as those of
+##' a grid that is regular in another CRS, are drawn as points, as those maps do.
 ##'
-##' @param grid An `sf` or `sfc` object of points on a regular grid.
+##' @param grid An `sf` or `sfc` object of points.
 ##' @param values Numeric vector of values to map, one per point in `grid`.
 ##' @param legend_title Character string used as the fill legend title.
 ##' @param colours,limits,role,probability,... Passed to
@@ -3959,9 +3974,16 @@ plot_grid <- function(grid, values, legend_title, colours, limits, role,
     tile_height <- tile_width
   }
 
-  ggplot(plot_data) +
+  tiles <- if (tiles_cover(grid_coordinates, tile_width * tile_height)) {
     geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
-              width = tile_width, height = tile_height) +
+              width = tile_width, height = tile_height)
+  } else {
+    geom_point(aes(x = .data$x, y = .data$y, fill = .data$value),
+               shape = 21, colour = "transparent", size = 1.8)
+  }
+
+  ggplot(plot_data) +
+    tiles +
     prediction_fill_scale(colours = colours, limits = limits, values = values,
                           breaks = NULL, role = role,
                           probability = probability, ...) +
@@ -3984,6 +4006,30 @@ plot_grid <- function(grid, values, legend_title, colours, limits, role,
 grid_spacing <- function(coordinates) {
   if (length(unique(coordinates)) < 2) return(NA_real_)
   resolution(coordinates, zero = FALSE)
+}
+
+##' Whether tiles on the points of a grid are large enough to map it
+##'
+##' The smallest gap between the coordinates of points that are not on a
+##' regular grid is far below the distance between neighbours, so tiles of that
+##' size can't be seen.
+##'
+##' @param coordinates Matrix of the coordinates of the points.
+##' @param tile_area The area of a tile.
+##' @return `TRUE` or `FALSE`.
+##' @noRd
+tiles_cover <- function(coordinates, tile_area) {
+  coordinates <- index_coordinate_rows(coordinates)$coordinates
+  n_points <- nrow(coordinates)
+  if (n_points < 2L) return(TRUE)
+  # The distance of at most 200 points, spread over the rows, to their nearest
+  # neighbours, which is quick on large grids.
+  points <- unique(round(seq(1, n_points, length.out = 200L)))
+  squared_distance <- vapply(points, function(i) {
+    min((coordinates[-i, 1L] - coordinates[i, 1L])^2 +
+          (coordinates[-i, 2L] - coordinates[i, 2L])^2)
+  }, numeric(1))
+  tile_area > 0.25 * stats::median(squared_distance)
 }
 
 ##' @title Map a simulated surface
@@ -4018,8 +4064,10 @@ grid_spacing <- function(coordinates) {
 ##' @return A `ggplot` object.
 ##' @details
 ##' The colours and the legend follow [plot_prediction()], and the
-##' legend title names the mapped component. The returned object can be
-##' modified further with standard \pkg{ggplot2} functions.
+##' legend title names the mapped component. A prediction grid that is regular
+##' in the CRS of the model is drawn with tiles, and other prediction locations
+##' as points. The returned object can be modified further with standard
+##' \pkg{ggplot2} functions.
 ##'
 ##' @seealso [simulated_surface()], [plot_simulation()]
 ##' @examples
@@ -4107,7 +4155,11 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##' @param models A named list of fitted models returned by [glgpm()] or model
 ##'   specifications returned by [specify_glgpm()]. Each object defines a
 ##'   candidate model specification and is refitted to every simulated dataset;
-##'   its estimated parameter values are not reused.
+##'   its estimated parameter values are not reused. Parameters that a fit holds
+##'   with `fixed_pars` stay held in its refits, as does the size `theta` of a
+##'   negative binomial specification. The response of a candidate must be a
+##'   plain column name, and its other columns can have any name. When the
+##'   models are classified, none can be called `"Class"`.
 ##' @param spatial_scale The scale(s) at which predictions are assessed:
 ##'   `"location"`, the locations of the prediction grid, `"area"`, or
 ##'   `c("location", "area")` to compute both from a single fit-and-predict
@@ -4133,9 +4185,11 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##'   names of the areas. If `NULL`, the areas are named `"reg1"`, `"reg2"`
 ##'   and so on, in a column `"region"`.
 ##' @param objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
-##' @param breaks A numeric vector of at least three increasing class
-##'   boundaries for classification, as in [plot_prediction()].
-##'   Required if `objective` includes `"classify"`.
+##' @param breaks A numeric vector of at least three finite, increasing class
+##'   boundaries for classification, as in [plot_prediction()]. A class includes
+##'   its upper boundary, the lowest class also includes the first boundary, and
+##'   values beyond the boundaries belong to the end classes, so every value has
+##'   a class. Required if `objective` includes `"classify"`.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param seed Optional non-negative integer that makes the assessment
 ##'   reproducible; see Details. The caller's random number state is restored
@@ -4153,7 +4207,8 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##'   classification metrics of each model and simulation.}
 ##'   \item{fits}{A data frame with one row per model and simulation, giving
 ##'   the `status` of the fit (`"ok"` or `"failed"`), the error `message` of a
-##'   failed fit and any `warnings`.}
+##'   failed fit and any `warnings`. A fit with a warning, such as one that found
+##'   no maximum of the likelihood, is `"ok"` and has results.}
 ##'   \item{estimates}{A list with, for each model, a matrix of the parameter
 ##'   estimates, one row per simulation.}
 ##'   \item{n_sim, spatial_scale}{The number of simulations and the spatial
@@ -4173,7 +4228,19 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##' applied to those draws. A probit candidate on simulations from a logit
 ##' model is thus scored on the same prevalence as the truth. Candidates
 ##' predict with their own covariates and offset, and those with a nugget
-##' include it in their predictions when the generating model has one.
+##' include it in their predictions when the generating model has one. At a
+##' prediction location that is also a sampled location, the true nugget is the
+##' one of the data, so the prediction is of the spatial effect and that nugget
+##' given the data. At any other location the nugget is a new one, as in
+##' [predict.RiskMap()], and when areas are assessed the locations with the same
+##' coordinates share it. Binomial, Poisson and negative binomial candidates are
+##' refitted with the denominators or exposures of the generating model, whatever
+##' their own.
+##'
+##' For classification, the true class of a location or area is the class of its
+##' true target, and the predicted class is the most probable one, which holds
+##' the largest share of the predictive draws, with ties going to the lowest
+##' class. `breaks` divide the truth and the draws in the same way.
 ##'
 ##' The target receives the mean rather than the linear predictor, which is
 ##' what the `transform` argument of [predict.RiskMap()] receives, because
@@ -4327,8 +4394,18 @@ assess_simulation <- function(simulation,
     }
   }
   model_names <- names(models)
-  formulas <- lapply(models, function(template) {
-    update(fit_formula(template), y ~ .)
+  if (want_classify && "Class" %in% model_names) {
+    abort_input("{.arg models} can't have a model called {.val Class}, the name under which the result holds the classes.", arg = "models")
+  }
+  # Each candidate is refitted to the simulated response, which is in a column
+  # of its own, so that a covariate can have any name.
+  formulas <- lapply(model_names, function(name) {
+    formula <- fit_formula(models[[name]])
+    if (!is.symbol(formula[[2L]])) {
+      response <- paste(deparse(formula[[2L]]), collapse = " ")
+      abort_input(c("The response of the model {.val {name}} must be a plain column name, not {.code {response}}.", "i" = "Every model is refitted to the simulated response itself."), arg = "models")
+    }
+    update(formula, .riskmap_response ~ .)
   })
   grid <- sims$grid
   include_nugget <- sims$nugget_over_grid
@@ -4342,10 +4419,11 @@ assess_simulation <- function(simulation,
     }
     re_names <- if (inherits(template_i, "RiskMap")) names(template_i$re) else
       template_i$re_terms
-    required <- setdiff(get_formula_terms(formulas[[i]]), c("y", re_names))
+    required <- setdiff(get_formula_terms(formulas[[i]]),
+                        c(".riskmap_response", re_names))
     missing_columns <- setdiff(required, names(grid))
     if (length(missing_columns) > 0) {
-      abort_input("The prediction grid of {.arg simulation} has no column{?s} {.val {missing_columns}}, which the model {.val {model_names[i]}} uses.", arg = "models")
+      abort_input("The prediction grid of {.arg simulation} has no {cli::qty(length(missing_columns))}column{?s} {.val {missing_columns}}, which the model {.val {model_names[i]}} uses.", arg = "models")
     }
     n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
     if (n_incomplete > 0) {
@@ -4371,6 +4449,9 @@ assess_simulation <- function(simulation,
     boundaries <- st_transform(boundaries, st_crs(grid))
     inter <- st_intersects(boundaries, grid)
     empty <- lengths(inter) == 0
+    if (all(empty)) {
+      abort_input("No location of the prediction grid of {.arg simulation} falls within the areas of {.arg boundaries}.", arg = "boundaries")
+    }
     if (any(empty)) {
       empty_names <- names_reg[empty]
       riskmap_warn("No grid locations fall within {.val {empty_names}}, so {cli::qty(length(empty_names))}{?it is/they are} left out of the assessment of areas.")
@@ -4520,17 +4601,16 @@ assess_simulation <- function(simulation,
       prediction_data <- suppressMessages(
         validate_prediction_data(fit_ij, grid, include_ij)
       )$model_data
-      components <- prediction_sample_components(
-        fit_ij, prediction_data, if (want_area) "joint" else "marginal",
-        include_ij, control_mcmc, messages = FALSE,
-        groups = if (want_area) groups else NULL
-      )
-      context <- paste0("model '", model_names[i], "', simulation ", j)
       # The response draws are the linear-predictor draws mapped through the
       # refitted model's own inverse link (the identity for a Gaussian fit),
       # so each model reaches the scale of the simulated mean through its own
       # link.
-      target_ij <- apply_target(components$response, context)
+      response_draws <- assessment_response_draws(
+        fit_ij, prediction_data, include_ij, control_mcmc,
+        groups = if (want_area) groups
+      )
+      context <- paste0("model '", model_names[i], "', simulation ", j)
+      target_ij <- apply_target(response_draws, context)
 
       scores <- list(status = "ok", message = NA_character_,
                      estimate = estimated_coef(fit_ij))
@@ -4660,7 +4740,7 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
     messages = FALSE
   )
   if (!family_traits(template$family)$exact) {
-    args$denominator <- quote(units_m)
+    args$denominator <- quote(.riskmap_denominator)
     if (fitted_template) {
       args$invlink <- refit_invlink(template)
     } else if (isTRUE(template$custom_link)) {
@@ -4668,6 +4748,161 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
     }
   }
   args
+}
+
+##' Predictive draws of the mean of one refit in an assessment of simulations
+##'
+##' Draws from `prediction_sample_components()`, except at the locations of the
+##' grid that are also sampled sites of the fit when the nugget is included.
+##' The simulated truth there has the nugget that the observations of the site
+##' have, so the spatial effect and the nugget are replaced by draws of the
+##' latent effect of the site, which is their sum, given the data. The nugget
+##' of any other location is a new one, as in [predict.RiskMap()], which joint
+##' draws share among the locations with the same coordinates.
+##'
+##' @param fit A `RiskMap` fit.
+##' @param grid The prediction locations, in the CRS of the fit.
+##' @param include `"nugget"`, or `character()` for draws without it.
+##' @param control_mcmc The control of the draws.
+##' @param groups The blocks within which draws are joint, or `NULL` for
+##'   marginal draws.
+##' @return A matrix of draws of the mean, one row per location.
+##' @noRd
+assessment_response_draws <- function(fit, grid, include, control_mcmc,
+                                      groups = NULL) {
+  coordinates <- coordinates_in_units(grid, fit$distance_units)
+  # The index of each distinct point, the sites of the fit first, and the site
+  # of each location, NA where the location isn't sampled.
+  point <- index_coordinate_rows(rbind(fit$coords, coordinates))$index[
+    nrow(fit$coords) + seq_len(nrow(grid))
+  ]
+  site <- ifelse(point > nrow(fit$coords), NA, point)
+  sampled <- if ("nugget" %in% include) which(!is.na(site)) else integer()
+
+  exact <- fit_is_exact(fit)
+  if (length(sampled) && !exact) {
+    # The conditional samples of the latent effects, which the predictions at
+    # the other locations then reuse, so that the draws are joint.
+    site_effects <- prepare_prediction(
+      fit, fit$data, "marginal", character(), control_mcmc, messages = FALSE,
+      observed_locations = TRUE
+    )$S_samples
+    # The columns of the random effects, which are not predicted, aren't used.
+    fit$S_samples <- cbind(t(site_effects),
+                           matrix(0, ncol(site_effects), sum(lengths(fit$re))))
+    control_mcmc <- NULL
+  }
+  components <- prediction_sample_components(
+    fit, grid, if (is.null(groups)) "marginal" else "joint", include,
+    control_mcmc, messages = FALSE, groups = groups
+  )
+  # Draws that are joint share a nugget among the locations with the same
+  # coordinates, as the truth does.
+  first <- match(point, point)
+  repeated <- if ("nugget" %in% include && !is.null(groups)) {
+    which(first != seq_along(first))
+  } else {
+    integer()
+  }
+  if (!length(sampled) && !length(repeated)) return(components$response)
+
+  link <- components$link
+  link[repeated, ] <- link[repeated, , drop = FALSE] -
+    components$nugget[repeated, , drop = FALSE] +
+    components$nugget[first[repeated], , drop = FALSE]
+  if (exact && length(sampled)) {
+    drawn <- gaussian_site_draws(fit, coordinates, groups, sampled,
+                                 n_samples = ncol(link))
+    site_effects <- drawn$site_effects
+    rows <- drawn$rows
+    link[rows, ] <- link[rows, , drop = FALSE] + drawn$spatial -
+      components$spatial[rows, , drop = FALSE]
+  }
+  if (length(sampled)) {
+    link[sampled, ] <- components$fixed[sampled] + components$offset[sampled] +
+      site_effects[site[sampled], , drop = FALSE]
+  }
+  if (exact) return(link)
+  matrix(fit$link_function$inv(as.numeric(link)), nrow = nrow(link))
+}
+
+##' Draws of the latent effects of a Gaussian fit at its sites
+##'
+##' The latent effect of a site is the sum of the spatial effect and the nugget
+##' there. Its draws are joint over the sites given the data. With `groups`, the
+##' spatial effect of each block that holds a sampled site is drawn again given
+##' them, so that the draws remain joint within the block.
+##'
+##' @param coordinates The prediction locations, in the distance units of the
+##'   fit.
+##' @param sampled The rows of `coordinates` that are sampled sites.
+##' @param n_samples The number of draws.
+##' @inheritParams assessment_response_draws
+##' @return A list of `site_effects`, one row per site, and of the draws
+##'   `spatial` of the spatial effect at `rows`, the rows that share a block
+##'   with a sampled site.
+##' @noRd
+gaussian_site_draws <- function(fit, coordinates, groups, sampled, n_samples) {
+  pars <- coef(fit)
+  distance_scale <- attr(fit, "distance_scale") %||% 1
+  site_coordinates <- fit$coords / distance_scale
+  phi <- pars$phi / distance_scale
+  covariance <- pars$sigma2 * matern_correlation(
+    pairwise_distances(site_coordinates), phi = phi, kappa = fit$kappa,
+    return_sym_matrix = TRUE
+  )
+  diag(covariance) <- diag(covariance) + fitted_nugget_variance(fit, pars)
+  residual <- fit$y - as.numeric(as.matrix(fit$D) %*% pars$beta +
+                                   fit$cov_offset)
+  if (is.null(fit$ID_re)) fit$ID_re <- matrix(0L, length(fit$y), 0L)
+  distribution <- gaussian_conditioning_distribution(fit, covariance, pars,
+                                                     residual)
+  # Without measurement error the data leave the effects of the sites no
+  # variance, or only that of the groups, so a jitter is expected.
+  measurement_variance <- pars$sigma2_me %||% fit_fix_var_me(fit) %||% 0
+  conditional_root <- factor_covariance(
+    distribution$covariance[distribution$spatial_rows,
+                            distribution$spatial_rows, drop = FALSE],
+    "conditional covariance of the sites", warn = measurement_variance > 0
+  )
+  site_effects <- sample_correlated_gaussian(
+    distribution$mean[distribution$spatial_rows], t(conditional_root),
+    n_samples
+  )
+  if (is.null(groups)) {
+    return(list(site_effects = site_effects, rows = integer(),
+                spatial = matrix(0, 0, n_samples)))
+  }
+
+  rows <- which(groups %in% groups[sampled])
+  root <- factor_covariance(covariance, "covariance of the sites")
+  spatial <- grouped_joint_prediction(
+    prediction_coordinates = coordinates[rows, , drop = FALSE] / distance_scale,
+    conditioning_coordinates = site_coordinates,
+    group_indices = unname(split(seq_along(rows), groups[rows])),
+    weight_function = function(cross_covariance) {
+      cholesky_prediction_weights(cross_covariance, root)
+    },
+    conditional_signal = site_effects, marginal_variance = pars$sigma2,
+    phi = phi, kappa = fit$kappa, n_samples = n_samples
+  )
+  list(site_effects = site_effects, rows = rows, spatial = spatial)
+}
+
+##' The class of each value
+##'
+##' Every value has a class. A class includes its upper break, the lowest class
+##' also includes the first break, and values beyond the breaks belong to the
+##' end classes, as in the maps of [plot_prediction()].
+##'
+##' @param values A numeric vector or matrix.
+##' @param breaks The class boundaries.
+##' @return The numbers of the classes, in the shape of `values`.
+##' @noRd
+simulation_class <- function(values, breaks) {
+  classes <- findInterval(values, breaks, left.open = TRUE, all.inside = TRUE)
+  dim(classes) <- dim(values)
+  classes
 }
 
 ##' Classification metrics for one simulated dataset
@@ -4679,11 +4914,12 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
 ##' @return A list containing category-specific metrics and overall accuracy.
 ##' @noRd
 simulation_classification_metrics <- function(true_values, samples, breaks, labels) {
-  true_class <- cut(true_values, breaks = breaks, labels = labels)
-  true_class <- factor(true_class, levels = labels)
+  true_class <- factor(labels[simulation_class(true_values, breaks)],
+                       levels = labels)
 
-  probabilities <- do.call(cbind, lapply(seq_len(length(breaks) - 1L), function(i) {
-    rowMeans(breaks[i] < samples & samples <= breaks[i + 1L])
+  sample_class <- simulation_class(samples, breaks)
+  probabilities <- do.call(cbind, lapply(seq_along(labels), function(i) {
+    rowMeans(sample_class == i)
   }))
   predicted_class <- factor(labels[max.col(probabilities, ties.method = "first")],
                             levels = labels)
@@ -4708,13 +4944,8 @@ simulation_classification_metrics <- function(true_values, samples, breaks, labe
     )
   })
 
-  valid <- !is.na(true_class)
-  overall_cc <- if (any(valid)) {
-    mean(true_class[valid] == predicted_class[valid])
-  } else {
-    NA_real_
-  }
-  list(by_cat = do.call(rbind, by_category), overall_cc = overall_cc)
+  list(by_cat = do.call(rbind, by_category),
+       overall_cc = mean(true_class == predicted_class))
 }
 
 ##' @title Print an Assessment of Simulations
@@ -4748,15 +4979,22 @@ print.RiskMap_assess_simulation <- function(x, ...) {
     "Models refitted to "
   }
   failed <- if (!is.null(x$fits)) sum(x$fits$status != "ok") else 0L
+  warned <- sum(!is.na(x$fits$warnings))
   out_print(c(
     out_rule("Assessment of simulations"),
     out_text(paste0(models, out_count(x$n_sim, "simulation"),
                     ", assessed ", paste(scales[!is.na(scales)],
                                          collapse = " and "),
                     " by ", paste(objectives, collapse = " and "), ".")),
-    out_bullets(if (failed > 0L) {
-      c("!" = paste0(failed, " of ", nrow(x$fits), " model fits failed."))
-    }),
+    out_bullets(c(
+      if (failed > 0L) {
+        c("!" = paste0(failed, " of ", nrow(x$fits), " model fits failed."))
+      },
+      if (warned > 0L) {
+        c("!" = paste0(warned, " of ", nrow(x$fits),
+                       " model fits gave warnings."))
+      }
+    )),
     "",
     out_bullets(c(i = paste0(out_fun("summary",
                                      "summary.RiskMap_assess_simulation"),
@@ -4784,7 +5022,8 @@ print.RiskMap_assess_simulation <- function(x, ...) {
 ##'   and `cc_summary`, the mean, standard deviation and 2.5% and 97.5%
 ##'   quantiles of the overall proportion of correct classification.
 ##'
-##' It also holds `fits`, the number of model fits and of failed fits.
+##' It also holds `fits`, the number of model fits (`n`), of failed fits
+##' (`failed`) and of fits with warnings (`warned`).
 ##'
 ##' @method summary RiskMap_assess_simulation
 ##' @export
@@ -4804,7 +5043,8 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
   }
   if (!is.null(object$fits)) {
     results$fits <- c(n = nrow(object$fits),
-                      failed = sum(object$fits$status != "ok"))
+                      failed = sum(object$fits$status != "ok"),
+                      warned = sum(!is.na(object$fits$warnings)))
   }
 
   # Assign class for S3 print method
@@ -4929,6 +5169,11 @@ print.summary.RiskMap_assess_simulation <- function(x, ...) {
     c("!" = paste0(x$fits[["failed"]], " of ", x$fits[["n"]],
                    " model fits failed, so their results are missing."))
   }
+  warned <- if ("warned" %in% names(x$fits) && x$fits[["warned"]] > 0) {
+    c("!" = paste0(x$fits[["warned"]], " of ", x$fits[["n"]],
+                   " model fits gave warnings, which the `fits` of the ",
+                   "assessment hold."))
+  }
   scale_label <- c(location = "Locations", area = "Areas")
   scales <- intersect(c("location", "area"), names(x))
   results <- unlist(lapply(scales, function(scale) {
@@ -4936,7 +5181,7 @@ print.summary.RiskMap_assess_simulation <- function(x, ...) {
       format_objective(x[[scale]]))
   }))
   out_print(c(out_rule("Results of the simulation study"),
-              out_bullets(failed),
+              out_bullets(c(failed, warned)),
               results))
   invisible(x)
 }

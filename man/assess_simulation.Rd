@@ -27,7 +27,11 @@ model can have any link.}
 \item{models}{A named list of fitted models returned by \code{\link[=glgpm]{glgpm()}} or model
 specifications returned by \code{\link[=specify_glgpm]{specify_glgpm()}}. Each object defines a
 candidate model specification and is refitted to every simulated dataset;
-its estimated parameter values are not reused.}
+its estimated parameter values are not reused. Parameters that a fit holds
+with \code{fixed_pars} stay held in its refits, as does the size \code{theta} of a
+negative binomial specification. The response of a candidate must be a
+plain column name, and its other columns can have any name. When the
+models are classified, none can be called \code{"Class"}.}
 
 \item{spatial_scale}{The scale(s) at which predictions are assessed:
 \code{"location"}, the locations of the prediction grid, \code{"area"}, or
@@ -60,9 +64,11 @@ and so on, in a column \code{"region"}.}
 
 \item{objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
 
-\item{breaks}{A numeric vector of at least three increasing class
-boundaries for classification, as in \code{\link[=plot_prediction]{plot_prediction()}}.
-Required if \code{objective} includes \code{"classify"}.}
+\item{breaks}{A numeric vector of at least three finite, increasing class
+boundaries for classification, as in \code{\link[=plot_prediction]{plot_prediction()}}. A class includes
+its upper boundary, the lowest class also includes the first boundary, and
+values beyond the boundaries belong to the end classes, so every value has
+a class. Required if \code{objective} includes \code{"classify"}.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
 
@@ -84,7 +90,8 @@ model and one column per simulation, and/or \code{classify}, the
 classification metrics of each model and simulation.}
 \item{fits}{A data frame with one row per model and simulation, giving
 the \code{status} of the fit (\code{"ok"} or \code{"failed"}), the error \code{message} of a
-failed fit and any \code{warnings}.}
+failed fit and any \code{warnings}. A fit with a warning, such as one that found
+no maximum of the likelihood, is \code{"ok"} and has results.}
 \item{estimates}{A list with, for each model, a matrix of the parameter
 estimates, one row per simulation.}
 \item{n_sim, spatial_scale}{The number of simulations and the spatial
@@ -107,7 +114,19 @@ through the inverse link of the refitted model, and \code{target()} is then
 applied to those draws. A probit candidate on simulations from a logit
 model is thus scored on the same prevalence as the truth. Candidates
 predict with their own covariates and offset, and those with a nugget
-include it in their predictions when the generating model has one.
+include it in their predictions when the generating model has one. At a
+prediction location that is also a sampled location, the true nugget is the
+one of the data, so the prediction is of the spatial effect and that nugget
+given the data. At any other location the nugget is a new one, as in
+\code{\link[=predict.RiskMap]{predict.RiskMap()}}, and when areas are assessed the locations with the same
+coordinates share it. Binomial, Poisson and negative binomial candidates are
+refitted with the denominators or exposures of the generating model, whatever
+their own.
+
+For classification, the true class of a location or area is the class of its
+true target, and the predicted class is the most probable one, which holds
+the largest share of the predictive draws, with ties going to the lowest
+class. \code{breaks} divide the truth and the draws in the same way.
 
 The target receives the mean rather than the linear predictor, which is
 what the \code{transform} argument of \code{\link[=predict.RiskMap]{predict.RiskMap()}} receives, because
