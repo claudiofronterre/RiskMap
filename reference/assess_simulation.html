@@ -75,7 +75,11 @@ model can have any link.</p></dd>
 <dd><p>A named list of fitted models returned by <code><a href="glgpm.html">glgpm()</a></code> or model
 specifications returned by <code><a href="specify_glgpm.html">specify_glgpm()</a></code>. Each object defines a
 candidate model specification and is refitted to every simulated dataset;
-its estimated parameter values are not reused.</p></dd>
+its estimated parameter values are not reused. Parameters that a fit holds
+with <code>fixed_pars</code> stay held in its refits, as does the size <code>theta</code> of a
+negative binomial specification. The response of a candidate must be a
+plain column name, and its other columns can have any name. When the
+models are classified, none can be called <code>"Class"</code>.</p></dd>
 
 
 <dt id="arg-spatial-scale">spatial_scale<a class="anchor" aria-label="anchor" href="#arg-spatial-scale"></a></dt>
@@ -122,9 +126,11 @@ and so on, in a column <code>"region"</code>.</p></dd>
 
 
 <dt id="arg-breaks">breaks<a class="anchor" aria-label="anchor" href="#arg-breaks"></a></dt>
-<dd><p>A numeric vector of at least three increasing class
-boundaries for classification, as in <code><a href="plot_prediction.html">plot_prediction()</a></code>.
-Required if <code>objective</code> includes <code>"classify"</code>.</p></dd>
+<dd><p>A numeric vector of at least three finite, increasing class
+boundaries for classification, as in <code><a href="plot_prediction.html">plot_prediction()</a></code>. A class includes
+its upper boundary, the lowest class also includes the first boundary, and
+values beyond the boundaries belong to the end classes, so every value has
+a class. Required if <code>objective</code> includes <code>"classify"</code>.</p></dd>
 
 
 <dt id="arg-control-mcmc">control_mcmc<a class="anchor" aria-label="anchor" href="#arg-control-mcmc"></a></dt>
@@ -155,7 +161,8 @@ classification metrics of each model and simulation.</p></dd>
 <dt>fits</dt>
 <dd><p>A data frame with one row per model and simulation, giving
 the <code>status</code> of the fit (<code>"ok"</code> or <code>"failed"</code>), the error <code>message</code> of a
-failed fit and any <code>warnings</code>.</p></dd>
+failed fit and any <code>warnings</code>. A fit with a warning, such as one that found
+no maximum of the likelihood, is <code>"ok"</code> and has results.</p></dd>
 
 <dt>estimates</dt>
 <dd><p>A list with, for each model, a matrix of the parameter
@@ -181,7 +188,18 @@ through the inverse link of the refitted model, and <code>target()</code> is the
 applied to those draws. A probit candidate on simulations from a logit
 model is thus scored on the same prevalence as the truth. Candidates
 predict with their own covariates and offset, and those with a nugget
-include it in their predictions when the generating model has one.</p>
+include it in their predictions when the generating model has one. At a
+prediction location that is also a sampled location, the true nugget is the
+one of the data, so the prediction is of the spatial effect and that nugget
+given the data. At any other location the nugget is a new one, as in
+<code><a href="predict.RiskMap.html">predict.RiskMap()</a></code>, and when areas are assessed the locations with the same
+coordinates share it. Binomial, Poisson and negative binomial candidates are
+refitted with the denominators or exposures of the generating model, whatever
+their own.</p>
+<p>For classification, the true class of a location or area is the class of its
+true target, and the predicted class is the most probable one, which holds
+the largest share of the predictive draws, with ties going to the lowest
+class. <code>breaks</code> divide the truth and the draws in the same way.</p>
 <p>The target receives the mean rather than the linear predictor, which is
 what the <code>transform</code> argument of <code><a href="predict.RiskMap.html">predict.RiskMap()</a></code> receives, because
 models with different links share no linear-predictor scale. Every link is

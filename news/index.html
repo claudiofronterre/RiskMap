@@ -156,6 +156,7 @@
 <h4 id="assessment-and-simulation-2-0-0">Assessment and simulation<a class="anchor" aria-label="anchor" href="#assessment-and-simulation-2-0-0"></a></h4>
 <ul><li>
 <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> compares models by spatial cross-validation. Every score is a loss, so lower is better, and <code>PIT_area</code> is given once for all test observations, next to its value under perfect calibration. <code><a href="../reference/specify_glgpm.html">specify_glgpm()</a></code> and <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> simulate data and surfaces from a model, and <code><a href="../reference/assess_simulation.html">assess_simulation()</a></code> assesses predictions on them.</li>
+<li>In <code><a href="../reference/assess_simulation.html">assess_simulation()</a></code> every value belongs to a class, those beyond the <code>breaks</code> to the end classes, covariates can have any name, and a prediction at a sampled location uses what the data say about its nugget.</li>
 </ul></div>
 <div class="section level4">
 <h4 id="plots-printing-and-messages-2-0-0">Plots, printing and messages<a class="anchor" aria-label="anchor" href="#plots-printing-and-messages-2-0-0"></a></h4>

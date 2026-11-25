@@ -128,6 +128,11 @@ in the source repository.
   simulate data and surfaces from a model, and
   [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
   assesses predictions on them.
+- In
+  [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
+  every value belongs to a class, those beyond the `breaks` to the end
+  classes, covariates can have any name, and a prediction at a sampled
+  location uses what the data say about its nugget.
 
 #### Plots, printing and messages
 

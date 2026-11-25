@@ -74,8 +74,10 @@ A `ggplot` object.
 
 The colours and the legend follow
 [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md),
-and the legend title names the mapped component. The returned object can
-be modified further with standard ggplot2 functions.
+and the legend title names the mapped component. A prediction grid that
+is regular in the CRS of the model is drawn with tiles, and other
+prediction locations as points. The returned object can be modified
+further with standard ggplot2 functions.
 
 ## See also
 

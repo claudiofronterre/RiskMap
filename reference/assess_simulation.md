@@ -39,7 +39,11 @@ assess_simulation(
   [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md).
   Each object defines a candidate model specification and is refitted to
   every simulated dataset; its estimated parameter values are not
-  reused.
+  reused. Parameters that a fit holds with `fixed_pars` stay held in its
+  refits, as does the size `theta` of a negative binomial specification.
+  The response of a candidate must be a plain column name, and its other
+  columns can have any name. When the models are classified, none can be
+  called `"Class"`.
 
 - spatial_scale:
 
@@ -90,10 +94,13 @@ assess_simulation(
 
 - breaks:
 
-  A numeric vector of at least three increasing class boundaries for
-  classification, as in
+  A numeric vector of at least three finite, increasing class boundaries
+  for classification, as in
   [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md).
-  Required if `objective` includes `"classify"`.
+  A class includes its upper boundary, the lowest class also includes
+  the first boundary, and values beyond the boundaries belong to the end
+  classes, so every value has a class. Required if `objective` includes
+  `"classify"`.
 
 - control_mcmc:
 
@@ -131,7 +138,8 @@ A list of class `RiskMap_assess_simulation`:
 
   A data frame with one row per model and simulation, giving the
   `status` of the fit (`"ok"` or `"failed"`), the error `message` of a
-  failed fit and any `warnings`.
+  failed fit and any `warnings`. A fit with a warning, such as one that
+  found no maximum of the likelihood, is `"ok"` and has results.
 
 - estimates:
 
@@ -156,7 +164,21 @@ through the inverse link of the refitted model, and `target()` is then
 applied to those draws. A probit candidate on simulations from a logit
 model is thus scored on the same prevalence as the truth. Candidates
 predict with their own covariates and offset, and those with a nugget
-include it in their predictions when the generating model has one.
+include it in their predictions when the generating model has one. At a
+prediction location that is also a sampled location, the true nugget is
+the one of the data, so the prediction is of the spatial effect and that
+nugget given the data. At any other location the nugget is a new one, as
+in
+[`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md),
+and when areas are assessed the locations with the same coordinates
+share it. Binomial, Poisson and negative binomial candidates are
+refitted with the denominators or exposures of the generating model,
+whatever their own.
+
+For classification, the true class of a location or area is the class of
+its true target, and the predicted class is the most probable one, which
+holds the largest share of the predictive draws, with ties going to the
+lowest class. `breaks` divide the truth and the draws in the same way.
 
 The target receives the mean rather than the linear predictor, which is
 what the `transform` argument of

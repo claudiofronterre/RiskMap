@@ -41,4 +41,5 @@ assessed spatial scale (`location` and/or `area`), each holding:
   2.5% and 97.5% quantiles of the overall proportion of correct
   classification.
 
-It also holds `fits`, the number of model fits and of failed fits.
+It also holds `fits`, the number of model fits (`n`), of failed fits
+(`failed`) and of fits with warnings (`warned`).
