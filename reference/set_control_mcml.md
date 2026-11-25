@@ -154,7 +154,7 @@ set_control_mcml(
   [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
   terms vary, such as households and the individuals within them. A term
   can be integrated out at some of its levels and sampled at others.
-  [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+  [`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
   reports, for each term, at how many levels it was integrated out and
   at how many it stayed sampled. It works with any link, including a
   custom `invlink`. Where the nugget variance is close to zero the

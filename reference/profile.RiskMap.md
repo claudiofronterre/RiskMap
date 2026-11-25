@@ -197,7 +197,7 @@ The methods for a profile are
 [`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
 profile also calls.
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
 checks the profiles, and
 [`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
 gives bootstrap intervals.

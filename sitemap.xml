@@ -10,9 +10,11 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/abund_sma.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/anopheles.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/assess_fit.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.html</loc></url>
-<url><loc>https://claudiofronterre.github.io/RiskMap/reference/check_fit.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/assessment.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/check_computation.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/create_convex_hull.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/create_grid.html</loc></url>
@@ -37,11 +39,12 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_bootstrap.html</loc></url>
-<url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_check.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_computation.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_predictive_check.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_profile.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.html</loc></url>
@@ -54,6 +57,7 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_check.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_cross_validation.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_prediction.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_predictive_check.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_simulation_model.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_test_sets.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_variogram.html</loc></url>
@@ -80,6 +84,7 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_bootstrap.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_predictive_check.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/to_table.RiskMap_prediction.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/to_table.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/tz_covariates.html</loc></url>

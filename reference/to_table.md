@@ -23,6 +23,12 @@ to_table(object, digits = 3, col_names = NULL, reference = NULL, ...)
 
 # S3 method for class 'summary.RiskMap_cross_validation'
 to_table(object, digits = 3, col_names = NULL, ...)
+
+# S3 method for class 'RiskMap_predictive_check'
+to_table(object, digits = 3, col_names = NULL, ...)
+
+# S3 method for class 'summary.RiskMap_predictive_check'
+to_table(object, digits = 3, col_names = NULL, ...)
 ```
 
 ## Arguments
@@ -33,6 +39,10 @@ to_table(object, digits = 3, col_names = NULL, ...)
   [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
   or its
   [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
+  an assessment of fits from
+  [`assess_fit()`](https://claudiofronterre.github.io/RiskMap/reference/assess_fit.md)
+  or its
+  [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_predictive_check.md),
   a cross-validation from
   [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
   or its
@@ -69,7 +79,8 @@ An object of class "knitr_kable" that can be rendered directly.
 ## Details
 
 This function creates a presentation-ready summary table from a fitted
-"RiskMap" model or cross-validation results for multiple models. Use
+"RiskMap" model, an assessment of fits or cross-validation results for
+multiple models. Use
 [coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md)
 or
 [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)

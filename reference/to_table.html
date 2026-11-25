@@ -39,7 +39,7 @@ Quarto, R Markdown, HTML, LaTeX and the R console."><meta property="og:image" co
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Format RiskMap Results as a Table</h1>
-      <small class="dont-index">Source: <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/auxiliary.R" class="external-link"><code>R/auxiliary.R</code></a>, <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/cross_validation.R" class="external-link"><code>R/cross_validation.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/auxiliary.R" class="external-link"><code>R/auxiliary.R</code></a>, <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/cross_validation.R" class="external-link"><code>R/cross_validation.R</code></a>, <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/predictive_check.R" class="external-link"><code>R/predictive_check.R</code></a></small>
       <div class="d-none name"><code>to_table.Rd</code></div>
     </div>
 
@@ -66,6 +66,12 @@ Quarto, R Markdown, HTML, LaTeX and the R console.</p>
 <span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, reference <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'summary.RiskMap_cross_validation'</span></span>
+<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'RiskMap_predictive_check'</span></span>
+<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'summary.RiskMap_predictive_check'</span></span>
 <span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -75,9 +81,10 @@ Quarto, R Markdown, HTML, LaTeX and the R console.</p>
 
 <dl><dt id="arg-object">object<a class="anchor" aria-label="anchor" href="#arg-object"></a></dt>
 <dd><p>A fit from <code><a href="glgpm.html">glgpm()</a></code> or its <a href="summary.RiskMap.html">summary()</a>,
-a cross-validation from <code><a href="assess_prediction.html">assess_prediction()</a></code> or its
-<a href="summary.RiskMap_cross_validation.html">summary()</a>, or a prediction over
-<code>boundaries</code> from <a href="predict.RiskMap.html">predict()</a> (see
+an assessment of fits from <code><a href="assess_fit.html">assess_fit()</a></code> or its
+<a href="summary.RiskMap_predictive_check.html">summary()</a>, a cross-validation from
+<code><a href="assess_prediction.html">assess_prediction()</a></code> or its <a href="summary.RiskMap_cross_validation.html">summary()</a>,
+or a prediction over <code>boundaries</code> from <a href="predict.RiskMap.html">predict()</a> (see
 <code><a href="to_table.RiskMap_prediction.html">to_table.RiskMap_prediction()</a></code>).</p></dd>
 
 
@@ -107,7 +114,8 @@ others are compared with, as in its
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>This function creates a presentation-ready summary table from a
-fitted "RiskMap" model or cross-validation results for multiple models.
+fitted "RiskMap" model, an assessment of fits or cross-validation results for
+multiple models.
 Use <a href="coef.RiskMap.html">coef()</a> or <a href="summary.RiskMap.html">summary()</a> when numeric
 results are required for further analysis.</p>
 <p>Numeric values have <code>digits</code> decimal places. Values that are compared, the

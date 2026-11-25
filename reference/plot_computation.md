@@ -1,11 +1,11 @@
 # Plot the Checks on a Fitted Model
 
 Plots the checks of a fit from
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md),
 as [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
 result does. It makes the figures of the checks that were computed, and
 never computes anything itself, so an extra check runs once in
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md).
 By stage of certified Monte Carlo maximum likelihood, the panels show
 the bound on the Monte Carlo error against the tolerance
 (`"certificate"`), the effective certification draws
@@ -45,7 +45,7 @@ likelihood, named `"profile_"` followed by the parameter, such as
 ## Usage
 
 ``` r
-plot_check(x, which = NULL, ...)
+plot_computation(x, which = NULL, ...)
 
 # S3 method for class 'RiskMap_check'
 plot(x, ...)
@@ -56,7 +56,7 @@ plot(x, ...)
 - x:
 
   The result of
-  [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+  [`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md).
 
 - which:
 
@@ -66,15 +66,15 @@ plot(x, ...)
   `"profile_phi"`, and `"profile"` for every profile. The default is
   every panel that has something to show. A chosen panel with nothing to
   show gives a message saying why, and which extra check of
-  [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
-  would compute it. If no panel has anything to show, `plot_check()`
-  stops with those messages.
+  [`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
+  would compute it. If no panel has anything to show,
+  `plot_computation()` stops with those messages.
 
 - ...:
 
   For [`plot()`](https://rdrr.io/r/graphics/plot.default.html), the
-  arguments of `plot_check()`. For `plot_check()`, not used, and an
-  error if given, so that a misspelt argument is not ignored.
+  arguments of `plot_computation()`. For `plot_computation()`, not used,
+  and an error if given, so that a misspelt argument is not ignored.
 
 ## Value
 
@@ -84,7 +84,7 @@ the object is printed, so it can be saved or changed first.
 
 ## See also
 
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md),
 [`summary.RiskMap_check()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.md)
 
 ## Examples
@@ -100,13 +100,13 @@ fit <- glgpm(
 # A short profile of the scale keeps the example quick
 profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
                     seed = 1, messages = FALSE)
-checked <- check_fit(fit, extra = "radius", profile = profiles)
+checked <- check_computation(fit, extra = "radius", profile = profiles)
 #> ℹ Computing the predictions of how often the radius of the bound is too small,
-#>   which should take about 2 seconds, from the 1 second the fit took.
-plot_check(checked)
+#>   which should take about 4 seconds, from the 2 seconds the fit took.
+plot_computation(checked)
 
-plot_check(checked,
-           which = c("certificate", "screen", "radius", "profile_phi"))
+plot_computation(checked,
+                 which = c("certificate", "screen", "radius", "profile_phi"))
 
 # The same panels
 plot(checked)

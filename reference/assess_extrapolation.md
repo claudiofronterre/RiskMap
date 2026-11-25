@@ -172,7 +172,10 @@ conditions.
 ## See also
 
 [`plot_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.md),
-[`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
+[`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md),
+and
+[assessment](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
+for the other assessments of a model.
 
 ## Examples
 

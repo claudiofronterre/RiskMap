@@ -9,7 +9,7 @@ Carlo error of the estimate is certified. Standard errors and confidence
 intervals are given by
 [`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
 and the checks on the computation by
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md).
 
 ## Usage
 

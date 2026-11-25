@@ -92,7 +92,7 @@ in the source repository.
 
 #### Checking a fit
 
-- [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+- [`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
   reports how a fit was computed and flags anything that needs
   attention, [`profile()`](https://rdrr.io/r/stats/profile.html) gives
   profile likelihoods and
@@ -129,6 +129,15 @@ in the source repository.
 
 #### Assessment and simulation
 
+- [`assess_fit()`](https://claudiofronterre.github.io/RiskMap/reference/assess_fit.md)
+  shows whether a model could have produced the data. It compares
+  statistics of the data, their distribution and the variogram of the
+  residuals from the covariates with those of datasets simulated from
+  the model, which
+  [`plot_predictive_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_predictive_check.md)
+  draws.
+  [`?assessment`](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
+  says which function answers which question about a model.
 - [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
   compares models by spatial cross-validation, on the test sets of
   [`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md)

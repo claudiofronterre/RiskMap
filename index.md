@@ -104,7 +104,7 @@ and random effects,
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md),
 and fit it with
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
 flags anything in the fit that needs attention.
 
 [Specifying and

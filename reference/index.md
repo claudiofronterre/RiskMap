@@ -106,7 +106,7 @@ See how a fit was computed, check the Monte Carlo samples, and measure
 the uncertainty of the estimates by profile likelihood or the parametric
 bootstrap.
 
-- [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+- [`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
   : Check How a Fitted Model Was Computed
 - [`print(`*`<RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_check.md)
   : Print the Checks on a Fitted Model
@@ -114,8 +114,8 @@ bootstrap.
   : Summarise the Checks on a Fitted Model
 - [`print(`*`<summary.RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap_check.md)
   : Print the Summary of the Checks on a Fitted Model
-- [`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md)
-  [`plot(`*`<RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md)
+- [`plot_computation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_computation.md)
+  [`plot(`*`<RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_computation.md)
   : Plot the Checks on a Fitted Model
 - [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md)
   : Check the mixing of the MCMC samples of the random effects
@@ -161,9 +161,21 @@ scale of the response, at new locations or aggregated over areas.
 
 ## Assessment
 
-Assess the predictive performance of models by spatial cross-validation
-and on simulated data.
+See whether a model could have produced the data, and assess its
+predictions by spatial cross-validation and on simulated data.
 
+- [`assessment`](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
+  : Which function answers which question about a model
+- [`assess_fit()`](https://claudiofronterre.github.io/RiskMap/reference/assess_fit.md)
+  : Assess models against data simulated from them
+- [`print(`*`<RiskMap_predictive_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_predictive_check.md)
+  [`print(`*`<summary.RiskMap_predictive_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_predictive_check.md)
+  : Print the assessment of models against simulated data
+- [`summary(`*`<RiskMap_predictive_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_predictive_check.md)
+  : Summarise the assessment of models against simulated data
+- [`plot_predictive_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_predictive_check.md)
+  [`plot(`*`<RiskMap_predictive_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_predictive_check.md)
+  : Plot the assessment of models against simulated data
 - [`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md)
   : Create test sets for cross-validation
 - [`print(`*`<RiskMap_test_sets>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_test_sets.md)

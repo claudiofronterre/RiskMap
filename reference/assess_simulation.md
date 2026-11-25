@@ -214,6 +214,8 @@ and
 and
 [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
 make the simulations.
+[assessment](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
+says which function answers which question about a model.
 
 ## Examples
 

@@ -5,6 +5,7 @@ has left.
 
 - [`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md),
   [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
+  [`assess_fit()`](https://claudiofronterre.github.io/RiskMap/reference/assess_fit.md),
   [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
   and
   [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)

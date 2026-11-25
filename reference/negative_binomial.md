@@ -51,7 +51,7 @@ and is 1 for every count when it is not given. As \\\theta\\ grows the
 model tends to the Poisson model with the same mean, and a fit whose
 size goes to that limit holds it there, as a variance estimated as zero
 is held, and says so in
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md).
 A fit that estimates the size reports it in
 [coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md),
 [print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap.md)

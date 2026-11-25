@@ -219,9 +219,9 @@ term that span several locations, such as villages or districts with
 several sampled points, and the levels at a location where two <code><a href="re.html">re()</a></code>
 terms vary, such as households and the individuals within them. A term
 can be integrated out at some of its levels and sampled at others.
-<code><a href="check_fit.html">check_fit()</a></code> reports, for each term, at how many levels it was integrated
-out and at how many it stayed sampled. It works with any link, including a
-custom <code>invlink</code>. Where the nugget variance is close to zero the
+<code><a href="check_computation.html">check_computation()</a></code> reports, for each term, at how many levels it was
+integrated out and at how many it stayed sampled. It works with any link,
+including a custom <code>invlink</code>. Where the nugget variance is close to zero the
 likelihood is nearly flat along it, and there the Monte Carlo estimate of
 its effect is noisier with the nugget integrated out than sampled, so fewer
 such fits are certified. With <code>"auto"</code> each stage of the fit integrates out
@@ -238,9 +238,10 @@ fitted with <code>"auto"</code> as with <code>TRUE</code>, its <code><a href="re
 integrated out at every stage wherever the rules above allow. On simulated
 surveys of households that certified every fit, and in a fraction of the
 time of sampling, also where the nugget variance was zero, where switching
-the nugget alone sometimes failed. Defaults to <code>"auto"</code>, which on simulated surveys with a nugget certified
-more fits than either form alone. A model without a nugget or <code><a href="re.html">re()</a></code> terms
-is fitted in the same way whatever the value.</p></dd>
+the nugget alone sometimes failed. Defaults to <code>"auto"</code>, which on simulated
+surveys with a nugget certified more fits than either form alone. A model
+without a nugget or <code><a href="re.html">re()</a></code> terms is fitted in the same way whatever the
+value.</p></dd>
 
 
 <dt id="arg-check-maxima">check_maxima<a class="anchor" aria-label="anchor" href="#arg-check-maxima"></a></dt>

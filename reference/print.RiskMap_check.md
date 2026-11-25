@@ -1,7 +1,7 @@
 # Print the Checks on a Fitted Model
 
 Print method for objects of class `"RiskMap_check"` from
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md),
 which gives the verdict. Each check has an entry, those that need a look
 first. A check that needs a look is given in full, with its fix where
 there is one, and a check that is `OK` takes one line, with its finding

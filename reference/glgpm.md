@@ -245,7 +245,7 @@ fitted values with
 standard errors and intervals with
 [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
 and how the fit was computed with
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md).
 
 Every result of RiskMap that can be saved and read again, such as a fit,
 a prediction or a profile, has the attribute `riskmap_version`, a list
@@ -304,10 +304,10 @@ error taken from it and from a replicate of it (see
 The samples are enlarged only when the certificate exceeds the
 tolerance, and a warning is issued if the tolerance is not met within
 the configured limits.
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
 reports every stage. Warnings are kept for what changes how a result is
 read, and
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md)
 goes through all the checks on the computation, with what to do about
 any that need a look. The estimation samples and the final conditional
 samples are drawn from separate streams derived from `seed`, so
@@ -363,7 +363,7 @@ and
 [profile()](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
 and
 [`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md).
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md),
 [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md),
 [`summarise_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_mcmc.md),
 [`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md),
@@ -557,7 +557,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.       2.1220      0.9347      4.8173
-#> Spatial corr. scale (km) 102.1364     34.7202    300.4544
+#> Spatial corr. scale (km) 102.1364     34.7203    300.4540
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Log-likelihood  -2018.33
@@ -567,7 +567,7 @@ summary(fit)
 #>   standard errors (an approximate 95% bound, tolerance 0.1).
 #> ℹ The starting values came from a Gaussian fit to the transformed data, which
 #>   the Laplace approximation of the likelihood preferred to RiskMap's defaults.
-#> ✔ No check needs a look. See `check_fit()` for the details.
+#> ✔ No check needs a look. See `check_computation()` for the details.
 
 # family = binomial("probit") fits the same model with a probit link
 ```

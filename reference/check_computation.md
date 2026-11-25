@@ -14,7 +14,7 @@ only the number of checks that need a look.
 ## Usage
 
 ``` r
-check_fit(
+check_computation(
   object,
   extra = character(),
   profile = NULL,
@@ -209,7 +209,7 @@ The methods for the result are
 [print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_check.md),
 [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.md)
 and
-[`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md),
+[`plot_computation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_computation.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
 result also calls.
 [`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
@@ -218,6 +218,8 @@ gives the estimates, and
 and
 [`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
 their uncertainty.
+[assessment](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
+says which function answers which question about a model.
 
 ## Examples
 
@@ -231,14 +233,14 @@ fit <- glgpm(
   messages = FALSE
 )
 
-check_fit(fit)
+check_computation(fit)
 #> ── Checks on this fit ──────────────────────────────────────────────────────────
 #> 
 #> ✔ Monte Carlo accuracy  A Gaussian fit has no Monte Carlo error.
 #> 
 #> ℹ `summary()` of these checks gives the evidence behind each finding.
 #> ℹ These checks concern the computation, not whether the model suits the data.
-checked <- check_fit(fit, extra = "profile")
+checked <- check_computation(fit, extra = "profile")
 #> ℹ Computing the profiles of the 3 covariance parameters.
 checked
 #> ── Checks on this fit ──────────────────────────────────────────────────────────
@@ -322,7 +324,7 @@ summary(checked)
 #>      0.1786          8.619   0.0000     ok
 #>      0.1953          8.444   0.3495     ok
 #>      0.2136          7.940   1.3578     ok
-#>      0.2336          7.134   2.9687     ok
+#>      0.2336          7.134   2.9686     ok
 #>      0.2429          6.694   3.8489     ok
 #>      0.2554          6.053   5.1304     ok
 #>      0.2793          4.721   7.7959     ok

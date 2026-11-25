@@ -274,6 +274,8 @@ and
 [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
 result also calls.
+[assessment](https://claudiofronterre.github.io/RiskMap/reference/assessment.md)
+says which function answers which question about a model.
 
 ## Examples
 

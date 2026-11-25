@@ -1,7 +1,7 @@
 # Summarise the Checks on a Fitted Model
 
 Summary method for objects of class `"RiskMap_check"` from
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md).
 Where [`print()`](https://rdrr.io/r/base/print.html) gives the verdict,
 [`summary()`](https://rdrr.io/r/base/summary.html) gives the evidence,
 the finding of each check in full with the numbers behind it, the
@@ -40,8 +40,8 @@ table, the `stages` table with the column `largest_move`, and the
 
 ## See also
 
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
-[`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md)
+[`check_computation()`](https://claudiofronterre.github.io/RiskMap/reference/check_computation.md),
+[`plot_computation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_computation.md)
 
 ## Examples
 
@@ -55,7 +55,7 @@ fit <- glgpm(
   messages = FALSE
 )
 
-summary(check_fit(fit))
+summary(check_computation(fit))
 #> ── Evidence for the checks on this fit ─────────────────────────────────────────
 #> 
 #> ✔ Monte Carlo accuracy
