@@ -75,6 +75,9 @@ in the source repository.
   standardisation and, if asked, the uncertainty of the estimated parameters.
   `plot_prediction()` maps the predictions, `to_table()` tabulates them, and
   `assess_extrapolation()` shows where they go beyond the data.
+- Predictions of Gaussian models with `re()` terms no longer depend on the labels
+  of the groups, and joint predictions that include the random effects have the
+  right covariance between them and the spatial process.
 - The covariates of the prediction grid `tz_covariates` now match those of
   `tz_malaria`. EVI, temperature, night-time light and precipitation come from
   the same rasters, so temperature is missing at 2 points and precipitation at

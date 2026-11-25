@@ -384,9 +384,13 @@ working_estimate <- function(table, par) {
 ##' (`nugget_natural()`) and the family's parameters go through their own
 ##' maps. The list is in the order of the working vector, with `tau2` in the
 ##' place of `nu2`. With `held`, the held parameters are added at their
-##' values, after the estimated ones.
+##' values, after the estimated ones. With `engine_scale` the estimate is on
+##' the scale of the fitting engines, with standardised covariates and rescaled
+##' distances, so the coefficients and the scale held are read from it too,
+##' because `fixed_pars` gives them in the user's units.
 ##' @noRd
-natural_values <- function(table, estimate, held = FALSE) {
+natural_values <- function(table, estimate, held = FALSE,
+                           engine_scale = FALSE) {
   rows <- table$rows
   out <- list(beta = estimate$beta)
   names(out$beta) <- table$beta_names
@@ -404,6 +408,9 @@ natural_values <- function(table, estimate, held = FALSE) {
   # The parameters held in the working vector are given at their values,
   # which the working scale can change in the last bits.
   pinned <- pinned_rows(table)
+  if (engine_scale) {
+    pinned <- pinned[!pinned$name %in% c("beta", "phi"), , drop = FALSE]
+  }
   for (k in seq_len(nrow(pinned))) {
     name <- pinned$name[k]
     if (name %in% c("beta", "sigma2_re")) {

@@ -3516,7 +3516,9 @@ final_sampling_seed <- function(seed, mcml_stages) {
 ##' has them, and the fitted values are their means under `link_function`,
 ##' the link of the model's mean. The parameters are those of the model's
 ##' table (`parameter_table()`), at their natural values, with the nugget at
-##' its held value when it is not estimated.
+##' its held value when it is not estimated. The estimate, `D` and `coords` are
+##' on the scale of the fitting engines, with standardised covariates and
+##' rescaled distances.
 ##'
 ##' @noRd
 sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
@@ -3524,7 +3526,8 @@ sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
                                       family, link_function, kappa,
                                       control_mcmc, seed = NULL, messages,
                                       family_parameters = NULL) {
-  fitted_pars <- natural_values(parameters, estimate, held = TRUE)
+  fitted_pars <- natural_values(parameters, estimate, held = TRUE,
+                                engine_scale = TRUE)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
   distances <- pairwise_distances(coords)
   Sigma <- fitted_pars$sigma2 * matern_correlation(

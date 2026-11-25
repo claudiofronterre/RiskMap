@@ -8,7 +8,7 @@
 ##' @param object A fitted `RiskMap` object returned by [glgpm()].
 ##' @param newdata An `sf` object with point geometries and the variables needed
 ##'   by the fitted model. When `NULL`, predictions are made at the observed
-##'   locations.
+##'   locations, with one row for each record of the data.
 ##' @param boundaries Optional `sf` polygon object. When supplied, prediction
 ##'   locations are assigned to polygons and their joint samples are aggregated
 ##'   within each polygon. Grids returned by [create_grid()] use exact
@@ -36,7 +36,12 @@
 ##'   `"random_effects"`, for conditional predictions at known groups, and
 ##'   `"nugget"`, for a new realization of observation-level predictive
 ##'   variation at locations supplied through `newdata`. Fixed effects, the
-##'   spatial process and any offset are always returned separately.
+##'   spatial process and any offset are always returned separately. A level of
+##'   a random effect that isn't in the data of the fit stops a prediction that
+##'   includes `"random_effects"`, and doesn't matter to one that doesn't. The
+##'   nugget is one value for each location, so with joint draws rows of
+##'   `newdata` at the same location share it, as they share the spatial
+##'   process.
 ##' @param transform Optional named list of functions defining derived predictive
 ##'   targets from the complete linear-predictor draws. Each function receives a
 ##'   location-by-draw matrix and must return a numeric matrix with the same
@@ -133,7 +138,11 @@
 ##' burn-in iterations, then thinning by 10). The total number of predictive
 ##' draws equals that of plug-in prediction, 2,000 by default. Parameters
 ##' without a finite positive variance, such as those held at a boundary, keep
-##' their estimated value. When the covariance matrix of the estimates is not
+##' their estimated value. So does a variance, a scale or a size whose
+##' logarithm has a standard error above 10, as a variance of a Gaussian model
+##' estimated at zero has. The log-likelihood at zero is then within about 0.01
+##' of its maximum, so draws on the log scale would be arbitrary. When the
+##' covariance matrix of the estimates is not
 ##' available, an error is returned; refitting with
 ##' `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
 ##' column `fixed` then reports the average fixed-effect contribution.
@@ -210,7 +219,8 @@
 ##'     is the row number of the corresponding polygon in `boundaries`.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
-##'     samples for location-level prediction, and, with parameter
+##'     samples for location-level prediction, with one row for each row of
+##'     `predictions`, and, with parameter
 ##'     uncertainty, the fixed-effect contribution of each draw (`fixed`).
 ##'     For polygon aggregation it is nested first by aggregation and then by
 ##'     component, with one matrix row per polygon.}
@@ -653,9 +663,15 @@ prediction_operation_requested <- function(operations, built_in) {
 }
 
 #' Validate and align prediction locations
+#'
+#' Levels of the random effects that aren't in the fit stop, unless
+#' `allow_new_levels` is `TRUE`, for the assessment of predictions, whose test
+#' sets can have levels of their own. Their effects are then drawn from the
+#' distribution of the random effect (`draw_prediction_samples()`).
 #' @noRd
 validate_prediction_data <- function(object, newdata, include,
-                                     standardise = NULL) {
+                                     standardise = NULL,
+                                     allow_new_levels = FALSE) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   data_arg <- if (is.null(newdata)) "object" else "newdata"
   check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
@@ -688,7 +704,7 @@ validate_prediction_data <- function(object, newdata, include,
   for (name in standardised_names) {
     prediction_data[[name]] <- standardise$data[[name]][1L]
   }
-  if ("random_effects" %in% include) {
+  if ("random_effects" %in% include && !allow_new_levels) {
     for (name in names(object$re)) {
       supplied <- prediction_data[[name]]
       unknown <- unique(supplied[!is.na(supplied) &
@@ -1132,8 +1148,8 @@ build_prediction_components <- function(object, prediction_setup, include,
   }
   n_locations <- nrow(spatial)
   n_samples <- ncol(spatial)
-  fixed <- rep(prediction_setup$mu_pred, length.out = n_locations)
-  offset <- rep(prediction_setup$cov_offset, length.out = n_locations)
+  fixed <- prediction_row_values(prediction_setup$mu_pred, n_locations)
+  offset <- prediction_row_values(prediction_setup$cov_offset, n_locations)
   random_effects <- prediction_random_effect_samples(
     prediction_setup, n_locations, n_samples,
     include = "random_effects" %in% include
@@ -1179,6 +1195,15 @@ build_prediction_components <- function(object, prediction_setup, include,
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
        link = link, response = response, transformed = transformed)
+}
+
+#' A value for each prediction row, from one for each or a single one
+#' @noRd
+prediction_row_values <- function(values, n_rows) {
+  if (!length(values) %in% c(1L, n_rows)) {
+    riskmap_bug("The prediction has {length(values)} values for {n_rows} rows.")
+  }
+  rep(values, length.out = n_rows)
 }
 
 #' Prediction components, optionally averaged over parameter uncertainty
@@ -1315,7 +1340,9 @@ prediction_sample_size <- function(object, control_mcmc) {
 #' Draws are multivariate normal on the scale on which the model is estimated
 #' (log variances and log scale), with the covariance matrix of the estimate.
 #' Parameters without a finite positive variance, such as those held at a
-#' boundary, keep their estimated value.
+#' boundary, keep their estimated value, and so do those that the data don't
+#' determine (`undetermined_parameters()`), such as a variance of a Gaussian
+#' model estimated at zero.
 #' @noRd
 draw_parameter_values <- function(object, n_draws) {
   estimate <- unlist(object$estimate)
@@ -1331,15 +1358,52 @@ draw_parameter_values <- function(object, n_draws) {
   if (!identical(dim(covariance), rep(length(estimate), 2L))) failure()
   free <- which(is.finite(diag(covariance)) & diag(covariance) > 0)
   block <- covariance[free, free, drop = FALSE]
-  root <- if (length(free) && all(is.finite(block))) {
-    tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
-  }
-  if (is.null(root)) failure()
+  if (!length(free) || any(!is.finite(block))) failure()
   draws <- matrix(estimate, nrow = n_draws, ncol = length(estimate),
                   byrow = TRUE, dimnames = list(NULL, names(estimate)))
-  draws[, free] <- draws[, free, drop = FALSE] +
-    matrix(stats::rnorm(n_draws * length(free)), n_draws) %*% root
+  undetermined <- undetermined_parameters(object, block)
+  kept <- !undetermined$parameters
+  if (!any(kept)) return(draws)
+  # With some parameters kept at their estimates, the others are drawn with
+  # the variance of the nugget in place of its ratio to the spatial variance,
+  # so that a spatial variance estimated at zero leaves the nugget its own
+  # uncertainty.
+  if (!all(kept)) block <- undetermined$covariance[kept, kept, drop = FALSE]
+  root <- tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
+  if (is.null(root)) failure()
+  moves <- matrix(0, nrow = n_draws, ncol = length(free))
+  moves[, kept] <- matrix(stats::rnorm(n_draws * sum(kept)), n_draws) %*% root
+  if (!all(kept)) moves <- moves %*% t(solve(undetermined$jacobian))
+  draws[, free] <- draws[, free, drop = FALSE] + moves
   draws
+}
+
+#' The parameters that the data don't determine
+#'
+#' Those of the covariance, the random effects and the family whose logarithm
+#' has a standard error above 10, the nugget by its variance. A Gaussian fit
+#' lets the logarithm of a variance estimated at zero drift along an almost
+#' flat likelihood, with a standard error of thousands, where a count fit
+#' holds it. The information on the logarithm is then below 0.01, which is
+#' about the log-likelihood that a variance of zero loses, and draws from a
+#' normal distribution on the log scale would be arbitrary. So would draws of
+#' the scale where the likelihood is flat in it.
+#' @param covariance The covariance of the free parameters of the fit, on the
+#'   scale on which it is estimated.
+#' @return A list with `parameters`, `TRUE` for each undetermined one, the
+#'   `jacobian` to the scale with the variance of the nugget and the
+#'   `covariance` there.
+#' @noRd
+undetermined_parameters <- function(object, covariance) {
+  table <- fit_parameter_table(object)
+  rows <- vector_rows(table)
+  free <- match(colnames(covariance), rows$stored)
+  jacobian <- parameter_jacobian(table)[free, free, drop = FALSE]
+  reported <- jacobian %*% covariance %*% t(jacobian)
+  reported <- (reported + t(reported)) / 2
+  list(parameters = rows$block[free] != "coefficients" &
+         diag(reported) > 100,
+       jacobian = jacobian, covariance = reported)
 }
 
 #' Conditional samples of the latent effects at given parameter values
@@ -1523,17 +1587,43 @@ prediction_random_effect_samples <- function(prediction_setup, n_locations,
   if (!include) return(NULL)
   result <- matrix(0, nrow = n_locations, ncol = n_samples)
   for (term in seq_along(prediction_setup$re$samples)) {
-    term_samples <- prediction_setup$re$samples[[term]]
-    for (group in seq_along(term_samples)) {
-      result <- result + outer(
-        prediction_setup$re$D_pred[[term]][, group], term_samples[[group]]
-      )
-    }
+    levels <- prediction_setup$re$levels[[term]]
+    result <- result +
+      prediction_setup$re$samples[[term]][levels, , drop = FALSE]
   }
   result
 }
 
+#' The levels of the random effects at prediction rows
+#'
+#' Each row's level of each `re()` term, as its position among the levels of
+#' the fit, in the order of `object$re`, which are the codes of
+#' `object$ID_re`. A level that isn't in the fit comes after them.
+#' @param values The columns of the `re()` terms, one row per prediction row.
+#' @return A list with a vector of positions for each term, `levels`, and the
+#'   number of levels beyond those of the fit, `n_new`.
+#' @noRd
+prediction_random_effect_levels <- function(object, values) {
+  levels <- lapply(names(object$re), function(term) {
+    known <- match(values[[term]], object$re[[term]])
+    missing <- is.na(known)
+    labels <- as.character(values[[term]])[missing]
+    known[missing] <- length(object$re[[term]]) +
+      match(labels, unique(labels))
+    known
+  })
+  names(levels) <- names(object$re)
+  n_new <- vapply(seq_along(levels), function(term) {
+    max(levels[[term]], 0L) - length(object$re[[term]])
+  }, numeric(1))
+  list(levels = levels, n_new = pmax(n_new, 0))
+}
+
 #' Draw an optional prediction-location nugget component
+#'
+#' The nugget is one value for each location, so the rows of a joint
+#' prediction at one location share their draws, as they share the spatial
+#' effect (`location_index`).
 #' @noRd
 prediction_nugget_samples <- function(object, prediction_setup, n_locations,
                                       n_samples, include) {
@@ -1544,11 +1634,14 @@ prediction_nugget_samples <- function(object, prediction_setup, n_locations,
   if (is.null(tau2) || !is.finite(tau2) || tau2 <= 0) {
     abort_input("{.arg include} can't contain {.val nugget}, because the fit has no positive nugget variance.", arg = "include")
   }
-  sample_independent_gaussian(
-    mean = rep(0, n_locations),
-    standard_deviation = rep(sqrt(tau2), n_locations),
+  location <- prediction_setup$location_index
+  n_distinct <- if (is.null(location)) n_locations else max(location)
+  nugget <- sample_independent_gaussian(
+    mean = rep(0, n_distinct),
+    standard_deviation = rep(sqrt(tau2), n_distinct),
     n_samples = n_samples
   )
+  if (is.null(location)) nugget else nugget[location, , drop = FALSE]
 }
 
 #' Obtain the fitted or fixed nugget variance
@@ -2048,45 +2141,60 @@ prediction_link_samples <- function(prediction, include_fixed = TRUE,
   link
 }
 
+#' The latent effects of a Gaussian model and their observations
+#'
+#' The location effects, with covariance `spatial_covariance`, and then the
+#' levels of each `re()` term, in the order of `object$re`, whose codes are in
+#' `object$ID_re`.
+#' @return A list with the observation-by-effect `incidence`, the `covariance`
+#'   of the effects, the location and group indices of the observations
+#'   (`ids`), the number of levels of each term (`n_levels`) and the
+#'   `measurement_variance`.
+#' @noRd
+gaussian_latent_structure <- function(object, spatial_covariance, par_hat) {
+  n_observations <- length(object$y)
+  indicators <- function(index, n_columns) {
+    design <- matrix(0, nrow = n_observations, ncol = n_columns)
+    design[cbind(seq_len(n_observations), index)] <- 1
+    design
+  }
+  n_levels <- unname(lengths(object$re))
+  random_ids <- if (length(n_levels)) as.matrix(object$ID_re)
+  designs <- list(indicators(object$ID_coords, nrow(spatial_covariance)))
+  covariances <- list(spatial_covariance)
+  for (term in seq_along(n_levels)) {
+    designs[[term + 1L]] <- indicators(random_ids[, term], n_levels[term])
+    covariances[[term + 1L]] <- diag(
+      par_hat$sigma2_re[[term]], nrow = n_levels[term]
+    )
+  }
+  list(
+    incidence = do.call(cbind, designs),
+    covariance = as.matrix(Matrix::bdiag(covariances)),
+    ids = as.matrix(cbind(object$ID_coords, object$ID_re)),
+    n_levels = n_levels,
+    measurement_variance = par_hat$sigma2_me %||% fit_fix_var_me(object) %||% 0
+  )
+}
+
 gaussian_conditioning_distribution <- function(object, spatial_covariance,
                                                par_hat, residual) {
-  n_observations <- length(object$y)
   n_spatial <- nrow(spatial_covariance)
-  random_ids <- as.matrix(object$ID_re)
-  n_random_terms <- if (is.null(object$ID_re)) 0L else ncol(random_ids)
-
-  spatial_design <- matrix(0, nrow = n_observations, ncol = n_spatial)
-  spatial_design[cbind(seq_len(n_observations), object$ID_coords)] <- 1
-  designs <- list(spatial_design)
-  covariances <- list(spatial_covariance)
-  if (n_random_terms) {
-    for (term in seq_len(n_random_terms)) {
-      design <- matrix(0, nrow = n_observations,
-                       ncol = length(object$re[[term]]))
-      design[cbind(seq_len(n_observations), random_ids[, term])] <- 1
-      designs[[term + 1L]] <- design
-      covariances[[term + 1L]] <- diag(
-        par_hat$sigma2_re[[term]], nrow = ncol(design)
-      )
-    }
-  }
-
-  incidence <- do.call(cbind, designs)
-  latent_covariance <- as.matrix(Matrix::bdiag(covariances))
-  measurement_variance <- par_hat$sigma2_me %||% fit_fix_var_me(object) %||% 0
-  ids <- as.matrix(cbind(object$ID_coords, object$ID_re))
+  latent <- gaussian_latent_structure(object, spatial_covariance, par_hat)
+  incidence <- latent$incidence
+  latent_covariance <- latent$covariance
   prediction_weights <- gaussian_prediction_weights(
-    Matrix::Matrix(incidence, sparse = TRUE), latent_covariance, ids,
-    measurement_variance
+    Matrix::Matrix(incidence, sparse = TRUE), latent_covariance, latent$ids,
+    latent$measurement_variance
   )
   cross_covariance <- latent_covariance %*% t(incidence)
   gain <- prediction_weights(cross_covariance)
   conditional_mean <- as.numeric(gain %*% residual)
   conditional_covariance <- latent_covariance -
     gain %*% incidence %*% latent_covariance
-  random_rows <- if (n_random_terms) {
+  random_rows <- if (length(latent$n_levels)) {
     split(seq.int(n_spatial + 1L, nrow(latent_covariance)),
-          rep(seq_len(n_random_terms), lengths(object$re)))
+          rep(seq_along(latent$n_levels), latent$n_levels))
   } else {
     list()
   }
@@ -2118,6 +2226,53 @@ gaussian_conditioning_samples <- function(object, spatial_covariance,
   )
 }
 
+#' Draw the random effects of a Gaussian model given its spatial samples
+#'
+#' Given the data, the spatial effects at the prediction locations and the
+#' random effects are jointly Gaussian, with covariance `-C V^-1 C_Z'`, where
+#' `C` and `C_Z` are their covariances with the observations and `V` the
+#' covariance of the observations. The random effects are drawn from their
+#' distribution given the data and the spatial samples.
+#' @param latent The model's latent effects (`gaussian_latent_structure()`).
+#' @param prediction_weights The function giving `C V^-1`.
+#' @param residual The observations less their fixed effects and offset.
+#' @param spatial_samples,spatial_mean The samples of the spatial effects and
+#'   their conditional mean.
+#' @param spatial_cross_covariance The covariance of the spatial effects with
+#'   the observations, `C`.
+#' @param spatial_root The factor of the conditional covariance of the spatial
+#'   effects.
+#' @return A list with a level-by-draw matrix for each `re()` term.
+#' @noRd
+gaussian_random_effect_samples <- function(latent, prediction_weights,
+                                           residual, spatial_samples,
+                                           spatial_mean,
+                                           spatial_cross_covariance,
+                                           spatial_root) {
+  n_effects <- ncol(latent$incidence)
+  rows <- seq.int(n_effects - sum(latent$n_levels) + 1L, n_effects)
+  variance <- diag(latent$covariance)[rows]
+  # One row for each level and one column for each observation
+  cross_covariance <- variance * t(latent$incidence[, rows, drop = FALSE])
+  weights <- prediction_weights(cross_covariance)
+  with_spatial <- weights %*% t(spatial_cross_covariance)
+  spatial_weights <- cholesky_prediction_weights(with_spatial, spatial_root)
+  conditional_covariance <- diag(variance, nrow = length(variance)) -
+    weights %*% t(cross_covariance) - spatial_weights %*% t(with_spatial)
+  root <- factor_covariance(
+    conditional_covariance, "conditional random-effect covariance"
+  )
+  conditional_mean <- as.numeric(weights %*% residual) -
+    spatial_weights %*% (spatial_samples - spatial_mean)
+  samples <- sample_correlated_gaussian(
+    conditional_mean, t(root), ncol(spatial_samples)
+  )
+  term <- rep(seq_along(latent$n_levels), latent$n_levels)
+  lapply(seq_along(latent$n_levels), function(k) {
+    samples[term == k, , drop = FALSE]
+  })
+}
+
 #' Generate conditional spatial-process samples from aligned prediction data
 #'
 #' Prediction variables and geometry remain in one row-aligned `sf` object.
@@ -2126,6 +2281,12 @@ gaussian_conditioning_samples <- function(object, spatial_covariance,
 #' A fresh conditional MCMC run of a non-Gaussian model is seeded with
 #' `mcmc_seed`, after which the caller's random number state is restored, so
 #' the predictive draws that follow start from that state.
+#'
+#' The spatial samples have a row for each prediction row. At the observed
+#' locations and in joint predictions they are drawn once for each distinct
+#' location (`location_index`), so that records at one location share them.
+#' The effect of a level of an `re()` term that isn't in the fit is drawn from
+#' its distribution, independently of the data.
 #' @noRd
 draw_prediction_samples <- function(object, prediction_data, prediction,
                                     include, control_mcmc = NULL,
@@ -2199,13 +2360,6 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         anyNA(groups)) {
       riskmap_bug("{.arg groups} must give a group for every prediction location.")
     }
-    group_indices <- unname(split(seq_along(groups), groups))
-  } else {
-    group_indices <- list(seq_len(if (is.null(grid_pred)) {
-      nrow(object$coords)
-    } else {
-      length(grid_pred)
-    }))
   }
 
   if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1) {
@@ -2223,6 +2377,22 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 
   grp <- coordinates_in_units(grid_pred, object$distance_units)
   n_pred <- nrow(grp)
+
+  # The distinct location of each prediction row, where the rows at one
+  # location have the same draws. A marginal prediction draws each row alone.
+  location_index <- if (obs_loc) {
+    object$ID_coords
+  } else if (type == "joint") {
+    distinct <- index_coordinate_rows(grp)
+    if (nrow(distinct$coordinates) < n_pred) distinct$index
+  }
+  if (!obs_loc && !is.null(location_index)) {
+    grp <- distinct$coordinates
+    groups <- groups[!duplicated(location_index)]
+  }
+  group_indices <- if (grouped_joint) {
+    unname(split(seq_along(groups), groups))
+  }
 
   object$D <- as.matrix(object$D)
   p <- ncol(object$D)
@@ -2293,43 +2463,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   }
 
   # ---------------------------------------------------------------------------
-  # Random effects (unchanged from original)
+  # The levels of the random effects at the prediction rows
   # ---------------------------------------------------------------------------
-  if (n_re > 0) {
-    ID_g         <- as.matrix(cbind(object$ID_coords, object$ID_re))
-    re_unique    <- object$re
-    n_dim_re_tot <- sapply(seq_len(n_re + 1), function(i) length(unique(ID_g[, i])))
-
-    if (!is.null(re_predictors)) {
-      if (any(is.na(re_predictors))) {
-        riskmap_warn("Locations with missing levels of a random effect are left out.")
-        ind_c       <- complete.cases(re_predictors)
-        re_predictors <- re_predictors[ind_c, , drop = FALSE]
-        grid_pred <- grid_pred[ind_c]
-        grp <- coordinates_in_units(grid_pred, object$distance_units)
-        n_pred <- nrow(grp)
-      }
-      if (!is.data.frame(re_predictors) || nrow(re_predictors) != n_pred ||
-          ncol(re_predictors) != n_re) {
-        riskmap_bug("The random-effect levels must be a data frame with one column per random effect and one row per prediction location.")
-      }
-
-      n_dim_re <- sapply(seq_len(n_re), function(i) length(unique(object$ID_re[, i])))
-      build_re_design <- function(values, size) {
-        lapply(seq_len(n_re), function(i) {
-          mat <- matrix(0, nrow = size, ncol = n_dim_re[i])
-          for (j in seq_along(object$re[[i]])) {
-            mat[values[, i] == object$re[[i]][j], j] <- 1
-          }
-          mat
-        })
-      }
-      D_re_pred <- build_re_design(re_predictors, n_pred)
-    } else {
-      D_re_pred <- NULL
+  random_levels <- if (n_re > 0 && !is.null(re_predictors)) {
+    if (!is.data.frame(re_predictors) || nrow(re_predictors) != n_pred ||
+        ncol(re_predictors) != n_re) {
+      riskmap_bug("The random-effect levels must be a data frame with one column per random effect and one row per prediction location.")
     }
-  } else {
-    D_re_pred <- NULL
+    prediction_random_effect_levels(object, re_predictors)
   }
 
   # ---------------------------------------------------------------------------
@@ -2494,6 +2635,11 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     # GAUSSIAN MODEL
     # =========================================================================
     blockwise_random_effects <- grouped_joint && !is.null(re_predictors)
+    # Without measurement error or random effects, the observations are the
+    # effects of the locations themselves.
+    held_variance <- fit_fix_var_me(object)
+    observed_exactly <- !is.null(held_variance) && held_variance == 0 &&
+      n_re == 0L
     if (blockwise_random_effects) {
       spatial_covariance <- par_hat$sigma2 * R
       latent_samples <- gaussian_conditioning_samples(
@@ -2521,39 +2667,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         n_samples = n_samples
       )
       shared_gaussian_re_samples <- latent_samples$random_effects
-    } else if (!is.null(fit_fix_var_me(object)) && fit_fix_var_me(object) > 0 ||
-               is.null(fit_fix_var_me(object))) {
-      m        <- length(object$y)
-      s_unique <- unique(object$ID_coords)
-      ID_g     <- as.matrix(cbind(object$ID_coords, object$ID_re))
-      n_dim_re_tot <- sapply(seq_len(n_re + 1), function(i) length(unique(ID_g[, i])))
-      C_g      <- matrix(0, nrow = m, ncol = sum(n_dim_re_tot))
-      for (i in seq_len(m)) {
-        ind_s_i <- which(s_unique == ID_g[i, 1])
-        C_g[i, seq_len(n_dim_re_tot[1])][ind_s_i] <- 1
-      }
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          select_col <- sum(n_dim_re_tot[seq_len(j)])
-          for (i in seq_len(m)) {
-            ind_re_j_i <- which(re_unique[[j]] == ID_g[i, j + 1])
-            C_g[i, select_col + seq_len(n_dim_re_tot[j + 1])][ind_re_j_i] <- 1
-          }
-        }
-      }
-      C_g      <- Matrix(C_g, sparse = TRUE, doDiag = FALSE)
-      Sigma_g  <- matrix(0, nrow = sum(n_dim_re_tot), ncol = sum(n_dim_re_tot))
-      Sigma_g[seq_len(n_dim_re_tot[1]), seq_len(n_dim_re_tot[1])] <- par_hat$sigma2 * R
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          sc <- sum(n_dim_re_tot[seq_len(j)])
-          diag(Sigma_g[sc + seq_len(n_dim_re_tot[j+1]), sc + seq_len(n_dim_re_tot[j+1])]) <- par_hat$sigma2_re[j]
-        }
-      }
-      # coef() omits sigma2_me when the measurement error variance is fixed
-      measurement_variance <- par_hat$sigma2_me %||% fit_fix_var_me(object)
-      prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
-                                                         measurement_variance)
+    } else if (!observed_exactly) {
+      latent <- gaussian_latent_structure(object, par_hat$sigma2 * R, par_hat)
+      prediction_weights <- gaussian_prediction_weights(
+        Matrix(latent$incidence, sparse = TRUE, doDiag = FALSE),
+        latent$covariance, latent$ids, latent$measurement_variance
+      )
       if (!batch_marginal && !grouped_joint) {
         A <- prediction_weights(C)
       }
@@ -2617,57 +2736,40 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   }
 
   # ---------------------------------------------------------------------------
-  # Random effect posterior samples (unchanged from original)
+  # Samples of the random effects, one matrix for each term
   # ---------------------------------------------------------------------------
 
-  if (n_re > 0 && !is.null(re_predictors)) {
-    out$re          <- list()
-    out$re$D_pred   <- D_re_pred
-    out$re$samples  <- list()
-    re_names        <- colnames(object$ID_re)
-    if (fit_is_exact(object) && !is.null(shared_gaussian_re_samples)) {
-      re_samples <- do.call(rbind, shared_gaussian_re_samples)
+  out["re"] <- list(NULL)
+  if (!is.null(random_levels)) {
+    re_samples <- if (!is.null(shared_gaussian_re_samples)) {
+      shared_gaussian_re_samples
     } else if (fit_is_exact(object)) {
-      C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
-      add  <- 0
-      for (i in seq_along(n_dim_re_tot[-1])) {
-        C_Z[, add + seq_len(n_dim_re_tot[i+1])] <- par_hat$sigma2_re[i] *
-          C_Z[, add + seq_len(n_dim_re_tot[i+1])]
-        add <- n_dim_re_tot[i+1]
-      }
-      W_Z          <- prediction_weights(Matrix::t(C_Z))
-      A_Z          <- cholesky_prediction_weights(W_Z %*% t(C), Sc_root)
-      Sigma_Z_cond <- diag(rep(par_hat$sigma2_re, n_dim_re_tot[-1])) -
-        W_Z %*% C_Z -
-        A_Z %*% C %*% t(W_Z)
-      Scr_Z        <- t(factor_covariance(
-        Sigma_Z_cond, "conditional random-effect covariance"
-      ))
-      mu_Z_cond    <- A_Z %*% (out$S_samples - mu_cond_S)
-      mu_Z_cond <- mu_Z_cond + as.numeric(W_Z %*% diff.y)
-      re_samples <- sample_correlated_gaussian(
-        mu_Z_cond, Scr_Z, n_samples
+      gaussian_random_effect_samples(
+        latent, prediction_weights, residual = diff.y,
+        spatial_samples = out$S_samples, spatial_mean = mu_cond_S,
+        spatial_cross_covariance = C, spatial_root = Sc_root
       )
     } else {
-      re_samples <- matrix(0, nrow = sum(n_dim_re_tot[-1]), ncol = n_samples)
-      add <- 0
-      for (i in seq_len(n_re)) {
-        rows <- add + seq_len(n_dim_re_tot[i + 1])
-        re_samples[rows, ] <- t(simulation$samples[[i + 1]])
-        add <- add + n_dim_re_tot[i+1]
-      }
+      lapply(seq_len(n_re), function(term) {
+        t(simulation$samples[[term + 1L]])
+      })
     }
-    add <- 0
-    for (i in seq_len(n_re)) {
-      for (j in seq_len(n_dim_re_tot[1 + i])) {
-        add <- add + 1
-        out$re$samples[[re_names[[i]]]][[as.character(re_unique[[i]][[j]])]] <- re_samples[add, ]
-      }
+    # The levels that aren't in the fit, independent of the data.
+    for (term in which(random_levels$n_new > 0)) {
+      n_new <- random_levels$n_new[term]
+      re_samples[[term]] <- rbind(re_samples[[term]], sample_independent_gaussian(
+        mean = rep(0, n_new),
+        standard_deviation = rep(sqrt(par_hat$sigma2_re[[term]]), n_new),
+        n_samples = n_samples
+      ))
     }
-  } else {
-    out$re <- list(D_pred = NULL, samples = NULL)
+    out$re <- list(levels = random_levels$levels, samples = re_samples)
   }
 
+  if (!is.null(location_index)) {
+    out$S_samples <- out$S_samples[location_index, , drop = FALSE]
+  }
+  out["location_index"] <- list(location_index)
   out$obs_loc  <- obs_loc
   if (obs_loc){
     out$ID_coords <- object$ID_coords

@@ -1612,6 +1612,48 @@ the indicators now also print as a data frame in the console, where a count of
 the classes printed as if its rows were locations. A table of parameters
 without the columns of the template prints as a data frame, where it stopped
 with an error.
+- Predictions of Gaussian models with `re()` terms read the codes of the groups
+where they compared them with their labels, so the groups of labels that are
+letters, factors or numbers other than 1, 2, ... were lost. The spatial
+prediction, which conditions on all the data, then moved too, by up to 1.36
+with a spatial variance of 2.26 in one example, and with numbers in another
+order than the data's the effects went to the wrong groups. Labels 1, 2, ... in
+the order in which they first appear gave the right result and still give the
+same one. Cross-validation of these models changes with it.
+- Joint Gaussian predictions with `include = "random_effects"` and without
+`boundaries` had the sign of the covariance between the spatial and the random
+effects reversed, stopped with three or more `re()` terms, and stopped with
+`sigma2_me` held at 0, where the spatial prediction ignored the groups. Areal
+predictions had the sign right and their draws are the same.
+- Binomial, Poisson and negative binomial fits with `phi` or coefficients held in
+`fixed_pars` drew their stored samples with the held values in the user's units
+and everything else on the scale of the fit, with standardised covariates and
+rescaled distances. The stored samples, `fitted()` and the default `predict()`
+were then wrong, by up to 0.27 for a fitted prevalence in one example. The
+estimates, the log-likelihood and the certificate, profiles, bootstraps,
+predictions with `control_mcmc` and those with parameter uncertainty were not
+affected. A fit saved with such a hold has to be fitted again, or predicted from
+with `control_mcmc`.
+- `predict()` without `newdata` gives each record the spatial effect of its own
+location. With several records at some locations the effects of the locations
+were recycled over the records, with a warning only when their numbers didn't
+divide. The samples it keeps have one row for each record.
+- The rows of `newdata` at one location share the spatial effect and the nugget
+in joint predictions. Their nuggets were independent, and their spatial effects
+were drawn from a singular covariance with a diagonal jitter, which warned. The
+draws at the other locations of such a prediction change with the seed held,
+and predictions at distinct locations don't.
+- A prediction with `parameter_uncertainty = TRUE` keeps the estimate of a
+variance, a scale or a size whose logarithm has a standard error above 10. A
+Gaussian fit lets a variance estimated at zero drift on the log scale, with a
+standard error of thousands, so that half of the draws of a nugget estimated at
+zero were infinite and the prediction warned or stopped. With a spatial variance
+at zero, the nugget is drawn by its own variance.
+- A level of a random effect that isn't in the data of the fit stops a
+prediction with `include = "random_effects"`, as before, and the help says so.
+The engine behind it draws the effect of such a level from its distribution,
+for the assessment of predictions (`allow_new_levels` of
+`validate_prediction_data()`).
 
 ## Cross validation
 
