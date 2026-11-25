@@ -1006,6 +1006,32 @@ with their elements, flat names, labels, start rules and held values, before it
 is fitted, and prints a template of `start_pars`. Fits without `start_pars` are
 unchanged.
 
+- Gaussian fits no longer depend on the units of the response. Every variance
+started at 1 and the coefficients were in the units of the response, so a
+response whose residual variance was far from 1 started far from the maximum,
+and the optimiser's first steps, taken to bring the total variance to that of
+the data, also took the scale of correlation to a value far below or above the
+distances, where the likelihood is flat. On 20 simulated surveys of 50 locations
+(`sigma2` 1, `phi` 20, an error standard deviation of 0.2) multiplied by 1e-6,
+1e-3, 0.1, 1, 10, 100, 1000 and 1e6, the log-likelihood was more than 0.1 below
+the maximum, or the fit failed, in 100, 15, 5, 0, 0, 55, 90 and 90% of them, by
+up to 55 in the small units and 17.8 in the large ones. The engines now fit the residuals of the
+regression divided by their standard deviation (`gaussian_regression()` and
+`scale_gaussian_response()`), and the estimates, their covariance, the score and
+the log-likelihood are returned in the units of the response. Held values and
+starts keep those units. Every variance starts at the mean square of those
+residuals (the rule `residual_variance` of `glgpm_parameters()`). In those 160
+fits, and in models with and without a nugget, `re()` terms, an offset,
+covariates, held parameters and given starts, the fits in every unit agree to
+about 1e-7, and a response far from zero is fitted as the same one around zero.
+The bounds of the variances in the profiles of a Gaussian fit, which cut the
+profiles of a response multiplied by 1e-6 or 1e6 short, are on that scale too.
+The regression that starts the coefficients now takes away the offset, which it
+ignored, and the held coefficients, and a rank-deficient design stops even when
+`start_pars` gives every coefficient. A value of `sigma2_me` or `sigma2_re` in
+`start_pars` without one of `sigma2` no longer starts `sigma2` too, which it did
+in models of every family. Other fits of count models are unchanged.
+
 - On the Woodbury path of Gaussian fits, which `glgpm()` takes above three
 records per latent effect unless the nugget is held at a positive value or the
 measurement error variance at zero, the starts of the measurement error and random-effect
