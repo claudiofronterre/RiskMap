@@ -485,3 +485,43 @@ test_that("an automatic fit with households is the fit with TRUE", {
   expect_identical(summarise_mcml_fit(automatic)$integration$integrated,
                    c(30L, 90L))
 })
+
+test_that("a nugget beside random effects that span locations can switch form", {
+  skip_on_cran()
+  set.seed(6)
+  n <- 40
+  coordinates <- cbind(runif(n, 0, 100), runif(n, 0, 100))
+  location <- c(seq_len(n), sample(n, 20))
+  g <- c(1:6, sample(6, 54, TRUE))
+  eta <- -0.5 + rnorm(n, 0, 1.2)[location] + rnorm(6)[g]
+  data <- data.frame(
+    x = coordinates[location, 1] * 1000, y = coordinates[location, 2] * 1000,
+    g = g, h = rep(1:3, 20), trials = 30, positive = rbinom(60, 30, plogis(eta))
+  )
+  data <- sf::st_as_sf(data, coords = c("x", "y"), crs = 32633)
+  held <- list(beta = c("(Intercept)" = -0.5), sigma2 = 0.5, phi = 20,
+               sigma2_re = c(g = 1, h = 0.3))
+  for (formula in list(positive ~ gp(nugget = TRUE) + re(g),
+                       positive ~ gp(nugget = TRUE) + re(g, h))) {
+    terms <- if (length(all.vars(formula)) == 3) c("g", "h") else "g"
+    held$sigma2_re <- c(g = 1, h = 0.3)[terms]
+    # Only the nugget is estimated, with the sampled and the integrated form
+    fits <- lapply(list("auto", TRUE, FALSE), function(form) {
+      suppressWarnings(glgpm(
+        formula, data = data, family = "binomial", denominator = trials,
+        fixed_pars = held, start_pars = list(tau2 = 1), seed = 1,
+        control_mcml = set_control_mcml(
+          initial_draws = 2000, validation_draws = 2000, max_stages = 1,
+          integrate_noise = form, laplace_start = FALSE
+        ), return_samples = FALSE, messages = FALSE
+      ))
+    })
+    standard_error <- sqrt(fits[[3]]$covariance["nu2", "nu2"])
+    for (fit in fits[1:2]) {
+      expect_lt(abs(fit$estimate$nu2 - fits[[3]]$estimate$nu2),
+                0.2 * standard_error)
+    }
+    expect_identical(attr(fits[[1]], "optimizer")$mcml_noise_forms,
+                     "integrated")
+  }
+})

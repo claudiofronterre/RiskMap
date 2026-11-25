@@ -101,7 +101,8 @@
 ##'     \item{extrapolation}{Factor with levels `"Supported"`, `"Spatial"`,
 ##'       `"Covariate"` and `"Spatial and covariate"`.}
 ##'   }
-##'   Rows with missing covariates have missing indicators. The attribute
+##'   Rows with missing covariates, or with ones that give the model a covariate
+##'   that isn't finite, such as `log(0)`, have missing indicators. The attribute
 ##'   `spatial_threshold` holds the threshold used, and `covariate_ranges` the
 ##'   range of each covariate in the data. Map the result with
 ##'   [plot_extrapolation()], or `plot()`, which does the same.
@@ -127,7 +128,8 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
                 arg = "spatial_threshold")
   }
   check_logical(sampling_noise, arg = "sampling_noise")
-  prediction <- validate_prediction_data(object, newdata, include = character())
+  prediction <- validate_prediction_data(object, newdata, include = character(),
+                                         check_finite = TRUE)
   model_data <- prediction$model_data
   valid_rows <- prediction$valid_rows
 
@@ -203,9 +205,11 @@ extrapolation_covariates <- function(object, design) {
   most_novel <- ifelse(largest > 0, colnames(observed)[varying][most],
                        NA_character_)
 
-  inverse <- solve(crossprod(observed))
-  leverage <- rowSums((design %*% inverse) * design)
-  observed_leverage <- rowSums((observed %*% inverse) * observed)
+  # From the QR decomposition, since the cross-products of terms such as el,
+  # el^2 and el^3 are numerically singular.
+  root <- design_root(observed)
+  leverage <- design_leverage(design, root)
+  observed_leverage <- design_leverage(observed, root)
   list(
     outside = as.integer(rowSums(novelty > 0)),
     novelty = largest,
@@ -213,6 +217,23 @@ extrapolation_covariates <- function(object, design) {
     leverage = leverage / max(observed_leverage),
     ranges = ranges
   )
+}
+
+#' The triangular factor of a design, with the order of its columns
+#' @noRd
+design_root <- function(design) {
+  decomposition <- qr(design, tol = 1e-12)
+  if (decomposition$rank < ncol(design)) {
+    abort_input("The columns of the design matrix of {.arg object} are linearly dependent, so the leverage of the covariates can't be computed.", arg = "object")
+  }
+  list(factor = qr.R(decomposition), order = decomposition$pivot)
+}
+
+#' The leverage of design rows, x' (D'D)^-1 x, from the factor of D
+#' @noRd
+design_leverage <- function(design, root) {
+  colSums(backsolve(root$factor, t(design[, root$order, drop = FALSE]),
+                    transpose = TRUE)^2)
 }
 
 #' Share of the spatial variance left unexplained by the data

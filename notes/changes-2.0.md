@@ -1400,6 +1400,13 @@ a hint to make it again.
 `max_samples`, the words of `summary(fit)$mcml` and of the messages, and the
 hints of `summary()` and `check_fit()` name them. A control stored with a fit
 made before, with the old names, still serves its refits.
+- Binomial and Poisson models with a nugget and `re()` terms none of whose levels
+can be integrated out, as levels that span locations, stopped with the internal
+error "A switching engine needs a sampled and an integrated form of the same
+model" unless `integrate_noise` was `TRUE` or `FALSE`. The check of the two
+forms compared the dimension of their latent effects with its name, which only
+one of them had. Such a model is now fitted in either form, stage by stage, as a
+model without `re()` terms is.
 
 ## Predictions
 
@@ -1658,6 +1665,39 @@ prediction with `include = "random_effects"`, as before, and the help says so.
 The engine behind it draws the effect of such a level from its distribution,
 for the assessment of predictions (`allow_new_levels` of
 `validate_prediction_data()`).
+- `predict()` takes `"exceedance"` or `"cv"` as the only summary. The
+components, such as the spatial effect, then have no summaries, and `print()`
+doesn't list them. Both stopped. The call that `print()` suggests for the map of
+an exceedance probability gives a threshold when there are several.
+- A row of `newdata` that gives the model a covariate that isn't finite has `NA`
+predictions, with a warning, as a row with missing values has. `log(0)` gave a
+prevalence of exactly 0 and `log(-1)` an error about missing values in an
+object of `model.frame()`. The indicators of `assess_extrapolation()` are `NA`
+there too. A row of `standardise` that gives such a covariate stops.
+- An offset that is zero at every record of the data is added in `newdata`. It
+was ignored with a warning.
+- The column of an exceedance probability is named by its own threshold, as the
+help says, so `thresholds = c(0.2, 0.25)` gives `response_exceedance_0.2` and
+not `response_exceedance_0.20`. Two thresholds never share a column.
+- `plot_prediction()` finds a threshold that differs from one of the prediction's
+by rounding, as `seq(0.1, 0.5, 0.1)[3]` does from 0.3.
+- The help of `predict()` and the error for `include = "nugget"` at the observed
+locations say that a Gaussian prediction there is of the spatial process without
+the nugget, as at new locations, and that `fitted()` includes the nugget. They
+said that the nugget was included, which holds for the conditional samples of
+the other families. The predictions are unchanged.
+- `messages = FALSE` silences the messages of `predict()` on the projection of
+`newdata` and `boundaries`. The message on grid points that are counted whole
+(#214) still shows, since it is about the result.
+- Polygons that overlap once projected, because one has a vertex on the edge of
+its neighbour in longitude and latitude, are no longer refused. They are
+projected again with vertices added along their edges, so that the edges stay
+together and no cell counts in two polygons. An overlap of up to a millionth of
+the smaller polygon is rounding. Real overlaps and repeated polygons still stop,
+and polygons that don't overlap when projected are projected as before.
+- `assess_extrapolation()` computes the leverage from the QR decomposition of the
+design, so `el + I(el^2) + I(el^3)` is no longer reported as singular. Other
+leverages change in the last digits.
 
 ## Cross validation
 

@@ -59,7 +59,8 @@ unexplained by the data, \eqn{v(x)}.}
 \item{extrapolation}{Factor with levels \code{"Supported"}, \code{"Spatial"},
 \code{"Covariate"} and \code{"Spatial and covariate"}.}
 }
-Rows with missing covariates have missing indicators. The attribute
+Rows with missing covariates, or with ones that give the model a covariate
+that isn't finite, such as \code{log(0)}, have missing indicators. The attribute
 \code{spatial_threshold} holds the threshold used, and \code{covariate_ranges} the
 range of each covariate in the data. Map the result with
 \code{\link[=plot_extrapolation]{plot_extrapolation()}}, or \code{plot()}, which does the same.

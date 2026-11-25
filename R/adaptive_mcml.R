@@ -652,7 +652,7 @@ make_adaptive_mcml_engine <- function(
   n_dim_re <- if (!n_re) integer() else if (integrated) {
     as.integer(plan$sampled_levels)
   } else {
-    apply(ID_re, 2L, max)
+    unname(apply(ID_re, 2L, max))
   }
   layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
                            family_parameters = estimated_family, n_re = n_re)

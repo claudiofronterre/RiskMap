@@ -321,7 +321,12 @@ format_prediction <- function(x) {
   draws <- if (!is.null(x$joint)) {
     paste0(", with ", if (isTRUE(x$joint)) "joint" else "marginal", " draws")
   }
-  quantities <- unique(c("response", x$transform, "link", "spatial"))
+  # The components have no exceedance probabilities and no CV.
+  components <- if (!length(x$summaries) ||
+                    any(!x$summaries %in% c("cv", "exceedance"))) {
+    c("link", "spatial")
+  }
+  quantities <- unique(c("response", x$transform, components))
   settings <- c(
     Quantities = paste(quantities, collapse = ", "),
     Summaries = if (length(x$summaries)) paste(x$summaries, collapse = ", "),
@@ -332,8 +337,13 @@ format_prediction <- function(x) {
       paste(x$aggregate, collapse = ", ")
     }
   )
-  map <- paste0("`plot(x, summaries = \"", default_prediction_summary(x),
-                "\")` maps it",
+  summary <- default_prediction_summary(x)
+  map <- paste0("`plot(x, summaries = \"", summary, "\"",
+                if (identical(summary, "exceedance") &&
+                    length(x$thresholds) > 1L) {
+                  paste0(", thresholds = ", x$thresholds[1L])
+                },
+                ")` maps it",
                 if (!is.null(x$boundaries)) {
                   ", and `spatial_scale = \"both\"` adds the areas"
                 }, ".")
@@ -500,8 +510,8 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       abort_input("{.arg x} has no summary {.val {summary}} of {.val {quantity}} aggregated by {.val {aggregate}}.", arg = "quantity")
     }
     if (identical(summary, "exceedance")) {
-      threshold <- select_prediction_plot_value(
-        threshold, unique(candidates$threshold), "thresholds"
+      threshold <- select_prediction_threshold(
+        threshold, unique(candidates$threshold)
       )
       candidates <- candidates[candidates$threshold == threshold, ,
                                drop = FALSE]
@@ -527,10 +537,8 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     available_thresholds <- as.numeric(sub(
       paste0("^", quantity, "_exceedance_"), "", available
     ))
-    threshold <- select_prediction_plot_value(
-      threshold, available_thresholds, "thresholds"
-    )
-    available[[which.min(abs(available_thresholds - threshold))]]
+    threshold <- select_prediction_threshold(threshold, available_thresholds)
+    available[[match(threshold, available_thresholds)]]
   } else {
     if (!is.null(threshold)) {
       abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
@@ -559,6 +567,23 @@ select_prediction_plot_value <- function(value, available, argument) {
     abort_input("{.arg {argument}} must be one of {.or {.val {available}}}.", arg = argument)
   }
   value
+}
+
+#' Choose a threshold among those of the prediction
+#'
+#' The nearest one, when it differs from `value` by rounding only, as
+#' `seq(0.1, 0.5, 0.1)[3]` from 0.3, or as a threshold from its label in the
+#' names of the columns, which has seven digits.
+#' @noRd
+select_prediction_threshold <- function(value, available) {
+  if (is.numeric(value) && length(value) == 1L && is.finite(value)) {
+    nearest <- available[which.min(abs(available - value))]
+    if (length(nearest) &&
+        abs(nearest - value) <= 1e-6 * max(abs(nearest), abs(value))) {
+      return(nearest)
+    }
+  }
+  select_prediction_plot_value(value, available, "thresholds")
 }
 
 #' What a map shows, which determines its default colours
