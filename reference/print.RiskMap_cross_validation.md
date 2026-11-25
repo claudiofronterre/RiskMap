@@ -1,13 +1,7 @@
-# Print the Results of a Spatial Cross-Validation
+# Print a cross-validation
 
-Print method for objects of class `"RiskMap_cross_validation"` from
-[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
-It gives the models, the test sets, how the parameters were set and the
+Gives the models, the test sets, how the parameters were set and the
 scores of each model over all test observations.
-[`summary.RiskMap_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md)
-gives the scores of each test set, and
-[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
-maps the scores at the test locations or draws the calibration curve.
 
 ## Usage
 
@@ -20,7 +14,8 @@ print(x, ...)
 
 - x:
 
-  An object of class `"RiskMap_cross_validation"`.
+  The result of
+  [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
 
 - ...:
 
@@ -30,3 +25,10 @@ print(x, ...)
 ## Value
 
 Invisibly returns `x`.
+
+## See also
+
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md)
+compares the models with one of them, and
+[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+draws the calibration and the scores.

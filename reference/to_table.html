@@ -39,7 +39,7 @@ Quarto, R Markdown, HTML, LaTeX and the R console."><meta property="og:image" co
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Format RiskMap Results as a Table</h1>
-      <small class="dont-index">Source: <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/auxiliary.R" class="external-link"><code>R/auxiliary.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/auxiliary.R" class="external-link"><code>R/auxiliary.R</code></a>, <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/cross_validation.R" class="external-link"><code>R/cross_validation.R</code></a></small>
       <div class="d-none name"><code>to_table.Rd</code></div>
     </div>
 
@@ -59,14 +59,14 @@ Quarto, R Markdown, HTML, LaTeX and the R console.</p>
 <span><span class="co"># S3 method for class 'summary.RiskMap'</span></span>
 <span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
+<span><span class="co"># Default S3 method</span></span>
+<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, <span class="va">...</span><span class="op">)</span></span>
+<span></span>
 <span><span class="co"># S3 method for class 'RiskMap_cross_validation'</span></span>
-<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
+<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, reference <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'summary.RiskMap_cross_validation'</span></span>
-<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Default S3 method</span></span>
-<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">to_table</span><span class="op">(</span><span class="va">object</span>, digits <span class="op">=</span> <span class="fl">3</span>, col_names <span class="op">=</span> <span class="cn">NULL</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -93,6 +93,12 @@ used to display numeric results. Small values get more (see Details).</p></dd>
 <dt id="arg-col-names">col_names<a class="anchor" aria-label="anchor" href="#arg-col-names"></a></dt>
 <dd><p>Optional column names, replacing the default headers.</p></dd>
 
+
+<dt id="arg-reference">reference<a class="anchor" aria-label="anchor" href="#arg-reference"></a></dt>
+<dd><p>For a cross-validation, optional name of the model that the
+others are compared with, as in its
+<a href="summary.RiskMap_cross_validation.html">summary()</a>.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
@@ -117,8 +123,10 @@ intervals,</p></li>
 <li><p>the variances of the random effects,</p></li>
 <li><p>the parameters of the family that were estimated, such as the
 measurement error variance of a Gaussian model.</p></li>
-</ul><p>The table of a cross-validation or its summary has a row for each model
-compared, with its scores, such as the CRPS and SCRPS.</p>
+</ul><p>The table of a cross-validation or its summary has a row for each model,
+with its scores, their differences from a <code>reference</code> model with their
+standard errors in brackets, and its <code>PIT_area</code> with the limit of a correct
+model.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

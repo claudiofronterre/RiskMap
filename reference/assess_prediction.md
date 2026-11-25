@@ -1,44 +1,27 @@
-# Assess Predictive Performance via Spatial Cross-Validation
+# Assess predictions by cross-validation
 
-This function evaluates the predictive performance of spatial models
-fitted to `RiskMap` objects using cross-validation. It supports two
-classes of diagnostic tools:
+Compares the predictions of one or more models with observations left
+out of the data. Each test set is predicted from its training set, and
+every test observation is scored against its predictive distribution.
 
-- **Scoring rules**, the Continuous Ranked Probability Score (CRPS) and
-  its scaled version (SCRPS) of Bolin and Wallin (2023), which measure
-  both the sharpness and the calibration of the predictive
-  distributions. Both are losses, so lower values are better.
+- **Scoring rules**, the continuous ranked probability score (CRPS) and
+  the scaled CRPS (SCRPS) of Bolin and Wallin (2023), measure the
+  sharpness and the calibration of the predictive distributions
+  together. Both are losses, so lower values are better.
 
-- **Calibration diagnostics**, based on the Probability Integral
-  Transform (PIT) for Gaussian outcomes, the average nonrandomized PIT
-  (AnPIT) curve for discrete outcomes (e.g., Poisson or Binomial), and
-  the area between the PIT/AnPIT curve and the diagonal (Giorgi *et al.*
-  2026).
-
-Cross-validation can be performed using either spatial clustering,
-regularized subsampling with a minimum inter-point distance or a
-user-defined test set. For each fold or subset, models can be refitted
-or evaluated with fixed parameters, offering flexibility in model
-validation.
-[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
-or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
-result, maps the scores and draws the calibration curves.
+- **Calibration** is assessed with the probability integral transform
+  (PIT) of Gaussian outcomes and its nonrandomised version for counts,
+  through the area between the calibration curve and the identity line
+  (Giorgi *et al.* 2026).
 
 ## Usage
 
 ``` r
 assess_prediction(
   models,
-  method,
-  fold = NULL,
-  min_dist = NULL,
-  size = NULL,
-  user_split = NULL,
-  iter = 1,
-  metrics = c("PIT", "CRPS", "SCRPS"),
-  keep_par_fixed = TRUE,
+  test_sets,
+  refit = FALSE,
   control_mcmc = set_control_mcmc(),
-  plot_fold = FALSE,
   seed = NULL,
   messages = getOption("RiskMap.messages", TRUE),
   ...
@@ -49,105 +32,38 @@ assess_prediction(
 
 - models:
 
-  A list of `RiskMap` objects, each a model fitted with
-  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-  to the same data. Names of the list name the models in the results.
+  A fit from
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
+  or a list of fits to the same data. The names of the list name the
+  models in the results.
 
-- method:
+- test_sets:
 
-  The cross-validation method, `"cluster"`, `"regularized"` or `"user"`.
+  The test sets, from
+  [`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md),
+  or a list with one element for each test set, the row numbers of its
+  test observations or a list of the training rows, `train`, and the
+  test rows, `test`.
 
-  - `"cluster"` makes the test sets by spatial clustering, with
-    `spatial_clustering_cv()` of the spatialsample package, which must
-    be installed.
+- refit:
 
-  - `"regularized"` selects a subsample of the locations by imposing the
-    minimum distance `min_dist` between randomly selected locations,
-    with `subsample.distance()` of the spatialEco package, which must be
-    installed.
-
-  - `"user"` takes the test sets given in `user_split`.
-
-- fold:
-
-  Integer; required when `method = "cluster"` - number of folds for
-  cross-validation.
-
-- min_dist:
-
-  Numeric; required when `method = "regularized"`. The minimum distance
-  between the locations of a test set, in the distance units of the fits
-  (`distance_units` in
-  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)),
-  for example kilometres for fits in kilometres.
-
-- size:
-
-  Integer; the size of the test set, required when
-  `method = "regularized"`.
-
-- user_split:
-
-  Required when `method = "user"`. A user-defined cross-validation
-  split. Either:
-
-  - a matrix with `nrow = n` (number of observations) and one column for
-    each test set, where entries of `1` indicate membership in the test
-    set and `0` in the training set; or
-
-  - a list with one element for each test set, each either a vector of
-    indices of the dataset to use as the test set, or a list with
-    components `in_id` (training indices) and `out_id` (test indices).
-
-- iter:
-
-  Integer; number of times to repeat the cross-validation with
-  `method = "cluster"` or `"regularized"`. Defaults to `1`. With
-  `method = "user"` the number of test sets is that of `user_split`, so
-  `iter` need not be given.
-
-- metrics:
-
-  Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"PIT"`, to
-  specify the predictive performance metrics to compute. `"PIT"`
-  computes the PIT for Gaussian models or the AnPIT curve for discrete
-  models, and also `PIT_area`, the area between the calibration curve of
-  all test observations and the diagonal, with its expected value under
-  perfect calibration. Defaults to all metrics.
-
-- keep_par_fixed:
-
-  Logical. If `TRUE` (the default), the parameters are fixed at the
-  estimates of the fitted model, which used all the data, and only the
-  predictions are conditioned on the training set. If `FALSE`, each
-  model is re-estimated on each training set, which costs one fit per
-  test set and model. Fixed parameters are much faster, and with many
-  locations and few parameters the scores change little. The test
-  observations still contribute to the fixed estimates, however, so the
-  scores are optimistic, and more so for models with more parameters.
-  Use `FALSE` to compare models with different numbers of parameters.
-  The choice is stored in the result and printed by
-  [`summary()`](https://rdrr.io/r/base/summary.html).
+  Logical, whether the parameters are estimated again in each training
+  set. If `FALSE` (the default), they are fixed at the estimates from
+  all the data, and only the predictions are conditioned on the training
+  set. See Details.
 
 - control_mcmc:
 
-  Control settings for simulation, an output from
+  Control settings of the predictive draws, from
   [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
-
-- plot_fold:
-
-  Logical; whether to draw the training and test sets of each split
-  while the assessment runs. Defaults to `FALSE`.
 
 - seed:
 
   Optional non-negative integer that makes the assessment reproducible.
-  It sets the random splits for `method = "cluster"` and
-  `method = "regularized"`, and a seed for each test set, which is
-  passed to
+  It sets a seed for each test set, which is passed to
   [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
   when the models are refitted and to
-  [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
+  [predict()](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
   All models share the seed of a test set, so that their predictions use
   common random numbers. The caller's random number state is restored on
   exit. When `NULL` (the default), the seeds are drawn from the
@@ -162,44 +78,43 @@ assess_prediction(
 
 - ...:
 
-  Additional arguments passed to clustering or subsampling functions.
+  Not used, and an error if given, so that a misspelt or former argument
+  such as `method` is not ignored.
 
 ## Value
 
-A list of class `RiskMap_cross_validation`, containing:
+A list of class `RiskMap_cross_validation`, containing
 
-- test_set:
+- scores:
 
-  A list of test sets used for validation, each of class `'sf'`.
+  A data frame with one row for each model and test observation.
+  `model`, `test_set` and `row` identify it, with `row` the row of the
+  data, `CRPS` and `SCRPS` are its scores, and `pit_lower` and
+  `pit_upper` are its predictive distribution function just below the
+  observation and at the observation, which are equal for Gaussian
+  models.
 
-- model:
+- calibration:
 
-  A named list, one per model, each containing:
+  A list with `area`, a data frame with one row for each model, its
+  `PIT_area`, `PIT_area_expected` and `PIT_area_limit`, `curves`, a data
+  frame with the calibration curve of each model and the 95% joint band
+  of a correct model (`lower` and `upper`) at probability levels `u`,
+  and `simulated`, the simulated curves the band comes from, a matrix
+  for each model with a row for each simulation and a column for each
+  level `u`.
 
-  metric
+- test_sets:
 
-  :   A list with the CRPS and SCRPS of each test observation, one
-      element per test set, if requested.
+  The test sets, of class `RiskMap_test_sets`.
 
-  PIT
+- refit:
 
-  :   (if `family = "gaussian"` and `metrics` includes `"PIT"`) A list
-      of PIT values for test data.
+  The value of `refit`.
 
-  AnPIT
+- family:
 
-  :   (if `family` is discrete and `metrics` includes `"PIT"`) A list of
-      AnPIT curves for test data.
-
-  PIT_area, PIT_area_expected
-
-  :   (if `metrics` includes `"PIT"`) The area between the calibration
-      curve of all test observations and the diagonal, and its expected
-      value under perfect calibration.
-
-- keep_par_fixed:
-
-  The value of `keep_par_fixed`.
+  The family of each model.
 
 - failures:
 
@@ -207,7 +122,42 @@ A list of class `RiskMap_cross_validation`, containing:
   prediction or scores failed, with columns `model`, `test_set` and
   `message`. The scores of these test sets are `NA`.
 
-## Details
+## Fixed and refitted parameters
+
+Fixed parameters are much faster, and with many locations and few
+parameters the scores change little. The test observations still
+contribute to the fixed estimates, however, so the scores are
+optimistic, and more so for models with more parameters. Use
+`refit = TRUE` to compare models with different numbers of parameters.
+It costs one fit for each test set and model.
+
+## Predictive distributions
+
+The observations of a test set are predicted jointly, with the nugget
+and the random effects when the model has them. A random effect has its
+distribution given the training data, and a level that the training data
+don't have is drawn from the distribution of the random effect. The
+scores of an observation are those of its own predictive distribution,
+and the joint draws are for the reference of its calibration (see
+Calibration). Test observations with missing values in a variable used
+by any of the models are left out.
+
+The memory of a test set grows with the square of its number of
+locations and the time of its joint draws with the cube, so large
+datasets are better divided into more test sets.
+
+For a Gaussian model, the predictive distribution is Gaussian, with the
+mean and the standard deviation of the draws, which include the
+measurement error. The predictive distribution of a binomial, Poisson or
+negative binomial count \\Y\\ is the distribution of the family given
+the mean, averaged over the \\J\\ draws of the mean from its own
+predictive distribution, \$\$F(k) = \frac{1}{J} \sum\_{j=1}^{J} P(Y \le
+k \mid \mu_j), \quad k = 0, 1, 2, \ldots\$\$ Here \\\mu_j\\ is the
+\\j\\th draw of the prevalence or rate, and \\P(Y \le k \mid \mu_j)\\
+also depends on the denominator and, for a negative binomial model, on
+its size.
+
+## Scores
 
 Every score is a loss, so lower values are better. The CRPS is in the
 units of the response, which for binomial, Poisson and negative binomial
@@ -220,53 +170,91 @@ of Bolin and Wallin (2023), whose scores are higher for better
 predictions, so that the CRPS and the SCRPS share one orientation. The
 SCRPS can be negative.
 
-The predictive distribution of a binomial, Poisson or negative binomial
-count \\Y\\ is the distribution of the family given the mean, averaged
-over the \\J\\ draws of the mean from its own predictive distribution,
-\$\$F(k) = \frac{1}{J} \sum\_{j=1}^{J} P(Y \le k \mid \mu_j), \quad k =
-0, 1, 2, \ldots\$\$ Here \\\mu_j\\ is the \\j\\th draw of the prevalence
-or rate, and \\P(Y \le k \mid \mu_j)\\ also depends on the denominator
-and, for a negative binomial model, on its size. The scores come from
-\\F\\, with \$\$\mathrm{CRPS}(F, y) = \sum\_{k \ge 0} \[F(k) - 1(k \ge
-y)\]^2, \quad c = \sum\_{k \ge 0} F(k) \[1 - F(k)\],\$\$ and so does the
-calibration curve, from \\F(y - 1)\\ and \\F(y)\\. The scores of counts
-have no random step beyond the draws of the mean, as no counts are
-simulated for them. A model therefore gets the same scores whatever its
-position in `models`. Where counts above 100 are predicted, \\F\\ is
+For counts, \$\$\mathrm{CRPS}(F, y) = \sum\_{k \ge 0} \[F(k) - 1(k \ge
+y)\]^2, \quad c = \sum\_{k \ge 0} F(k) \[1 - F(k)\].\$\$ The scores of
+counts have no random step beyond the draws of the mean, as no counts
+are simulated for them. A model therefore gets the same scores whatever
+its position in `models`. Where counts above 100 are predicted, \\F\\ is
 computed on a grid of counts and is linear in between. The grid is fine
 enough for a relative error of about \\10^{-4}\\ or less in the CRPS and
 in \\c\\.
 
-`PIT_area` is the area between the calibration curve and the diagonal,
-from 0 for a perfectly calibrated curve to at most 0.5. It is computed
-once, from the curve of all test observations together, which is the
-average of the curves of the test sets weighted by their sizes. Even a
-perfectly calibrated model has a positive area, which shrinks as the
-number of test observations grows (about \\0.31/\sqrt{n}\\ for \\n\\
-observations). `PIT_area_expected` gives that area for the test
-observations at hand, as the mean over 200 sets of observations
-simulated from their own predictive distributions. An observation in
-several test sets is simulated once and scored under each, as the
-observed value is. A `PIT_area` well above `PIT_area_expected` points to
-miscalibration.
+## Calibration
 
-A failed refit or prediction does not stop the assessment: the scores of
+The calibration curve of \\n\\ test observations is \$\$\frac{1}{n}
+\sum\_{i=1}^{n} G_i(u), \quad 0 \le u \le 1.\$\$ For a Gaussian outcome,
+\\G_i(u)\\ is 1 if \\F_i(y_i) \le u\\ and 0 otherwise, so the curve is
+the empirical distribution function of the PIT values. For a count it is
+the average nonrandomised PIT (AnPIT), with \\G_i(u)\\ equal to 0 up to
+\\F_i(y_i - 1)\\, to 1 from \\F_i(y_i)\\, and linear in between (Czado
+*et al.* 2009). `PIT_area` is the area between the curve and the
+identity line, from 0 for a perfectly calibrated curve to at most 0.5.
+
+## How to read the area
+
+The area of a correct model is not zero, because its observations are
+finite in number, and because neighbouring test observations are above
+or below their predictions together. Its distribution is found by
+simulation.
+
+1.  Test observations are drawn from the model, jointly for each test
+    set from its joint predictive distribution, once for each of 999
+    draws of `control_mcmc`, evenly spaced, or for every draw if there
+    are fewer. An observation in several test sets has the same PIT
+    value in all of them, the one drawn in its first test set.
+
+2.  Each draw gives a calibration curve and an area, computed as for the
+    data.
+
+3.  `PIT_area_expected` is the mean of these areas, and `PIT_area_limit`
+    the value that 95% of them are below, which needs at least 19 draws.
+    The band of
+    [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+    is the joint envelope of the curves, computed as in
+    [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md),
+    which the whole curve of a correct model is inside with a
+    probability of 95%.
+
+An area below `PIT_area_limit` is one that a correct model would give,
+and an area above it points to miscalibration. Below the limit, a
+smaller area, or one closer to `PIT_area_expected`, doesn't mean a
+better model. It mostly reflects chance, the number of observations and
+the dependence between them, so the areas of models shouldn't be ranked.
+The CRPS and the SCRPS are for comparing models. The area is also not
+sensitive to every departure. Too many observations in both tails change
+it little, and the curve and the histogram of
+[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+show them.
+
+The simulation draws from the model with its parameters at the values
+used for the prediction, and it treats the test sets as independent,
+although their prediction errors are not. A test observation is
+predicted from neighbours that are predicted in other test sets, so
+their errors partly cancel. The areas of a correct model therefore tend
+to be smaller than the simulated ones, more so with leave-one-out and
+random test sets and with repeated divisions, and most with
+leave-one-out for binary outcomes. The limit and the band are cautious
+there, so a curve inside the band is not evidence of good calibration.
+
+## Failures
+
+A failed refit or prediction does not stop the assessment. The scores of
 that test set are missing and a warning reports the failures. So are
 those of a test set of counts that can't be scored, because a draw of
 the mean is not finite, is outside the range of the family or gives
 counts above \\2^{53}\\, or because a binomial denominator is not a
-whole number. Test observations with missing values in a variable used
-by any of the models are left out. The predictive distributions of the
-test observations do not yet include random effects, so the scores of
-models with
-[`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-terms are not reliable, and a warning says so.
+whole number.
 
 ## References
 
 Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
 proper scoring rules. *Statistical Science*, 38(1), 140–159.
 [doi:10.1214/22-STS864](https://doi.org/10.1214/22-STS864) .
+
+Czado, C., Gneiting, T., & Held, L. (2009). Predictive model assessment
+for count data. *Biometrics*, 65(4), 1254–1261.
+[doi:10.1111/j.1541-0420.2009.01191.x](https://doi.org/10.1111/j.1541-0420.2009.01191.x)
+.
 
 Giorgi, E., Fronterre, C. & Diggle, P. J. (2026). A decay-adjusted
 spatio-temporal model to account for the impact of mass drug
@@ -277,7 +265,8 @@ Society*.[doi:10.1093/jrsssa/qnag100](https://doi.org/10.1093/jrsssa/qnag100)
 
 ## See also
 
-The methods for a cross-validation are
+[`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md)
+makes the test sets. The methods for a cross-validation are
 [print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_cross_validation.md),
 [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md),
 [`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
@@ -289,120 +278,54 @@ result also calls.
 ## Examples
 
 ``` r
-
 data(italy_sim)
+example_data <- italy_sim[1:100, ]
+fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+             messages = FALSE)
+covariate_fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
+                       family = "gaussian", messages = FALSE)
 
-fit <- glgpm(
-  formula = y ~ gp(),
-  data = italy_sim[1:100,],
-  family = "gaussian",
-  messages = FALSE
+test_sets <- create_test_sets(example_data, method = "cluster",
+                              n_sets = 5, seed = 1)
+result <- assess_prediction(
+  list(intercept = fit, covariate = covariate_fit),
+  test_sets,
+  seed = 1
 )
-
-# user method with a matrix
-cross_validation <-
-  assess_prediction(
-  list(fit),
-  method = "user",
-  user_split = matrix(
-    sample(c(rep(1, 50), rep(0, 50))),
-    ncol = 1)
-  )
 #> ℹ Parameters are fixed at the estimates from all the data.
-#> ℹ Set `keep_par_fixed = FALSE` to re-estimate them in each training set.
-
-summary(cross_validation)
+#> ℹ Set `refit = TRUE` to re-estimate them in each training set.
+#> ! The models have different numbers of parameters. With fixed parameters the
+#>   comparison tends to favour the model with more of them, so `refit = TRUE` is
+#>   recommended.
+summary(result, reference = "intercept")
 #> ── Cross-validation scores ─────────────────────────────────────────────────────
 #> Parameters are fixed at the estimates from all the data.
 #> 
-#> Scores over all test observations
-#>    Model   CRPS  SCRPS PIT_area PIT_area_expected
-#>  Model 1 0.3271 0.8130   0.0441            0.0427
-#> ℹ Lower is better for every score. The CRPS is in the units of the response,
-#>   counts for binomial, Poisson and negative binomial models. PIT_area_expected
-#>   is the PIT_area of a perfectly calibrated model on these test observations.
-#> 
-#> By test set
-#>    Model Test set   CRPS  SCRPS
-#>  Model 1        1 0.3271 0.8130
+#> Scores over 100 test observations
+#>      Model   CRPS  CRPS difference  SCRPS SCRPS difference PIT area  Limit
+#>  intercept 1.2588                  1.4610                    0.0669 0.2084
+#>  covariate 0.4087 -0.8501 (0.0694) 0.8992 -0.5618 (0.0380)   0.0199 0.1489
+#> ℹ Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
+#>   response.
+#> ℹ The PIT area of a correct model is below the limit with a probability of 95%.
+#> ℹ Differences are from intercept, and negative ones are in favour of the other
+#>   model. Their standard errors, in brackets, treat the observations as
+#>   independent.
+plot_cross_validation(result)
 
-# user method with a list
-cross_validation <-
-  assess_prediction(
-  list(fit),
-  method = "user",
-  user_split = list(
-    sample(100, 50))
-  )
+
+# Test sets given as rows of the data
+result <- assess_prediction(fit, list(1:50, 51:100), seed = 1)
 #> ℹ Parameters are fixed at the estimates from all the data.
-#> ℹ Set `keep_par_fixed = FALSE` to re-estimate them in each training set.
-
-summary(cross_validation)
+#> ℹ Set `refit = TRUE` to re-estimate them in each training set.
+summary(result)
 #> ── Cross-validation scores ─────────────────────────────────────────────────────
 #> Parameters are fixed at the estimates from all the data.
 #> 
-#> Scores over all test observations
-#>    Model   CRPS  SCRPS PIT_area PIT_area_expected
-#>  Model 1 0.2481 0.6520   0.0424            0.0455
-#> ℹ Lower is better for every score. The CRPS is in the units of the response,
-#>   counts for binomial, Poisson and negative binomial models. PIT_area_expected
-#>   is the PIT_area of a perfectly calibrated model on these test observations.
-#> 
-#> By test set
-#>    Model Test set   CRPS  SCRPS
-#>  Model 1        1 0.2481 0.6520
-
-# cluster method, which needs spatialsample
-if (requireNamespace("spatialsample", quietly = TRUE)) {
-  cross_validation <-
-    assess_prediction(
-      list(fit),
-      method = "cluster",
-      fold = 2
-    )
-  summary(cross_validation)
-}
-#> ℹ Parameters are fixed at the estimates from all the data.
-#> ℹ Set `keep_par_fixed = FALSE` to re-estimate them in each training set.
-#> ── Cross-validation scores ─────────────────────────────────────────────────────
-#> Parameters are fixed at the estimates from all the data.
-#> 
-#> Scores over all test observations
-#>    Model   CRPS  SCRPS PIT_area PIT_area_expected
-#>  Model 1 1.2393 1.4537   0.0695            0.0318
-#> ℹ Lower is better for every score. The CRPS is in the units of the response,
-#>   counts for binomial, Poisson and negative binomial models. PIT_area_expected
-#>   is the PIT_area of a perfectly calibrated model on these test observations.
-#> 
-#> By test set
-#>    Model Test set   CRPS  SCRPS
-#>  Model 1        1 2.1992 1.8316
-#>  Model 1        2 0.9994 1.3592
-
-# regularized method, which needs spatialEco
-if (requireNamespace("spatialEco", quietly = TRUE)) {
-  cross_validation <-
-    assess_prediction(
-      list(fit),
-      method = "regularized",
-      size = 5,
-      min_dist = 1
-    )
-  summary(cross_validation)
-}
-#> ℹ Parameters are fixed at the estimates from all the data.
-#> ℹ Set `keep_par_fixed = FALSE` to re-estimate them in each training set.
-#> ── Cross-validation scores ─────────────────────────────────────────────────────
-#> Parameters are fixed at the estimates from all the data.
-#> 
-#> Scores over all test observations
-#>    Model   CRPS  SCRPS PIT_area PIT_area_expected
-#>  Model 1 0.9860 1.3465   0.1312            0.0477
-#> ℹ Lower is better for every score. The CRPS is in the units of the response,
-#>   counts for binomial, Poisson and negative binomial models. PIT_area_expected
-#>   is the PIT_area of a perfectly calibrated model on these test observations.
-#> 
-#> By test set
-#>    Model Test set   CRPS  SCRPS
-#>  Model 1        1 0.9860 1.3465
+#> Scores over 100 test observations
+#>    Model   CRPS  SCRPS PIT area  Limit
+#>  Model 1 1.2660 1.4532   0.0511 0.1937
+#> ℹ Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
+#>   response.
+#> ℹ The PIT area of a correct model is below the limit with a probability of 95%.
 ```

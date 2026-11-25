@@ -87,14 +87,14 @@ ess[1, ]
 #> # A tibble: 1 × 3
 #>   effect    index   ess
 #>   <chr>     <int> <dbl>
-#> 1 mean of S    NA 1276.
+#> 1 mean of S    NA 1615.
 head(ess[order(ess$ess), ], 5)
 #> # A tibble: 5 × 3
 #>   effect index   ess
 #>   <chr>  <int> <dbl>
-#> 1 S         19 1165.
-#> 2 S         80 1243.
-#> 3 S         55 1254.
-#> 4 S          4 1258.
-#> 5 S          5 1263.
+#> 1 S         78 1217.
+#> 2 S         57 1222.
+#> 3 S         41 1253.
+#> 4 S         33 1255.
+#> 5 S         44 1279.
 ```

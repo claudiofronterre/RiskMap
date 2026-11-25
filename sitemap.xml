@@ -16,6 +16,7 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/create_convex_hull.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/create_grid.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/crs_distortion.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/elogit.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/fitted.RiskMap.html</loc></url>
@@ -44,6 +45,7 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_profile.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_test_sets.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/plot_variogram.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap.html</loc></url>
@@ -53,6 +55,7 @@
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_cross_validation.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_prediction.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_simulation_model.html</loc></url>
+<url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_test_sets.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_variogram.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap.html</loc></url>
 <url><loc>https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap_assess_simulation.html</loc></url>

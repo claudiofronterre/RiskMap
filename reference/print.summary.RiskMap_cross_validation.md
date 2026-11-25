@@ -1,7 +1,8 @@
-# Print Summary of RiskMap Spatial Cross-Validation Scores
+# Print the summary of a cross-validation
 
-This function prints the matrix of cross-validation scores produced by
-`summary.RiskMap_cross_validation` in a readable format.
+Prints the scores of each model averaged over all test observations,
+with what they mean, from
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md).
 
 ## Usage
 
@@ -14,19 +15,14 @@ print(x, ...)
 
 - x:
 
-  An object of class `"summary.RiskMap_cross_validation"`, typically the
-  output of `summary.RiskMap_cross_validation`.
+  A summary of class `summary.RiskMap_cross_validation`.
 
 - ...:
 
   Not used, and an error if given, so that a misspelt argument is not
-  ignored.
+  ignored. Some columns of the summary print as a data frame, and the
+  arguments go to its print method.
 
 ## Value
 
 Invisibly returns `x`.
-
-## Details
-
-This method prints the scores of each model averaged over all test
-observations, with what they mean, and the scores of each test set.

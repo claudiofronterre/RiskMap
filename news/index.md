@@ -22,7 +22,7 @@ in the source repository.
 | `pred_over_grid()`, `pred_target_grid()`, `update_predictors()` | [`predict()`](https://rdrr.io/r/stats/predict.html), with every predictor in `newdata` |
 | `pred_target_shp()` | `predict(boundaries, aggregate)` |
 | [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of `pred_target_grid()` and `pred_target_shp()` results | [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md), or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of a [`predict()`](https://rdrr.io/r/stats/predict.html) result |
-| `assess_pp()` | [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md), which takes `models`, `size`, `metrics` and `control_mcmc` for `object`, `n_size`, `which_metric` and `control_sim`, and `"PIT"` for `"AnPIT"` |
+| `assess_pp()` | [`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md) for the test sets, and [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md), which takes `models`, `test_sets`, `refit` and `control_mcmc`. Every metric is computed |
 | `plot_score()`, `plot_AnPIT()` | [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md), or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of an [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md) result |
 | `assess_sim()` | [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md), which takes `simulation`, `target`, `aggregate`, `boundaries`, `label`, `objective` and `breaks` for `obj_sim`, `f_grid_target`, `f_area_target`, `shp`, `col_names`, `pred_objective` and `categories`, and `spatial_scale = "location"` for `"grid"` |
 | [`summary()`](https://rdrr.io/r/base/summary.html) of `assess_pp()` and `assess_sim()` results | [`summary()`](https://rdrr.io/r/base/summary.html) of [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md) and [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md) results |
@@ -130,12 +130,19 @@ in the source repository.
 #### Assessment and simulation
 
 - [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
-  compares models by spatial cross-validation. Every score is a loss, so
-  lower is better, and `PIT_area` is given once for all test
-  observations, next to its value under perfect calibration. Counts are
-  scored with their exact distribution given the draws of the mean,
-  where `assess_pp()` simulated them.
-  [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+  compares models by spatial cross-validation, on the test sets of
+  [`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md)
+  (leave-one-out, random, clusters or spaced), which
+  [`plot_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/plot_test_sets.md)
+  draws. Test sets are predicted jointly, with the random effects, and
+  counts are scored with their exact distribution given the draws of the
+  mean. Every score is a loss, so lower is better,
+  [`summary()`](https://rdrr.io/r/base/summary.html) gives the
+  differences from a reference model, and `PIT_area` is given with the
+  limit that a correct model is below with a probability of 95%.
+  [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+  draws the calibration with its 95% joint band, and maps the scores.
+- [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
   and
   [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
   simulate data and surfaces from a model, and
@@ -163,10 +170,8 @@ in the source repository.
   long computations show their progress
   ([`?riskmap_progress`](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md)),
   and `options(RiskMap.messages = FALSE)` silences the messages.
-- Packages that only some functions need, such as spatialsample and
-  spatialEco for some splits of
-  [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md),
-  ggspatial for north arrows and scale bars, and jsonlite for
+- Packages that only some functions need, such as ggspatial for north
+  arrows and scale bars, and jsonlite for
   [`get_worldpop()`](https://claudiofronterre.github.io/RiskMap/reference/get_worldpop.md),
   are suggested rather than imported, and those functions ask for them.
 - RiskMap needs R 4.5.0 or later.

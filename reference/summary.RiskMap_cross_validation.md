@@ -1,23 +1,26 @@
-# Summarize Cross-Validation Scores for Spatial RiskMap Models
+# Summarise a cross-validation
 
-This function summarizes cross-validation scores for different spatial
-models obtained from
-[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
+Gives the average scores of each model over all test observations, their
+differences from a reference model, and the areas of the calibration
+curves.
 
 ## Usage
 
 ``` r
 # S3 method for class 'RiskMap_cross_validation'
-summary(object, ...)
+summary(object, reference = NULL, ...)
 ```
 
 ## Arguments
 
 - object:
 
-  A `RiskMap_cross_validation` object containing cross-validation scores
-  for each model, as obtained from
+  The result of
   [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
+
+- reference:
+
+  Optional name of the model that the others are compared with.
 
 - ...:
 
@@ -26,28 +29,36 @@ summary(object, ...)
 
 ## Value
 
-A matrix of summary scores with models as rows and metrics as columns,
-with class `"summary.RiskMap_cross_validation"`.
+A data frame of class `summary.RiskMap_cross_validation` with one row
+for each model, named after it, and the columns `CRPS` and `SCRPS`,
+`PIT_area`, `PIT_area_expected` and `PIT_area_limit`, and, when
+`reference` is given, `CRPS_difference`, `CRPS_se`, `SCRPS_difference`
+and `SCRPS_se`. Its attributes include `reference`, `refit`, and for
+each model `n_observations`, the number of observations with scores, and
+`n_failed`, the number of failed test-set assessments.
 
 ## Details
 
-The function returns a matrix whose rows are the models and whose
-columns are the scores, `CRPS` and `SCRPS` averaged over all test
-observations that have a score, and `PIT_area` with `PIT_area_expected`,
-its value under perfect calibration, when calibration was assessed (see
+Lower is better for both scores, and a negative difference means a
+better score than that of the reference model. A `PIT_area` below
+`PIT_area_limit` is one that a correct model would give (see
 [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)).
-Lower is better for every score. The attributes of the result include
 
-- `test_set_means`, a list of the average scores of each test set and
-  model,
+An observation in several test sets is first given the average of its
+scores, so that it counts once. The scores of a model are then averaged
+over the observations. The differences from the reference are those of
+the observations that both models have scores for, and their standard
+error is the standard deviation of these differences divided by the
+square root of their number. It treats the observations as independent,
+so it is only approximate, and it is too small when the differences at
+neighbouring locations are alike.
 
-- `keep_par_fixed`, whether the parameters were fixed at the estimates
-  from all the data,
-
-- `n_failed`, the number of failed test-set assessments.
-
-Its print gives the averages and the scores of each test set.
+The scores of each test set are in the `scores` element of the result of
+[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
 
 ## See also
 
-[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md),
+and
+[`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
+for a table to render.

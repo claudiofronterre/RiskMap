@@ -326,14 +326,21 @@ scale of the response, at new locations or aggregated over areas.
 Assess the predictive performance of models by spatial cross-validation
 and on simulated data.
 
+- [`create_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/create_test_sets.md)
+  : Create test sets for cross-validation
+- [`print(`*`<RiskMap_test_sets>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_test_sets.md)
+  : Print test sets
+- [`plot_test_sets()`](https://claudiofronterre.github.io/RiskMap/reference/plot_test_sets.md)
+  [`plot(`*`<RiskMap_test_sets>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_test_sets.md)
+  : Plot test sets
 - [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
-  : Assess Predictive Performance via Spatial Cross-Validation
+  : Assess predictions by cross-validation
 - [`print(`*`<RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_cross_validation.md)
-  : Print the Results of a Spatial Cross-Validation
+  : Print a cross-validation
 - [`summary(`*`<RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md)
-  : Summarize Cross-Validation Scores for Spatial RiskMap Models
+  : Summarise a cross-validation
 - [`print(`*`<summary.RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap_cross_validation.md)
-  : Print Summary of RiskMap Spatial Cross-Validation Scores
+  : Print the summary of a cross-validation
 - [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
   [`plot(`*`<RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
   : Plot a cross-validation

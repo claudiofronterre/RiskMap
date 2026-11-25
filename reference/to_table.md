@@ -15,14 +15,14 @@ to_table(object, digits = 3, col_names = NULL, ...)
 # S3 method for class 'summary.RiskMap'
 to_table(object, digits = 3, col_names = NULL, ...)
 
+# Default S3 method
+to_table(object, ...)
+
 # S3 method for class 'RiskMap_cross_validation'
-to_table(object, digits = 3, col_names = NULL, ...)
+to_table(object, digits = 3, col_names = NULL, reference = NULL, ...)
 
 # S3 method for class 'summary.RiskMap_cross_validation'
 to_table(object, digits = 3, col_names = NULL, ...)
-
-# Default S3 method
-to_table(object, ...)
 ```
 
 ## Arguments
@@ -55,6 +55,12 @@ to_table(object, ...)
 - col_names:
 
   Optional column names, replacing the default headers.
+
+- reference:
+
+  For a cross-validation, optional name of the model that the others are
+  compared with, as in its
+  [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md).
 
 ## Value
 
@@ -90,8 +96,10 @@ The table of a fit or its summary has
 - the parameters of the family that were estimated, such as the
   measurement error variance of a Gaussian model.
 
-The table of a cross-validation or its summary has a row for each model
-compared, with its scores, such as the CRPS and SCRPS.
+The table of a cross-validation or its summary has a row for each model,
+with its scores, their differences from a `reference` model with their
+standard errors in brackets, and its `PIT_area` with the limit of a
+correct model.
 
 ## See also
 
