@@ -42,9 +42,10 @@ positive. The others take their automatic start, given as `start` by
 [`glgpm_parameters()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md).
 `regression` is the coefficient of the regression without the latent
 effects, `family_regression` the size of the negative binomial
-regression without them, `one` the value 1 and `distance_quantile` the
-10th percentile of the distances between the locations. A name the model
-lacks stops with the names it has.
+regression without them, `residual_variance` the variance of the
+residuals of a Gaussian model's regression, `one` the value 1 and
+`distance_quantile` the 10th percentile of the distances between the
+locations. A name the model lacks stops with the names it has.
 
 ## Held values
 

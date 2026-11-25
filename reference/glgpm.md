@@ -314,21 +314,25 @@ samples are drawn from separate streams derived from `seed`, so
 `glgpm(..., seed = fit$seed)` reproduces a fit exactly.
 
 Parameters not given in `start_pars` take RiskMap's defaults, which are
-the coefficients of the regression without latent effects, `sigma2 = 1`,
-`phi` at the 10th percentile of the distances between locations, 1 for
-an estimated nugget variance, a measurement error variance and the
-variance of each
+the coefficients of the regression without latent effects and `phi` at
+the 10th percentile of the distances between locations. In a Gaussian
+model every variance, that of the spatial process, of an estimated
+nugget, of the measurement error and of each
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-term, and for the size of a negative binomial model that of the
-regression without latent effects. A binomial, Poisson or negative
-binomial model with the canonical link and without
+term, starts at the variance of the residuals of that regression, and
+the model is fitted to those residuals divided by their standard
+deviation, so that a fit does not depend on the units of the response.
+In the other models the variances start at 1, and the size of a negative
+binomial model at that of the regression without latent effects. A
+binomial, Poisson or negative binomial model with the canonical link and
+without
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-terms compares them with the estimates of a Gaussian model fitted to the
-empirical link of the data (the empirical logit of a binomial model),
-with one observation per location, the totals of the location where it
-has several records, and starts from the one with the higher Laplace
-approximation of the likelihood. The values given in `start_pars`
-replace their own in both, and
+terms compares the defaults with the estimates of a Gaussian model
+fitted to the empirical link of the data (the empirical logit of a
+binomial model), with one observation per location, the totals of the
+location where it has several records, and starts from the one with the
+higher Laplace approximation of the likelihood. The values given in
+`start_pars` replace their own in both, and
 `set_control_mcml(start_comparison = FALSE)` skips the comparison. A
 start of `phi` far from the distances between the locations, below a
 hundredth of the smallest or above ten times the largest, gives a
@@ -472,7 +476,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.     0.438837    0.022556      8.5376
-#> Spatial corr. scale (km) 0.917141    0.000000         Inf
+#> Spatial corr. scale (km) 1.054947    0.000000         Inf
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Unstructured random effects
@@ -510,8 +514,8 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                            Estimate Lower limit Upper limit
 #> Spatial process var.     4.8494e+00  1.8196e+00      12.924
-#> Spatial corr. scale (km) 3.9015e+01  2.7773e+00     548.084
-#> Variance of the nugget   7.3615e-08  0.0000e+00         Inf
+#> Spatial corr. scale (km) 3.9015e+01  2.7773e+00     548.085
+#> Variance of the nugget   4.2815e-07  0.0000e+00         Inf
 #> 
 #> Log-likelihood   8.618636
 #> AIC             -7.237272
@@ -553,7 +557,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.       2.1220      0.9347      4.8173
-#> Spatial corr. scale (km) 102.1364     34.7202    300.4544
+#> Spatial corr. scale (km) 102.1364     34.7203    300.4540
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Log-likelihood  -2018.33

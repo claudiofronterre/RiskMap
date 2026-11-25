@@ -534,7 +534,7 @@ areal_prediction$boundary_summary
 #> 11           1      mean response    upper        NA 10.12747826
 #> 12           2      mean    fixed estimate        NA  9.36720129
 #> 13           2      mean   offset estimate        NA  0.00000000
-#> 14           2      mean  spatial     mean        NA  0.23741769
+#> 14           2      mean  spatial     mean        NA  0.23741768
 #> 15           2      mean  spatial    lower        NA  0.04597042
 #> 16           2      mean  spatial    upper        NA  0.43421385
 #> 17           2      mean     link     mean        NA  9.60461897

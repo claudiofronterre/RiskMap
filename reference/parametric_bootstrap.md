@@ -184,7 +184,7 @@ bootstrap
 #>                 Parameter Estimate Median     Bias Std. error Below
 #>               (Intercept)    9.986  10.04  0.06578     0.6331  0.50
 #>      Spatial process var.    2.554  1.443   -1.216     0.6673  1.00
-#>  Spatial corr. scale (km)    44.47  8.181    8.355      105.9  0.80
+#>  Spatial corr. scale (km)    44.47  8.297    8.477      105.8  0.80
 #>    Measurement error var.   0.2188 0.2093 -0.01434     0.0374  0.50
 #> ℹ Bias is the mean of the bootstrap estimates minus the estimate, and Below the
 #>   proportion of them below the estimate.
@@ -193,7 +193,7 @@ bootstrap
 #>                 Parameter Percentile lower Percentile upper BC lower BC upper
 #>               (Intercept)            8.982             10.9    8.982     10.9
 #>      Spatial process var.           0.3294             2.23       NA       NA
-#>  Spatial corr. scale (km)            2.809            286.1    3.457    344.9
+#>  Spatial corr. scale (km)            3.181            286.1    3.654    344.9
 #>    Measurement error var.           0.1593           0.2499   0.1593   0.2499
 #> ℹ NA means that every bootstrap estimate is on one side of the estimate, so the
 #>   BC interval is not available.
@@ -210,7 +210,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 # Ten simulations keep the example short. An analysis needs many more.
 bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 2026)
 #> ℹ Simulating and refitting 10 replicates.
-#> ✔ Done in 11 seconds. 10 of 10 refits succeeded.
+#> ✔ Done in 17 seconds. 10 of 10 refits succeeded.
 summary(bootstrap)
 #> ── Parametric bootstrap ────────────────────────────────────────────────────────
 #> Binomial geostatistical model, 10 replicates (seed 2026). Variances and the

@@ -302,12 +302,16 @@ The estimation samples and the final conditional samples are drawn from
 separate streams derived from <code>seed</code>, so <code>glgpm(..., seed = fit$seed)</code>
 reproduces a fit exactly.</p>
 <p>Parameters not given in <code>start_pars</code> take RiskMap's defaults, which are
-the coefficients of the regression without latent effects, <code>sigma2 = 1</code>,
-<code>phi</code> at the 10th percentile of the distances between locations, 1 for an
-estimated nugget variance, a measurement error variance and the variance of
-each <code><a href="re.html">re()</a></code> term, and for the size of a negative binomial model that of the
-regression without latent effects. A binomial, Poisson or negative binomial
-model with the canonical link and without <code><a href="re.html">re()</a></code> terms compares them with
+the coefficients of the regression without latent effects and <code>phi</code> at the
+10th percentile of the distances between locations. In a Gaussian model
+every variance, that of the spatial process, of an estimated nugget, of the
+measurement error and of each <code><a href="re.html">re()</a></code> term, starts at the variance of the
+residuals of that regression, and the model is fitted to those residuals
+divided by their standard deviation, so that a fit does not depend on the
+units of the response. In the other models the variances start at 1, and
+the size of a negative binomial model at that of the regression without
+latent effects. A binomial, Poisson or negative binomial model with the
+canonical link and without <code><a href="re.html">re()</a></code> terms compares the defaults with
 the estimates of a Gaussian model fitted to the empirical link of the data
 (the empirical logit of a binomial model), with one observation per
 location, the totals of the location where it has several records, and
@@ -434,7 +438,7 @@ parameters of a model before it is fitted, and <code><a href="set_control_mcml.h
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Spatial Gaussian process, Matern correlation with kappa = 0.5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                          Estimate Lower limit Upper limit</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Spatial process var.     0.438837    0.022556      8.5376</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 0.917141    0.000000         Inf</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 1.054947    0.000000         Inf</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Variance of the nugget effect fixed at 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Unstructured random effects</span></span>
@@ -472,8 +476,8 @@ parameters of a model before it is fitted, and <code><a href="set_control_mcml.h
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Spatial Gaussian process, Matern correlation with kappa = 0.5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                            Estimate Lower limit Upper limit</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Spatial process var.     4.8494e+00  1.8196e+00      12.924</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 3.9015e+01  2.7773e+00     548.084</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Variance of the nugget   7.3615e-08  0.0000e+00         Inf</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 3.9015e+01  2.7773e+00     548.085</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Variance of the nugget   4.2815e-07  0.0000e+00         Inf</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Log-likelihood</span>   8.618636</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">AIC           </span>  -7.237272</span>
@@ -515,7 +519,7 @@ parameters of a model before it is fitted, and <code><a href="set_control_mcml.h
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Spatial Gaussian process, Matern correlation with kappa = 0.5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                          Estimate Lower limit Upper limit</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Spatial process var.       2.1220      0.9347      4.8173</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 102.1364     34.7202    300.4544</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 102.1364     34.7203    300.4540</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Variance of the nugget effect fixed at 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Log-likelihood</span>  -2018.33</span>

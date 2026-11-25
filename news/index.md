@@ -67,6 +67,9 @@ in the source repository.
   holds any of them, or all, in which case
   [`predict()`](https://rdrr.io/r/stats/predict.html) works with the
   given values.
+- Gaussian fits no longer depend on the units of the response. With a
+  standard deviation far from 1, a fit could stop at a lower maximum of
+  the likelihood, often without spatial variance, or fail.
 - Data are `sf` objects. `distance_crs` and `distance_units` set the
   projection and the units of distances in every function that measures
   them, and
