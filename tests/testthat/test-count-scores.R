@@ -264,18 +264,13 @@ count_fit <- function(family, y, units_m, parameters = NULL,
 }
 
 mock_draws <- function(draws) {
-  function(object, newdata, ...) {
-    structure(list(
-      predictions = transform(newdata, fixed = 0, offset = 0),
-      samples = list(spatial = draws[newdata$x1, , drop = FALSE])
-    ), class = "RiskMap_prediction")
-  }
+  function(fit, newdata, control_mcmc, seed) draws[newdata$x1, , drop = FALSE]
 }
 
 test_that("assess_prediction() scores counts by the average distribution function", {
   set.seed(23)
   draws <- matrix(rnorm(4 * 500, -0.5, 0.7), 4)
-  local_mocked_bindings(predict.RiskMap = mock_draws(draws))
+  local_mocked_bindings(predict_test_set = mock_draws(draws))
   cases <- list(
     binomial = list(units_m = c(10, 1, 1, 30), y = c(3, 1, 0, 30),
                     parameters = NULL, mean = plogis),
@@ -284,12 +279,10 @@ test_that("assess_prediction() scores counts by the average distribution functio
     negative_binomial = list(units_m = c(1, 2, 0.5, 4), y = c(0, 9, 1, 3),
                              parameters = list(theta = 1.5), mean = exp)
   )
-  u <- seq(0, 1, length.out = 1000)
   for (family in names(cases)) {
     case <- cases[[family]]
     fit <- count_fit(family, case$y, case$units_m, case$parameters)
-    out <- assess_prediction(list(m = fit), method = "user",
-                             user_split = list(2:4), messages = FALSE)
+    out <- assess_prediction(list(m = fit), list(2:4), messages = FALSE)
     direct <- lapply(2:4, function(i) {
       every_count(family, case$y[i], case$units_m[i], case$mean(draws[i, ]),
                   case$parameters,
@@ -297,17 +290,26 @@ test_that("assess_prediction() scores counts by the average distribution functio
     })
     crps <- vapply(direct, `[[`, numeric(1), "crps")
     expected <- vapply(direct, `[[`, numeric(1), "expected")
-    metric <- out$model$m$metric
-    expect_equal(metric$CRPS[[1]], crps, tolerance = 1e-7, label = family)
-    expect_equal(metric$SCRPS[[1]], scaled_crps(crps, expected),
+    expect_equal(out$scores$CRPS, crps, tolerance = 1e-7, label = family)
+    expect_equal(out$scores$SCRPS, scaled_crps(crps, expected),
                  tolerance = 1e-5, label = family)
-    curves <- vapply(1:3, function(i) {
-      values <- c(0, direct[[i]]$values)[case$y[i + 1] + 1:2]
-      pmin(pmax((u - values[1]) / diff(values), 0), 1)
-    }, numeric(1000))
-    expect_equal(out$model$m$AnPIT[[1]], rowMeans(curves), tolerance = 1e-6,
+    ends <- vapply(1:3, function(i) {
+      c(0, direct[[i]]$values)[case$y[i + 1] + 1:2]
+    }, numeric(2))
+    expect_equal(out$scores$pit_lower, ends[1, ], tolerance = 1e-6,
                  label = family)
-    expect_equal(out$model$m$PIT_area, .anpit_area(rowMeans(curves), u),
+    expect_equal(out$scores$pit_upper, ends[2, ], tolerance = 1e-6,
+                 label = family)
+    curve <- function(u) {
+      rowMeans(apply(ends, 2, function(end) {
+        pmin(pmax((u - end[1]) / diff(end), 0), 1)
+      }))
+    }
+    curves <- out$calibration$curves
+    expect_equal(curves$curve, curve(curves$u), tolerance = 1e-6,
+                 label = family)
+    u <- seq(0, 1, length.out = 1001)
+    expect_equal(out$calibration$area$PIT_area, pit_area(t(curve(u)), u),
                  tolerance = 1e-6, label = family)
   }
 })
@@ -316,16 +318,15 @@ test_that("a rare event has a SCRPS", {
   # The prevalence is 10^-6 in every draw, so a count simulated for each draw
   # is 0 in every one of them, a distribution without spread.
   local_mocked_bindings(
-    predict.RiskMap = mock_draws(matrix(qlogis(1e-6), 2, 100))
+    predict_test_set = mock_draws(matrix(qlogis(1e-6), 2, 100))
   )
-  out <- assess_prediction(list(m = count_fit("binomial", c(0, 0), c(10, 10))),
-                           method = "user", user_split = list(2),
+  out <- assess_prediction(count_fit("binomial", c(0, 0), c(10, 10)), list(2),
                            messages = FALSE)
   values <- pbinom(0:10, 10, 1e-6)
   crps <- sum((values - 1)^2)
   expected <- sum(values * (1 - values))
-  expect_equal(out$model$m$metric$CRPS[[1]], crps)
-  expect_equal(out$model$m$metric$SCRPS[[1]], scaled_crps(crps, expected))
+  expect_equal(out$scores$CRPS, crps)
+  expect_equal(out$scores$SCRPS, scaled_crps(crps, expected))
 })
 
 test_that("a test set with a draw of the mean that isn't finite is a failure", {
@@ -339,19 +340,17 @@ test_that("a test set with a draw of the mean that isn't finite is a failure", {
                                              rep(1, 3), list(theta = 2)),
                binomial = count_fit("binomial", c(1, 2, 3), rep(5, 3),
                                     inverse = broken))
-  local_mocked_bindings(predict.RiskMap = mock_draws(draws))
+  local_mocked_bindings(predict_test_set = mock_draws(draws))
   for (name in names(fits)) {
     expect_no_warning(expect_warning(
-      out <- assess_prediction(fits[name], method = "user",
-                               user_split = list(1:2, 3), messages = FALSE),
+      out <- assess_prediction(fits[name], list(1:2, 3), messages = FALSE),
       "1 of 2 test-set assessments failed"
     ))
     expect_identical(out$failures$test_set, 1L)
     expect_match(out$failures$message,
                  "1 draw of the mean at 1 test observation isn't finite")
-    expect_identical(out$model[[name]]$metric$CRPS[[1]], c(NA_real_, NA_real_))
-    expect_true(is.finite(out$model[[name]]$metric$CRPS[[2]]))
-    expect_true(is.finite(out$model[[name]]$PIT_area))
+    expect_identical(is.finite(out$scores$CRPS), c(FALSE, FALSE, TRUE))
+    expect_true(is.finite(out$calibration$area$PIT_area))
   }
 })
 
@@ -371,8 +370,7 @@ test_that("a fit has the same count scores alone and in any position of a list",
                                    fixed_pars = list(theta = 2))
   )
   assess <- function(models, seed = fixture_seed) {
-    assess_prediction(models, method = "user",
-                      user_split = list(1:3, c(2, 5:7)),
+    assess_prediction(models, list(1:3, c(2, 5:7)),
                       control_mcmc = control_mcmc, seed = seed,
                       messages = FALSE)
   }
@@ -382,9 +380,14 @@ test_that("a fit has the same count scores alone and in any position of a list",
     state <- .Random.seed
     pair <- assess(list(a = fit, b = fit))
     expect_identical(.Random.seed, state)
-    expect_identical(pair$model$a, pair$model$b, label = name)
+    scores <- split(pair$scores[-1], pair$scores$model)
+    expect_equal(scores$a, scores$b, ignore_attr = TRUE, tolerance = 0,
+                 label = name)
+    simulated <- pair$calibration$simulated
+    expect_identical(simulated$a, simulated$b, label = name)
     alone <- assess(list(a = fit))
-    expect_identical(alone$model$a, pair$model$a, label = name)
+    expect_identical(alone$scores[-1], scores$a, label = name)
+    expect_identical(alone$calibration$simulated$a, simulated$a, label = name)
     expect_identical(nrow(alone$failures), 0L)
     # Without a seed only the seeds of the test sets come from the session, so
     # its state does not depend on the number of models.
@@ -397,23 +400,37 @@ test_that("a fit has the same count scores alone and in any position of a list",
   }
 })
 
-test_that("the expected PIT_area uses the averaged distribution functions", {
+test_that("the reference of counts is that of counts drawn from the family", {
   skip_on_cran()
+  # One draw of the means gives counts with the density of the family, so the
+  # reference agrees with drawing counts and averaging the areas of the curves.
   set.seed(25)
-  u <- seq(0, 1, length.out = 1000)
-  traits <- family_traits("poisson")
-  # Forty observations with large counts, scored on a grid and at every count.
+  n <- 60
+  lambda <- rexp(n, 1 / 5)
+  fit <- count_fit("poisson", c(rpois(n, lambda), 1), rep(1, n + 1))
+  draws <- matrix(log(lambda), n, 200)
+  local_mocked_bindings(predict_test_set = mock_draws(draws))
+  out <- assess_prediction(fit, list(1:n), seed = 1, messages = FALSE)
+  u <- seq(0, 1, length.out = 1001)
+  brute <- replicate(400, {
+    y <- rpois(n, lambda)
+    pit_area(pit_curves(t(ppois(y - 1, lambda)), t(ppois(y, lambda)), u), u)
+  })
+  expect_equal(out$calibration$area$PIT_area_expected, mean(brute),
+               tolerance = 0.08)
+})
+
+test_that("large counts, scored on a grid, have the PIT of every count", {
+  skip_on_cran()
+  set.seed(26)
   means <- 400 * exp(matrix(rnorm(40 * 100, 0, 0.5), 40))
   observed <- rpois(40, means[, 1])
-  sets <- function(tolerance) {
-    values <- lapply(1:40, function(i) {
-      count_distribution(observed[i], 1, means[i, ], NULL, traits, tolerance)
-    })
-    list(list(rows = 1:40, values = values))
-  }
-  set.seed(26)
-  on_grid <- expected_pit_area(sets(1e-4), TRUE, u)
-  set.seed(26)
-  at_every_count <- expected_pit_area(sets(0), TRUE, u)
-  expect_equal(on_grid, at_every_count, tolerance = 1e-3)
+  fit <- count_fit("poisson", c(observed, 1), rep(1, 41))
+  local_mocked_bindings(predict_test_set = mock_draws(log(means)))
+  out <- assess_prediction(fit, list(1:40), seed = 1, messages = FALSE)
+  exact <- function(shift) vapply(1:40, function(i) {
+    mean(ppois(observed[i] + shift, means[i, ]))
+  }, numeric(1))
+  expect_equal(out$scores$pit_lower, exact(-1), tolerance = 1e-3)
+  expect_equal(out$scores$pit_upper, exact(0), tolerance = 1e-3)
 })

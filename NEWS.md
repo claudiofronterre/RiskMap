@@ -19,7 +19,7 @@ in the source repository.
 | `pred_over_grid()`, `pred_target_grid()`, `update_predictors()` | `predict()`, with every predictor in `newdata` |
 | `pred_target_shp()` | `predict(boundaries, aggregate)` |
 | `plot()` of `pred_target_grid()` and `pred_target_shp()` results | `plot_prediction()`, or `plot()` of a `predict()` result |
-| `assess_pp()` | `assess_prediction()`, which takes `models`, `size`, `metrics` and `control_mcmc` for `object`, `n_size`, `which_metric` and `control_sim`, and `"PIT"` for `"AnPIT"` |
+| `assess_pp()` | `create_test_sets()` for the test sets, and `assess_prediction()`, which takes `models`, `test_sets`, `refit` and `control_mcmc`. Every metric is computed |
 | `plot_score()`, `plot_AnPIT()` | `plot_cross_validation()`, or `plot()` of an `assess_prediction()` result |
 | `assess_sim()` | `assess_simulation()`, which takes `simulation`, `target`, `aggregate`, `boundaries`, `label`, `objective` and `breaks` for `obj_sim`, `f_grid_target`, `f_area_target`, `shp`, `col_names`, `pred_objective` and `categories`, and `spatial_scale = "location"` for `"grid"` |
 | `summary()` of `assess_pp()` and `assess_sim()` results | `summary()` of `assess_prediction()` and `assess_simulation()` results |
@@ -92,12 +92,15 @@ in the source repository.
 
 ### Assessment and simulation
 
-- `assess_prediction()` compares models by spatial cross-validation. Every
-  score is a loss, so lower is better, and `PIT_area` is given once for all
-  test observations, next to its value under perfect calibration. Counts are
-  scored with their exact distribution given the draws of the mean, where
-  `assess_pp()` simulated them.
-  `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
+- `assess_prediction()` compares models by spatial cross-validation, on the test
+  sets of `create_test_sets()` (leave-one-out, random, clusters or spaced), which
+  `plot_test_sets()` draws. Test sets are predicted jointly, with the random
+  effects, and counts are scored with their exact distribution given the draws
+  of the mean. Every score is a loss, so lower is better, `summary()` gives the
+  differences from a reference model, and `PIT_area` is given with the limit that
+  a correct model is below with a probability of 95%. `plot_cross_validation()`
+  draws the calibration with its 95% joint band, and maps the scores.
+- `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses predictions on them.
 - In `assess_simulation()` every value belongs to a class, those beyond the
   `breaks` to the end classes, covariates can have any name, and a prediction
@@ -114,8 +117,7 @@ in the source repository.
   (`?riskmap_conditions`), long computations show their progress
   (`?riskmap_progress`), and `options(RiskMap.messages = FALSE)` silences the
   messages.
-- Packages that only some functions need, such as spatialsample and spatialEco
-  for some splits of `assess_prediction()`, ggspatial for north arrows and
+- Packages that only some functions need, such as ggspatial for north arrows and
   scale bars, and jsonlite for `get_worldpop()`, are suggested rather than
   imported, and those functions ask for them.
 - RiskMap needs R 4.5.0 or later.

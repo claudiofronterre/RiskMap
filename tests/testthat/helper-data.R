@@ -81,15 +81,11 @@ prediction_data$i <- rep(gaussian_model$re[[1]],
                          length.out = nrow(prediction_data))
 prediction_data$population <- seq_len(nrow(prediction_data))
 
-# model_a has a random effect, which assess_prediction() warns is not yet
-# included in the predictive distributions
-cross_validation <- suppressWarnings(assess_prediction(
-  list(model_a = gaussian_model,
-       model_b = gaussian_offset_model),
-  method = "user",
-  user_split = list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),
+cross_validation <- assess_prediction(
+  list(model_a = gaussian_model, model_b = gaussian_offset_model),
+  list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),
   messages = FALSE
-))
+)
 
 surface <- grid
 surface$cov <- rnorm(nrow(grid))

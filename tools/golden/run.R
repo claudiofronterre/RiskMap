@@ -350,6 +350,16 @@ prediction_grid <- function(data) {
   points <- st_make_grid(st_as_sfc(st_bbox(data)), n = c(8, 8), what = "centers")
   st_sf(x = rep(0, length(points)), m = rep(1, length(points)), geometry = points)
 }
+# Two clusters. Their test sets come from create_test_sets() where the package has it, and before that from
+# assess_prediction() itself, with other clusters, so the two don't compare.
+cross_validation <- function(fit) {
+  if ("test_sets" %in% names(formals(assess_prediction))) {
+    test_sets <- create_test_sets(fit, method = "cluster", n_sets = 2, seed = 51L)
+    return(assess_prediction(list(model = fit), test_sets, control_mcmc = ctrl, seed = 51L, messages = FALSE))
+  }
+  assess_prediction(list(model = fit), method = "cluster", fold = 2, iter = 1, control_mcmc = ctrl, seed = 51L,
+                    plot_fold = FALSE, messages = FALSE)
+}
 downstream <- list(
   predict = function(fit, data) {
     grid <- prediction_grid(data)
@@ -372,8 +382,7 @@ downstream <- list(
     list(check = check, text = c(texts(check), list(capture.output(print(summary(check))))))
   },
   assess = function(fit, data) {
-    cv <- assess_prediction(list(model = fit), method = "cluster", fold = 2, iter = 1, control_mcmc = ctrl,
-                            seed = 51L, plot_fold = FALSE, messages = FALSE)
+    cv <- cross_validation(fit)
     simulated <- simulate_glgpm(fit, nsim = 1, what = c("data", "surface"),
                                 prediction_grid = prediction_grid(data), seed = 52L)
     # The interface freeze of 2.0 renamed the scale "grid" to "location" and `pred_objective` to `objective`.
@@ -392,8 +401,7 @@ downstream <- list(
 re_downstream <- list(
   bootstrap = downstream$bootstrap,
   cv = function(fit, data) {
-    list(cv = assess_prediction(list(model = fit), method = "cluster", fold = 2, iter = 1, control_mcmc = ctrl,
-                                seed = 51L, plot_fold = FALSE, messages = FALSE))
+    list(cv = cross_validation(fit))
   }
 )
 

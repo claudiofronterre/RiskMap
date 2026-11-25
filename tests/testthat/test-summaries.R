@@ -374,90 +374,152 @@ test_that("print.summary.RiskMap labels a summary of a real fit", {
 
 # summary.RiskMap_cross_validation -------------------------------------------
 
-# A RiskMap_cross_validation with two models, two metrics and two test sets
-# of sizes 1 and 3, so the overall scores are weighted by test set size.
-build_cross_validation <- function() {
-  list(model = list(
-    model_a = list(metric = list(CRPS = list(0.2, c(0.3, 0.4, 0.5)),
-                                 SCRPS = list(-0.5, c(-0.6, -0.7, -0.8)))),
-    model_b = list(metric = list(CRPS = list(0.6, c(0.1, 0.2, 0.3)),
-                                 SCRPS = list(-1, c(-0.2, -0.3, -0.4))))
-  ))
+# A cross-validation of two models on two test sets, of rows 1 to 3 and 3 to 4,
+# so that row 3 is scored twice.
+build_cross_validation <- function(...) {
+  scores <- data.frame(
+    model = rep(c("model_a", "model_b"), each = 5),
+    test_set = rep(c(1L, 1L, 1L, 2L, 2L), 2), row = rep(c(1L, 2L, 3L, 3L, 4L), 2),
+    CRPS = c(0.2, 0.3, 0.4, 0.6, 0.5, 0.6, 0.1, 0.2, 0.4, 0.3),
+    SCRPS = c(-0.5, -0.6, -0.7, -0.7, -0.8, -1, -0.2, -0.3, -0.5, -0.4),
+    pit_lower = 0.5, pit_upper = 0.5
+  )
+  object <- list(
+    scores = scores,
+    calibration = list(area = data.frame(
+      model = c("model_a", "model_b"), PIT_area = c(0.04, 0.05),
+      PIT_area_expected = c(0.03, 0.031), PIT_area_limit = c(0.06, 0.07)
+    )),
+    test_sets = list(sets = list(list(train = 4:10, test = 1:3),
+                                 list(train = 5:10, test = 3:4))),
+    refit = FALSE, family = c(model_a = "gaussian", model_b = "gaussian"),
+    failures = data.frame(model = character(), test_set = integer(),
+                          message = character())
+  )
+  changed <- list(...)
+  object[names(changed)] <- changed
+  structure(object, class = "RiskMap_cross_validation")
 }
 
-test_that("summary.RiskMap_cross_validation weights test sets by their size", {
-  cross_validation_summary <- summary.RiskMap_cross_validation(build_cross_validation())
-
-  expect_s3_class(cross_validation_summary, "summary.RiskMap_cross_validation")
-  expect_identical(dimnames(cross_validation_summary),
-                   list(c("model_a", "model_b"), c("CRPS", "SCRPS")))
-  expect_equal(cross_validation_summary["model_a", "CRPS"], (0.2 + 3 * 0.4) / 4)
-  expect_equal(cross_validation_summary["model_b", "SCRPS"], (-1 + 3 * -0.3) / 4)
-
-  test_set_means <- attr(cross_validation_summary, "test_set_means")
-  expect_named(test_set_means, c("model_a", "model_b"))
-  expect_equal(test_set_means$model_a$CRPS, c(0.2, 0.4))
-  # The average over the models and view_all are gone (#230).
-  expect_null(attr(cross_validation_summary, "overall_averages"))
-  expect_input_error(summary(structure(build_cross_validation(),
-                                       class = "RiskMap_cross_validation"),
-                             view_all = FALSE),
-                     "view_all")
+test_that("the summary of a cross-validation averages over the observations", {
+  scores <- summary(build_cross_validation())
+  expect_s3_class(scores, c("summary.RiskMap_cross_validation", "data.frame"),
+                  exact = TRUE)
+  expect_identical(row.names(scores), c("model_a", "model_b"))
+  expect_identical(names(scores),
+                   c("CRPS", "SCRPS", "PIT_area", "PIT_area_expected",
+                     "PIT_area_limit"))
+  # Row 3 counts once, with the average of its scores.
+  expect_equal(scores["model_a", "CRPS"], mean(c(0.2, 0.3, 0.5, 0.5)))
+  expect_equal(scores["model_b", "SCRPS"], mean(c(-1, -0.2, -0.4, -0.4)))
+  expect_identical(scores$PIT_area, c(0.04, 0.05))
+  expect_identical(scores$PIT_area_expected, c(0.03, 0.031))
+  expect_identical(scores$PIT_area_limit, c(0.06, 0.07))
+  expect_equal(attr(scores, "n_observations"), c(model_a = 4, model_b = 4))
+  expect_identical(attr(scores, "n_failed"), c(model_a = 0L, model_b = 0L))
+  expect_false(attr(scores, "refit"))
+  expect_null(attr(scores, "reference"))
 })
 
-test_that("summary.RiskMap_cross_validation gives the pooled PIT_area and its expected value (#230)", {
-  object <- build_cross_validation()
-  object$model$model_a$PIT_area <- 0.04
-  object$model$model_a$PIT_area_expected <- 0.03
-  object$model$model_b$PIT_area <- 0.05
-  object$model$model_b$PIT_area_expected <- 0.031
-  scores <- summary.RiskMap_cross_validation(object)
-  expect_identical(colnames(scores),
-                   c("CRPS", "SCRPS", "PIT_area", "PIT_area_expected"))
-  expect_identical(scores[, "PIT_area"], c(model_a = 0.04, model_b = 0.05))
-  expect_identical(scores[, "PIT_area_expected"],
-                   c(model_a = 0.03, model_b = 0.031))
-  # The scores of each test set are those computed for each observation.
-  expect_named(attr(scores, "test_set_means")$model_a, c("CRPS", "SCRPS"))
+test_that("the summary of a cross-validation compares with a reference", {
+  scores <- summary(build_cross_validation(), reference = "model_a")
+  expect_identical(names(scores),
+                   c("CRPS", "CRPS_difference", "CRPS_se", "SCRPS",
+                     "SCRPS_difference", "SCRPS_se", "PIT_area",
+                     "PIT_area_expected", "PIT_area_limit"))
+  difference <- c(0.4, -0.2, -0.2, -0.2)
+  expect_equal(scores["model_b", "CRPS_difference"], mean(difference))
+  expect_equal(scores["model_b", "CRPS_se"], sd(difference) / 2)
+  expect_equal(unlist(scores["model_a", c("CRPS_difference", "CRPS_se")]),
+               c(CRPS_difference = 0, CRPS_se = 0))
+  expect_identical(attr(scores, "reference"), "model_a")
+  # One observation has no standard error.
+  one <- build_cross_validation()
+  one$scores <- one$scores[one$scores$row == 1L, ]
+  expect_true(is.na(summary(one, reference = "model_a")["model_b", "CRPS_se"]))
 
-  only_pit <- list(model = list(model_a = list(metric = list(),
-                                               PIT_area = 0.1,
-                                               PIT_area_expected = 0.09)),
-                   test_set = list(1, 2))
-  only_pit_scores <- summary.RiskMap_cross_validation(only_pit)
-  expect_identical(colnames(only_pit_scores), c("PIT_area", "PIT_area_expected"))
-  printed <- squish(capture.output(print(only_pit_scores)))
-  expect_no_match(printed, "By test set", fixed = TRUE)
+  expect_input_error(summary(build_cross_validation(), reference = "model_c"),
+                     "reference", "\"model_a\" and \"model_b\"")
+  expect_input_error(summary(build_cross_validation(), reference = 1),
+                     "reference")
+  expect_input_error(summary(build_cross_validation(),
+                             reference = c("model_a", "model_b")), "reference")
+  expect_input_error(summary(build_cross_validation(), view_all = FALSE),
+                     "view_all", "The scores of each test set")
 })
 
-test_that("summary.RiskMap_cross_validation errors when no metrics were computed", {
-  no_metrics <- list(model = list(model_a = list(metric = list())))
-  expect_error(summary.RiskMap_cross_validation(no_metrics),
-               "has no metrics of predictive performance")
+test_that("the summary of a cross-validation leaves out failed test sets", {
+  failed <- build_cross_validation(
+    refit = TRUE, failures = data.frame(model = "model_a", test_set = 2L,
+                                        message = "failed")
+  )
+  missing <- failed$scores$model == "model_a" & failed$scores$test_set == 2L
+  failed$scores[missing, c("CRPS", "SCRPS")] <- NA
+  scores <- summary(failed, reference = "model_b")
+  expect_equal(scores["model_a", "CRPS"], mean(c(0.2, 0.3, 0.4)))
+  # The differences are those of the observations both models have scores for.
+  difference <- c(0.2 - 0.6, 0.3 - 0.1, 0.4 - 0.3)
+  expect_equal(scores["model_a", "CRPS_difference"], mean(difference))
+  expect_equal(scores["model_a", "CRPS_se"], sd(difference) / sqrt(3))
+  expect_identical(attr(scores, "n_failed"), c(model_a = 1L, model_b = 0L))
+  # The models have scores for different numbers of observations.
+  expect_equal(attr(scores, "n_observations"), c(model_a = 3, model_b = 4))
+  printed <- squish(capture.output(print(scores)))
+  expect_match(printed, "Scores over 3 to 4 test observations", fixed = TRUE)
+  expect_match(printed, "Model Scored CRPS", fixed = TRUE)
+  expect_match(printed, "model_a 3 ", fixed = TRUE)
+  expect_no_match(capture.output(print(scores["model_b", ])), "Scored")
+  expect_match(printed, "Parameters are re-estimated in each training set.",
+               fixed = TRUE)
+  expect_match(printed,
+               "1 test-set assessment of model_a failed, and its scores are missing.",
+               fixed = TRUE)
+
+  # Nothing was scored, printed as NA and not NaN.
+  failed$scores$CRPS <- NA_real_
+  scores <- summary(failed, reference = "model_b")
+  expect_identical(scores$CRPS, c(NA_real_, NA_real_))
+  expect_identical(cv_summary_table(scores, 4L)$CRPS, c("NA", "NA"))
+  expect_output(print(scores), "Scores over 0 test observations")
+  expect_identical(cv_summary_table(scores, 4L)[["CRPS difference"]],
+                   c("NA", ""))
 })
 
-test_that("summary.RiskMap_cross_validation summarises assess_prediction output", {
-  cross_validation_summary <- summary(cross_validation)
-  expect_identical(rownames(cross_validation_summary), c("model_a", "model_b"))
-  expect_true(all(is.finite(cross_validation_summary)))
+test_that("the note on the limit of the area needs a limit", {
+  without <- build_cross_validation()
+  expect_output(print(summary(without)), "PIT area of a correct model")
+  without$calibration$area$PIT_area_limit <- NA_real_
+  printed <- capture.output(print(summary(without)))
+  expect_no_match(printed, "PIT area of a correct model")
 })
 
-test_that("print.RiskMap_cross_validation gives the averages, not the raw list", {
+test_that("the summary of a cross-validation by assess_prediction() is finite", {
+  scores <- summary(cross_validation, reference = "model_a")
+  expect_identical(row.names(scores), c("model_a", "model_b"))
+  expect_true(all(is.finite(as.matrix(as.data.frame(unclass(scores))))))
+  expect_equal(attr(scores, "n_observations"), c(model_a = 10, model_b = 10))
+})
+
+test_that("print() of a cross-validation gives the averages, not the raw list", {
   printed <- capture.output(result <- print(cross_validation))
   expect_identical(result, cross_validation)
   expect_match(printed[1L], "Cross-validation", fixed = TRUE)
-  sizes <- vapply(cross_validation$test_set, NROW, integer(1))
-  expect_match(squish(printed),
-               paste0("2 models assessed on ", length(sizes), " test sets? of "))
+  expect_match(squish(printed), "2 models assessed on 2 test sets of 4 and 6 observations. Parameters are fixed at the estimates from all the data.", fixed = TRUE)
   expect_true(any(startsWith(trimws(printed), "model_a ")))
   expect_true(any(startsWith(trimws(printed), "model_b ")))
-  expect_match(squish(printed), paste(
-    "`summary()` gives the scores of each test set, and `plot()` maps the",
-    "scores at the test locations or draws the calibration curve."
-  ), fixed = TRUE)
-  expect_match(squish(printed), "Lower is better for every score.", fixed = TRUE)
-  expect_lt(length(printed), 22L)
-  expect_false(any(grepl("$test_set", printed, fixed = TRUE)))
+  expect_match(squish(printed), "`summary()` with `reference` compares the models with one of them, and `plot()` draws the calibration curves or maps the scores.", fixed = TRUE)
+  expect_match(squish(printed), "Lower is better for the CRPS and the SCRPS.", fixed = TRUE)
+  expect_lt(length(printed), 24L)
+  # One model isn't compared.
+  alone <- build_cross_validation()
+  alone$scores <- alone$scores[alone$scores$model == "model_a", ]
+  alone$calibration$area <- alone$calibration$area[1, ]
+  alone$family <- c(model_a = "poisson")
+  printed <- squish(capture.output(print(alone)))
+  expect_match(printed, "1 model assessed on 2 test sets of 3 and 2 observations")
+  expect_no_match(printed, "reference", fixed = TRUE)
+  expect_match(printed, "the response, which are counts", fixed = TRUE)
+  expect_input_error(print(cross_validation, digits = 2), "digits")
 })
 
 test_that("the print of a cross-validation describes its test sets", {
@@ -470,25 +532,25 @@ test_that("the print of a cross-validation describes its test sets", {
                    "20 test sets of 1 observation each")
   expect_identical(describe_test_sets(c(8L, 12L, 9L, 10L)),
                    "4 test sets of 8 to 12 observations")
-  # A failed assessment leaves no scores, printed as NA and not NaN.
-  expect_identical(format_cv_score(c(0.12345, NaN, NA)),
-                   c("0.1235", "NA", "NA"))
 })
 
-test_that("print.summary.RiskMap_cross_validation formats scores by model", {
-  scores <- matrix(c(0.3, 0.45, 0.8, 0.95, 0.04, 0.05, 0.03, 0.031), nrow = 2,
-                   dimnames = list(c("model_a", "model_b"),
-                                   c("CRPS", "SCRPS", "PIT_area",
-                                     "PIT_area_expected")))
-  attr(scores, "test_set_means") <- list(
-    model_a = list(CRPS = c(0.25, 0.35), SCRPS = c(0.75, 0.85)),
-    model_b = list(CRPS = c(0.4, 0.5), SCRPS = c(0.9, 1))
-  )
-  class(scores) <- "summary.RiskMap_cross_validation"
-
+test_that("print() of the summary of a cross-validation formats its scores", {
+  scores <- summary(build_cross_validation())
   expect_snapshot(print(scores))
+  compared <- summary(build_cross_validation(), reference = "model_a")
+  expect_snapshot(print(compared))
   expect_output(expect_invisible(print(scores)))
   expect_input_error(print(scores, digits = 2), "digits")
+  # A document that prints data frames as tables prints it as the console does.
+  expect_output(knitr::knit_print(scores), "Cross-validation scores")
+  # Some of the models are a summary too, and some of the columns a data frame.
+  printed <- squish(capture.output(print(compared["model_b", ])))
+  expect_match(printed, "model_b 0.3250 -0.0500 (0.1500)", fixed = TRUE)
+  expect_no_match(printed, "model_a 0.3750", fixed = TRUE)
+  expect_match(printed, "Differences are from model_a", fixed = TRUE)
+  expect_no_match(capture.output(print(scores[c("CRPS", "SCRPS")], digits = 2)),
+                  "Cross-validation")
+  expect_input_error(to_table(scores["CRPS"]), "object", "whole summary")
 })
 
 # summary.RiskMap_assess_simulation -------------------------------------------
@@ -612,32 +674,6 @@ test_that("print.summary.RiskMap_assess_simulation labels each spatial scale", {
   summary_object <- summary(build_assess_simulation(c("location", "area")))
 
   expect_snapshot(print(summary_object))
-})
-
-test_that("summary.RiskMap_cross_validation weights every metric by test-set size and skips failed test sets", {
-  cross_validation_failed <- list(
-    test_set = list(gaussian_data[1, ], gaussian_data[2:4, ],
-                    gaussian_data[5:6, ]),
-    model = list(model_a = list(
-      metric = list(CRPS = list(0.1, c(0.3, 0.3, 0.3), c(NA_real_, NA_real_))),
-      PIT_area = 0.2, PIT_area_expected = 0.15
-    )),
-    keep_par_fixed = FALSE,
-    failures = data.frame(model = "model_a", test_set = 3L,
-                          message = "failed")
-  )
-  scores <- summary.RiskMap_cross_validation(cross_validation_failed)
-
-  expect_equal(scores["model_a", "CRPS"], (0.1 + 3 * 0.3) / 4)
-  expect_identical(scores["model_a", "PIT_area"], 0.2)
-  expect_false(attr(scores, "keep_par_fixed"))
-  expect_identical(attr(scores, "n_failed"), 1L)
-  expect_output(print(scores),
-                "Parameters are re-estimated in each training set.",
-                fixed = TRUE)
-  expect_output(print(scores),
-                "1 test-set assessment failed, and its scores are missing.",
-                fixed = TRUE)
 })
 
 test_that("the summary of a fit says where its starting values came from", {

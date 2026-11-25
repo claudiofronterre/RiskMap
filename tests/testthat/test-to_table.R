@@ -20,13 +20,27 @@ table_test_model <- function() {
   )
 }
 
-table_test_cv <- function() {
-  structure(
-    matrix(c(0.49, 0.25),
-           nrow = 1,
-           dimnames = list("model_a", c("crps", "scrps"))),
-    class = c("summary.RiskMap_cross_validation", "matrix", "array")
-  )
+# The summary of a cross-validation, with a difference from a reference.
+table_test_cv <- function(crps = c(0.49, 0.25), reference = NULL) {
+  out <- data.frame(CRPS = crps, SCRPS = c(0.25, 0.3), PIT_area = c(0.05, 0.04),
+                    PIT_area_expected = c(0.03, 0.035),
+                    PIT_area_limit = c(0.06, 0.07),
+                    row.names = c("model_a", "model_b"))
+  if (!is.null(reference)) {
+    out$CRPS_difference <- c(0, -0.24)
+    out$CRPS_se <- c(0, 0.05)
+    out$SCRPS_difference <- c(0, 0.05)
+    out$SCRPS_se <- c(0, 0.01)
+  }
+  structure(out, class = c("summary.RiskMap_cross_validation", "data.frame"),
+            reference = reference,
+            n_observations = c(model_a = 20, model_b = 20))
+}
+
+table_test_rows <- function(...) {
+  rows <- as.character(to_table(..., format = "pipe"))
+  lapply(strsplit(rows[grepl("^\\|model", rows)], "|", fixed = TRUE),
+         function(cells) trimws(cells[-1]))
 }
 
 test_that("to_table formats model summaries directly", {
@@ -54,14 +68,19 @@ test_that("to_table names the intercept and adds no row for a held parameter", {
 })
 
 test_that("to_table formats cross-validation summaries directly", {
-  object <- table_test_cv()
-  table <- to_table(object, digits = 3, format = "pipe")
-  rendered <- paste(as.character(table), collapse = "\n")
-
+  table <- to_table(table_test_cv(), format = "pipe")
   expect_s3_class(table, "knitr_kable")
-  expect_match(rendered, "model_a", fixed = TRUE)
-  expect_match(rendered, "0.490", fixed = TRUE)
-  expect_match(rendered, "CRPS", fixed = TRUE)
+  expect_match(as.character(table)[1], "Model +\\| +CRPS\\| +SCRPS\\| +PIT area\\| +Limit")
+  expect_identical(table_test_rows(table_test_cv()),
+                   list(c("model_a", "0.490", "0.250", "0.050", "0.060"),
+                        c("model_b", "0.250", "0.300", "0.040", "0.070")))
+  compared <- table_test_cv(reference = "model_a")
+  expect_identical(table_test_rows(compared, digits = 2),
+                   list(c("model_a", "0.49", "", "0.25", "", "0.05", "0.06"),
+                        c("model_b", "0.25", "-0.24 (0.05)", "0.30",
+                          "+0.05 (0.01)", "0.04", "0.07")))
+  expect_input_error(to_table(table_test_cv(), reference = "model_a"),
+                     "reference", "summary()")
 })
 
 # The cells of the row with this name, after the name itself
@@ -140,18 +159,16 @@ test_that("to_table changes only the rows that need it", {
 })
 
 test_that("to_table shows one metric of a cross-validation in one notation", {
-  cv <- structure(
-    matrix(c(0.49, 0.0004, 0.25, 0.3, 0.5, 1e-8), nrow = 2,
-           dimnames = list(c("model_a", "model_b"),
-                           c("crps", "scrps", "pit_area"))),
-    class = c("summary.RiskMap_cross_validation", "matrix", "array")
+  expect_identical(
+    vapply(table_test_rows(table_test_cv(crps = c(0.49, 0.0004))), `[[`,
+           character(1), 2L),
+    c("0.49000", "0.00040")
   )
-  rows <- as.character(to_table(cv, digits = 3, format = "pipe"))
-  cells <- strsplit(rows[grepl("^\\|model", rows)], "|", fixed = TRUE)
-  expect_identical(trimws(cells[[1]][-1]),
-                   c("model_a", "0.49000", "0.250", "5.000e-01"))
-  expect_identical(trimws(cells[[2]][-1]),
-                   c("model_b", "0.00040", "0.300", "1.000e-08"))
+  expect_identical(
+    vapply(table_test_rows(table_test_cv(crps = c(0.5, 1e-8))), `[[`,
+           character(1), 2L),
+    c("5.000e-01", "1.000e-08")
+  )
 })
 
 test_that("to_table validates its inputs", {
