@@ -285,20 +285,19 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   derivative of `natural`, for `vcov()`. `limit_words`, where given,
 ##'   names the parameter whose working value tends to minus infinity at the
 ##'   boundary, when that is not the parameter itself. `start` is the rule of
-##'   its start in the parameter table (`parameter_table()`), `one`, or
-##'   `family_regression` for the family's regression without the latent
-##'   effects (`start_parameters`). The measurement error
-##'   variance `sigma2_me` of the
-##'   Gaussian family is fitted on the log scale, and the size `theta` of the
-##'   negative binomial family on that of log(1 / theta), so that a fit
-##'   drifting to the Poisson limit tends to minus infinity as a variance
-##'   drifting to zero does. Each map is `exp()` of the working value or of its
-##'   negative, so that the log-normal intervals of `summary()` hold, and the
-##'   names are unique across families and differ from those of the other
-##'   parameters, so that the output finds a parameter by its name
-##'   (`family_parameter()`). A fitted parameter is in the family block of the
-##'   layout (`cov_par_layout()`), and a held one is stored with the fit
-##'   (`held_family_parameters()`).
+##'   its start in the parameter table (`parameter_table()`),
+##'   `residual_variance`, or `family_regression` for the family's regression
+##'   without the latent effects (`start_parameters`). The measurement error
+##'   variance `sigma2_me` of the Gaussian family is fitted on the log scale,
+##'   and the size `theta` of the negative binomial family on that of
+##'   log(1 / theta), so that a fit drifting to the Poisson limit tends to
+##'   minus infinity as a variance drifting to zero does. Each map is `exp()`
+##'   of the working value or of its negative, so that the log-normal
+##'   intervals of `summary()` hold, and the names are unique across families
+##'   and differ from those of the other parameters, so that the output finds
+##'   a parameter by its name (`family_parameter()`). A fitted parameter is in
+##'   the family block of the layout (`cov_par_layout()`), and a held one is
+##'   stored with the fit (`held_family_parameters()`).
 ##' - `parameters_heading`, the heading of the table of the parameters that
 ##'   `summary()` gives, NULL for a family without parameters of its own.
 ##' - `specified`, the family is given by its function with the values of its
@@ -336,7 +335,8 @@ riskmap_families <- list(
     default_is_canonical = TRUE,
     parameters = list(sigma2_me = list(
       label = "Measurement error var.", words = "measurement error variance",
-      natural = exp, working = log, natural_derivative = exp, start = "one"
+      natural = exp, working = log, natural_derivative = exp,
+      start = "residual_variance"
     )),
     parameters_heading = "Measurement error",
     specified = FALSE, kernel_family = NULL,
@@ -422,9 +422,10 @@ riskmap_families <- list(
 ##' - `validate(y, units_m)`, stops if the responses are not of the family
 ##'   (`check_binomial()`), and otherwise returns TRUE invisibly.
 ##' - `start_coefficients(y, units_m, D, cov_offset, link, formula, data)`,
-##'   the starting regression coefficients of `glgpm()`, from least squares,
+##'   the starting regression coefficients of `glgpm()`, from
 ##'   `binomial_start_regression()` with the link named `link`, or a Poisson
-##'   regression of `formula` on `data` with the log link.
+##'   regression of `formula` on `data` with the log link. NULL for an exact
+##'   family (`gaussian_regression()`).
 ##' - `empirical_link(y, units_m)` and `transform_variance(y, units_m)`, the
 ##'   empirical link of the transformed-Gaussian start and the median of its
 ##'   delta-method variance (`select_nongaussian_start()`), NULL for an exact
@@ -495,11 +496,8 @@ family_traits <- function(family) {
     family,
     gaussian = list(
       validate = function(y, units_m) invisible(TRUE),
-      start_coefficients = function(y, units_m, D, cov_offset, link, formula,
-                                    data) {
-        linear_start_values(D, y)
-      },
-      empirical_link = NULL, transform_variance = NULL,
+      start_coefficients = NULL, empirical_link = NULL,
+      transform_variance = NULL,
       start_log_likelihood = NULL,
       fitted_mean = function(mean, units_m) mean,
       log_density = function(y, mean, units_m, parameters) {

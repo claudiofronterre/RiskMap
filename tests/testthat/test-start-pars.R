@@ -141,8 +141,8 @@ test_that("a partial start keeps the comparison of starts", {
 test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
   skip_on_cran()
   # The engine's start, captured, against the fit's estimate on the scale of
-  # the engine, with standardised covariates and distances rescaled by the
-  # largest distance.
+  # the engine, with standardised covariates, distances rescaled by the
+  # largest distance and, for a Gaussian model, the standardised response.
   engine_start <- function(fit, refit) {
     captured <- NULL
     real <- working_start
@@ -158,7 +158,21 @@ test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
       log(scale_spatial_coordinates(fit$coords)$distance_scale),
       ncol(fit$D)
     )
-    list(captured = captured, expected = unname(maps$to(unlist(fit$estimate))))
+    expected <- unname(maps$to(unlist(fit$estimate)))
+    if (fit$family == "gaussian") {
+      # The Gaussian engines fit the standardised residuals of the regression.
+      regression <- lm.fit(fit$D, fit$y)
+      expected <- unlist(fit$estimate)
+      expected[seq_len(ncol(fit$D))] <- unlist(fit$estimate$beta) -
+        regression$coefficients
+      expected <- unname(maps$to(expected))
+      log_scale <- log(mean(regression$residuals^2)) / 2
+      coefficients <- seq_len(ncol(fit$D))
+      expected[coefficients] <- expected[coefficients] / exp(log_scale)
+      variances <- grepl("^sigma2", names(unlist(fit$estimate)))
+      expected[variances] <- expected[variances] - 2 * log_scale
+    }
+    list(captured = captured, expected = expected)
   }
   count_fit <- function(family, data, start_pars = NULL) {
     suppressWarnings(glgpm(

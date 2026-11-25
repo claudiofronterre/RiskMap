@@ -381,12 +381,8 @@ test_that("the start of each family is the regression its caller ran", {
       expected
     )
   }
-  response <- c(1.2, 0.4, -0.3, 2.2, 0.9)
-  expect_identical(
-    family_traits("gaussian")$start_coefficients(response, NULL, D, NULL,
-                                                 NULL, NULL, NULL),
-    linear_start_values(D, response)
-  )
+  # A Gaussian model starts from gaussian_regression() (test-gaussian-units.R).
+  expect_null(family_traits("gaussian")$start_coefficients)
 })
 
 test_that("the family's simulator, distribution function and scoring limit take the draws of their callers", {
