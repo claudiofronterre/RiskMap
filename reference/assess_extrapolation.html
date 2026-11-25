@@ -142,7 +142,8 @@ unexplained by the data, \(v(x)\).</p></dd>
 <code>"Covariate"</code> and <code>"Spatial and covariate"</code>.</p></dd>
 
 
-</dl><p>Rows with missing covariates have missing indicators. The attribute
+</dl><p>Rows with missing covariates, or with ones that give the model a covariate
+that isn't finite, such as <code>log(0)</code>, have missing indicators. The attribute
 <code>spatial_threshold</code> holds the threshold used, and <code>covariate_ranges</code> the
 range of each covariate in the data. Map the result with
 <code><a href="plot_extrapolation.html">plot_extrapolation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>, which does the same.</p>

@@ -113,6 +113,9 @@ in the source repository.
   terms no longer depend on the labels of the groups, and joint
   predictions that include the random effects have the right covariance
   between them and the spatial process.
+- Rows of `newdata` with a missing covariate, or with one that gives the
+  model a term that isn’t finite, such as `log(0)`, get `NA` predictions
+  with a warning.
 - The covariates of the prediction grid `tz_covariates` now match those
   of `tz_malaria`. EVI, temperature, night-time light and precipitation
   come from the same rasters, so temperature is missing at 2 points and

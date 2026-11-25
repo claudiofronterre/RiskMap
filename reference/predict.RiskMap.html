@@ -359,13 +359,18 @@ covariance matrix of the estimates is not
 available, an error is returned; refitting with
 <code>set_control_mcml(pc_prior = TRUE)</code> usually resolves this. The location
 column <code>fixed</code> then reports the average fixed-effect contribution.</p>
-<p>At the observed locations, the conditioned location-level Gaussian effect
-already includes the fitted nugget when the model has one. Consequently,
+<p>At the observed locations of a binomial, Poisson or negative binomial fit
+with a nugget, the effect of each location is drawn given the data and
+already includes the nugget. At those of a Gaussian fit the prediction is of
+the spatial process \(S(x)\), without the nugget, as it is at new
+locations, and <a href="fitted.RiskMap.html">fitted()</a> gives the fitted values with the
+nugget and the random effects of the data. For every family,
 <code>include = "nugget"</code> is available only for predictions supplied through
 <code>newdata</code>, where it represents a new independent nugget realization.</p>
 <p><code>newdata</code> and <code>boundaries</code> are transformed internally to the fitted model
 CRS without changing row order; returned geometries remain in their input
-CRS. Rows with missing required predictors are retained with <code>NA</code>
+CRS. Rows with missing required predictors, or with predictors that give the
+model a covariate that isn't finite, such as <code>log(0)</code>, are retained with <code>NA</code>
 predictions and an informative warning.</p>
 <p>When <code>boundaries</code> are supplied, one prediction run produces both the
 location-level output in <code>predictions</code> and the areal output in
