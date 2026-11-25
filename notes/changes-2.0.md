@@ -1752,13 +1752,15 @@ leverages change in the last digits.
 simulates datasets from each model with `simulate_glgpm()`, with new surfaces and
 the parameters at their estimates, and compares three features of them with those
 of the data.
-- The statistics are names (`"mean"`, `"sd"`, `"min"`, `"max"` and `"zeros"`), a
-function of a dataset that gives named numbers, or a list of names and functions.
-The default ones are the mean and the SD of the prevalence or rate and the
-proportion of zeros, or the mean, SD, minimum and maximum of a Gaussian response.
-Those with a name are of the observations, and of the locations for binomial
-models whose denominators are all 1. Simulated datasets in which a statistic
-isn't finite are left out of its summary, with a warning.
+- The statistics are names (`"mean"`, `"sd"`, `"min"`, `"max"`, `"zeros"`,
+`"distribution"` and `"variogram"`), a function of a dataset that gives named
+numbers, or a list of names and functions. Only what is in `statistics` is
+calculated. The default is the mean and the SD of the prevalence or rate and the
+proportion of zeros, or the mean, SD, minimum and maximum of a Gaussian response,
+with the distribution and the variogram. Those that are numbers are of the
+observations, and of the locations for binomial models whose denominators are all
+1. Simulated datasets in which a statistic isn't finite are left out of its
+summary, with a warning.
 - The distribution is the empirical one of the same values, and the variogram
 that of the residuals from the covariates. The response is transformed (empirical
 logit, log rate with 0.5 added to the count, or the Gaussian response as it is),
@@ -1773,7 +1775,7 @@ simulations are kept only with `return_simulations = TRUE`. `summary()` gives th
 observed value, the median and the 95% interval of the simulated ones and the
 proportion at or above the observed one, `to_table()` tabulates them, and
 `plot_predictive_check()`, or `plot()`, draws the statistics, the distribution or
-the variogram. There is no test and no mark that a model passes. An observed
+the variogram, by default the first of them that was calculated. There is no test and no mark that a model passes. An observed
 statistic is unusual when it is outside the 95% interval. The proportion at or
 above it counts ties, so it can be 1 for a value that isn't unusual.
 - `?assessment` says which function answers which question about a model.

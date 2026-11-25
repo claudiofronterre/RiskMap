@@ -5,22 +5,18 @@
 \alias{plot.RiskMap_predictive_check}
 \title{Plot the assessment of models against simulated data}
 \usage{
-plot_predictive_check(
-  x,
-  type = c("statistic", "distribution", "variogram"),
-  model = NULL,
-  colour = "#00857F",
-  ...
-)
+plot_predictive_check(x, type = NULL, model = NULL, colour = "#00857F", ...)
 
 \method{plot}{RiskMap_predictive_check}(x, ...)
 }
 \arguments{
 \item{x}{The result of \code{\link[=assess_fit]{assess_fit()}}.}
 
-\item{type}{What to draw, each \code{"statistic"} (the default), the
+\item{type}{What to draw, each \code{"statistic"} that is a number, the
 \code{"distribution"} of the prevalence, the rate or the response, or the
-\code{"variogram"} of the residuals from the covariates.}
+\code{"variogram"} of the residuals from the covariates. By default, the first of
+these that \code{x} has, which is the variogram when it is the only one in
+\code{statistics} of \code{\link[=assess_fit]{assess_fit()}}.}
 
 \item{model}{Names of the models to include, all of them by default.}
 
@@ -72,6 +68,10 @@ result <- assess_fit(fit, nsim = 199, seed = 1)
 plot_predictive_check(result)
 plot_predictive_check(result, type = "distribution")
 plot_predictive_check(result, type = "variogram")
+
+# Only the variogram, which is then what is drawn
+result <- assess_fit(fit, "variogram", nsim = 199, seed = 1)
+plot(result)
 }
 \seealso{
 \code{\link[=assess_fit]{assess_fit()}}

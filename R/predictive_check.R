@@ -14,17 +14,21 @@
 ##' - the **variogram** of the residuals from the covariates, which shows
 ##'   whether the model describes the spatial correlation that they leave.
 ##'
+##' All of them are compared by default, and `statistics` says which.
+##'
 ##' @param models A fit from [glgpm()], or a list of fits to the same data. The
 ##'   names of the list name the models in the results.
-##' @param statistics The names of statistics, among `"mean"`, `"sd"`, `"min"`,
-##'   `"max"` and `"zeros"`, a function that takes a dataset, as
-##'   [simulated_data()] returns it, and gives named numbers, or a list of names
-##'   and functions. The default, `NULL`, calculates statistics that depend on
-##'   the family (see Details).
+##' @param statistics What to compare, the names of statistics, among `"mean"`,
+##'   `"sd"`, `"min"`, `"max"`, `"zeros"`, `"distribution"` and `"variogram"`, a
+##'   function that takes a dataset, as [simulated_data()] returns it, and gives
+##'   named numbers, or a list of names and functions. The default, `NULL`, is
+##'   numbers that depend on the family (see Details), the distribution and the
+##'   variogram.
 ##' @param breaks Optional breakpoints of the distance classes of the variogram,
 ##'   in the distance units of the (first) model, as in [variogram()], whose
 ##'   default is used otherwise, 14 classes of equal width up to a third of the
-##'   largest distance between locations.
+##'   largest distance between locations. An error if `statistics` doesn't include
+##'   the variogram.
 ##' @param nsim Number of datasets simulated from each model, at least 19.
 ##'   Defaults to 1,000.
 ##' @param seed Optional non-negative integer seed. When supplied, the caller's
@@ -39,18 +43,19 @@
 ##' @return A list of class `RiskMap_predictive_check`, containing
 ##' \describe{
 ##'   \item{observed}{A data frame with the observed `value` of each `statistic`
-##'     for each `model`.}
+##'     that is a number for each `model`.}
 ##'   \item{simulated}{A data frame with the `value` of each `statistic` in each
 ##'     `simulation` from each `model`.}
 ##'   \item{distribution}{A data frame with the distribution function of the
 ##'     observed data for each `model`, at the values `value`, the `median` of
 ##'     those of the simulated datasets, the limits of the joint envelope,
-##'     `lower` and `upper`, and whether the observed one is `outside` it.}
+##'     `lower` and `upper`, and whether the observed one is `outside` it. `NULL`
+##'     if not in `statistics`.}
 ##'   \item{variogram}{A data frame with the same columns for the semivariance of
 ##'     the residuals in each distance class, the mean `distance` of its pairs of
-##'     locations and their number, `n_pairs`. `NULL` when no pair of locations
-##'     is in a class, and without the models whose covariates leave no
-##'     residuals.}
+##'     locations and their number, `n_pairs`. `NULL` if not in `statistics` or
+##'     when no pair of locations is in a class, and without the models whose
+##'     covariates leave no residuals.}
 ##'   \item{nsim, seed, breaks, distance_units, level}{The settings. `level` is
 ##'     the coverage of the joint envelopes, 0.95.}
 ##'   \item{family, response, quantity, unit}{The family of each model, the
@@ -79,17 +84,17 @@
 ##'
 ##' # Statistics
 ##'
-##' The statistics with a name are the mean, the standard deviation, the minimum
+##' The numbers with a name are the mean, the standard deviation, the minimum
 ##' and the maximum of the empirical prevalence, the rate or the Gaussian
 ##' response, and the proportion of zeros. The default ones are `"mean"`, `"sd"`
 ##' and `"zeros"`, and for Gaussian models `"mean"`, `"sd"`, `"min"` and `"max"`.
 ##' In the result the names say what the statistic is of, such as
 ##' `sd_prevalence`.
 ##'
-##' The statistics are those of the observations. The exception is a binomial
+##' These numbers are those of the observations. The exception is a binomial
 ##' model whose denominators are all 1, because the prevalence of a single
 ##' individual is only 0 or 1. The positives and the denominators are then added
-##' up at each location, and the statistics are those of the locations. With
+##' up at each location, and the numbers are those of the locations. With
 ##' other denominators the observations are not added up, because that would
 ##' hide the variation between those at the same location.
 ##'
@@ -102,7 +107,10 @@
 ##'
 ##' # Distribution and variogram
 ##'
-##' The distribution is that of the same values as the statistics with a name,
+##' These are curves and not numbers, and each has a plot of its own. They are
+##' calculated by default, and with a given `statistics` only if they are in it.
+##'
+##' The distribution is that of the same values as the numbers with a name,
 ##' the prevalence, the rate or the response of each observation, or the
 ##' prevalence of each location when the denominators of a binomial model are all
 ##' 1.
@@ -172,11 +180,12 @@
 ##' summary(result)
 ##' plot_predictive_check(result, type = "variogram")
 ##'
-##' # Statistics by name, and one of one's own
+##' # Numbers by name, one of one's own, and the variogram
 ##' describe <- function(data) {
 ##'   c(correlation = cor(data$y, log(data$pop_dens)))
 ##' }
-##' result <- assess_fit(models, list("sd", "max", describe), nsim = 199, seed = 1)
+##' result <- assess_fit(models, list("sd", describe, "variogram"), nsim = 199,
+##'                      seed = 1)
 ##' plot_predictive_check(result)
 ##'
 ##' @export
@@ -187,7 +196,13 @@ assess_fit <- function(models, statistics = NULL, breaks = NULL, nsim = 1000,
   models <- read_assessed_models(models)
   quantity <- check_same_quantity(models)
   statistics <- read_statistics(statistics, quantity)
-  if (!is.null(breaks)) check_distance_breaks(breaks)
+  with_variogram <- "variogram" %in% statistics$curves
+  if (!is.null(breaks)) {
+    check_distance_breaks(breaks)
+    if (!with_variogram) {
+      abort_input("{.arg breaks} are the distance classes of the variogram, which {.arg statistics} doesn't include.", arg = "breaks")
+    }
+  }
   check_positive_integer(nsim, "nsim")
   # The fewest datasets that a 95% envelope can be drawn from.
   if (nsim < 19) {
@@ -199,7 +214,9 @@ assess_fit <- function(models, statistics = NULL, breaks = NULL, nsim = 1000,
 
   first <- models[[1L]]
   records <- check_records(first, quantity)
-  variogram <- check_variogram_classes(records, breaks, first$distance_units)
+  variogram <- if (with_variogram) {
+    check_variogram_classes(records, breaks, first$distance_units)
+  }
   if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
@@ -220,7 +237,9 @@ assess_fit <- function(models, statistics = NULL, breaks = NULL, nsim = 1000,
   out <- list(
     observed = observed_statistics(values),
     simulated = simulated_statistics(values),
-    distribution = check_distributions(lapply(described, `[[`, "values")),
+    distribution = if ("distribution" %in% statistics$curves) {
+      check_distributions(lapply(described, `[[`, "values"))
+    },
     variogram = check_variograms(lapply(described, `[[`, "residuals"),
                                  variogram$classes),
     nsim = nsim, seed = seed, breaks = variogram$breaks,
@@ -228,7 +247,8 @@ assess_fit <- function(models, statistics = NULL, breaks = NULL, nsim = 1000,
     family = vapply(models, `[[`, character(1), "family"),
     response = paste(deparse(first$formula[[2L]]), collapse = ""),
     quantity = quantity, unit = records$unit,
-    statistic_labels = statistic_labels(statistics, quantity),
+    statistic_labels = statistic_labels(statistics$numbers, quantity),
+    types = c(if (length(statistics$numbers)) "statistic", statistics$curves),
     n_locations = records$n_locations, n_observations = length(first$y)
   )
   if (return_simulations) {
@@ -260,24 +280,34 @@ check_same_quantity <- function(models, call = rlang::caller_env()) {
   quantities[[1L]]
 }
 
-##' The statistics that `assess_fit()` has names for
+##' The statistics that `assess_fit()` has names for, which are numbers or curves
 ##' @noRd
-statistic_names <- function() c("mean", "sd", "min", "max", "zeros")
+number_names <- function() c("mean", "sd", "min", "max", "zeros")
 
-##' Read `statistics` as a list of names and functions
+##' @rdname number_names
+##' @noRd
+curve_names <- function() c("distribution", "variogram")
+
+##' @rdname number_names
+##' @noRd
+statistic_names <- function() c(number_names(), curve_names())
+
+##' Read `statistics` as a list of names and functions, and the curves
 ##'
 ##' @param quantity The quantity of the models, which sets the default.
-##' @return A list with the names of statistics and the functions, whose names
-##'   are the names given by the user, or empty.
+##' @return A list with the `numbers`, a list of the names of statistics and the
+##'   functions, whose names are the names given by the user, or empty, and the
+##'   names of the `curves`.
 ##' @noRd
 read_statistics <- function(statistics, quantity,
                             call = rlang::caller_env()) {
   if (is.null(statistics)) {
-    statistics <- if (quantity == "response") {
+    numbers <- if (quantity == "response") {
       c("mean", "sd", "min", "max")
     } else {
       c("mean", "sd", "zeros")
     }
+    statistics <- c(numbers, curve_names())
   }
   if (is.function(statistics)) statistics <- list(statistics)
   supplied <- describe_value(statistics)
@@ -297,7 +327,16 @@ read_statistics <- function(statistics, quantity,
   }
   names(statistics) <- names(statistics) %||% rep("", length(statistics))
   names(statistics)[is.na(names(statistics))] <- ""
-  statistics
+  is_curve <- vapply(statistics, function(x) {
+    is.character(x) && x %in% curve_names()
+  }, logical(1))
+  renamed <- unlist(statistics[is_curve & nzchar(names(statistics))],
+                    use.names = FALSE)
+  if (length(renamed)) {
+    abort_input("{.val {renamed}} can't have another name in {.arg statistics}, because {?it is/they are} drawn in {?a plot of its/plots of their} own.", arg = "statistics", call = call)
+  }
+  list(numbers = statistics[!is_curve],
+       curves = intersect(curve_names(), unlist(statistics[is_curve])))
 }
 
 ##' The observations, their locations and denominators, for a predictive check
@@ -358,6 +397,7 @@ check_variogram_classes <- function(records, breaks, distance_units,
 
 ##' Simulate from one model and describe each dataset
 ##'
+##' @param statistics The result of `read_statistics()`.
 ##' @param simulation_seed The seed of the simulations.
 ##' @param reset Whether the functions of `statistics` start from the seed, so
 ##'   that any random numbers they use are the same for every model.
@@ -375,14 +415,15 @@ describe_simulations <- function(fit, name, statistics, records, nsim,
                                    nrow = length(fit$y)))
   if (reset) set.seed(simulation_seed)
   described <- describe_locations(responses, records)
-  out <- list(values = described$values,
-              residuals = residuals_from_covariates(described$field, fit,
-                                                    records))
-  if (is.null(out$residuals)) {
-    riskmap_warn("Model {.val {name}} has as many coefficients as there are locations, so it has no residuals and no variogram.")
+  out <- list(values = described$values)
+  if ("variogram" %in% statistics$curves) {
+    out$residuals <- residuals_from_covariates(described$field, fit, records)
+    if (is.null(out$residuals)) {
+      riskmap_warn("Model {.val {name}} has as many coefficients as there are locations, so it has no residuals and no variogram.")
+    }
   }
   out$statistics <- calculate_statistics(
-    statistics, out$values, responses, simulation$locations$data,
+    statistics$numbers, out$values, responses, simulation$locations$data,
     simulation$model$response, records$quantity, name, bar
   )
   if (return_simulations) out$simulation <- simulation
@@ -468,6 +509,10 @@ residuals_from_covariates <- function(field, fit, records) {
 calculate_statistics <- function(statistics, values, responses, data, response,
                                  quantity, name, bar,
                                  call = rlang::caller_env()) {
+  if (!length(statistics)) {
+    progress_tick(bar, ncol(responses) - 1L)
+    return(matrix(numeric(), 0L, ncol(responses)))
+  }
   own <- vapply(statistics, is.function, logical(1))
   if (any(own)) {
     given <- apply_statistics(statistics[own], responses, data, response, name,
@@ -609,6 +654,7 @@ read_statistic_values <- function(value, label, dataset, name, call) {
 ##' @param values A named list of matrices of statistics, one for each model.
 ##' @noRd
 warn_not_finite <- function(values) {
+  if (!nrow(values[[1L]])) return(invisible(NULL))
   counts <- do.call(rbind, lapply(names(values), function(name) {
     data.frame(model = name, statistic = rownames(values[[name]]),
                observed = !is.finite(values[[name]][, 1L]),
@@ -632,7 +678,8 @@ warn_not_finite <- function(values) {
 ##' @noRd
 observed_statistics <- function(values) {
   do.call(rbind, lapply(names(values), function(name) {
-    data.frame(model = name, statistic = rownames(values[[name]]),
+    data.frame(model = rep(name, nrow(values[[name]])),
+               statistic = as.character(rownames(values[[name]])),
                value = unname(values[[name]][, 1L]))
   }))
 }
@@ -642,9 +689,9 @@ observed_statistics <- function(values) {
 simulated_statistics <- function(values) {
   do.call(rbind, lapply(names(values), function(name) {
     simulated <- values[[name]][, -1L, drop = FALSE]
-    data.frame(model = name,
+    data.frame(model = rep(name, length(simulated)),
                simulation = rep(seq_len(ncol(simulated)), each = nrow(simulated)),
-               statistic = rep(rownames(simulated), ncol(simulated)),
+               statistic = rep(as.character(rownames(simulated)), ncol(simulated)),
                value = as.numeric(simulated))
   }))
 }
@@ -755,6 +802,7 @@ distribution_values <- function(values, n_values = 200L) {
 summary.RiskMap_predictive_check <- function(object, ...) {
   check_dots_unused(...)
   models <- names(object$family)
+  # Without statistics that are numbers, there are no rows.
   statistics <- unique(object$observed$statistic)
   rows <- expand.grid(model = models, statistic = statistics,
                       stringsAsFactors = FALSE)
@@ -767,7 +815,8 @@ summary.RiskMap_predictive_check <- function(object, ...) {
                                             key(object$observed))]
     summarise_statistic(observed, simulated[[key(rows[i, ])]])
   })
-  out <- cbind(rows, do.call(rbind, values))
+  none <- summarise_statistic(NA_real_, numeric())[0L, ]
+  out <- cbind(rows, do.call(rbind, c(list(none), values)))
   row.names(out) <- NULL
   attr(out, "check") <- object[c("nsim", "seed", "level", "quantity", "response",
                                  "statistic_labels", "variogram",
@@ -865,8 +914,10 @@ format_predictive_check <- function(x) {
     out_count(x$n_observations, "observation"), " at ",
     out_count(x$n_locations, "location"), "."
   )
-  hint <- paste0(out_fun("plot_predictive_check"), " draws the statistics, ",
-                 "the distribution and the variogram.")
+  drawn <- c(statistic = "the statistics", distribution = "the distribution",
+             variogram = "the variogram")[x$types]
+  hint <- paste0(out_fun("plot_predictive_check"), " draws ",
+                 join_words(drawn), ".")
   c(out_rule("Simulated and observed data"),
     out_text(setting),
     "",
@@ -879,16 +930,16 @@ format_predictive_check <- function(x) {
 ##' @noRd
 format_check_summary <- function(x) {
   settings <- attr(x, "check")
-  notes <- c(
+  about_statistics <- if (nrow(x)) {
     paste0("At or above is the percentage of simulated values that are equal to ",
            "the observed one or above it. An observed value outside the 95% ",
-           "interval is unusual for the model, and 50% is not a target."),
-    format_check_variogram(settings$variogram, settings$level),
-    format_check_distribution(settings$distribution, settings)
-  )
-  c(format_check_tables(x),
-    "",
-    out_bullets(c(out_as_bullets(notes, "i"), format_check_missing(x))))
+           "interval is unusual for the model, and 50% is not a target.")
+  }
+  notes <- c(about_statistics,
+             format_check_variogram(settings$variogram, settings$level),
+             format_check_distribution(settings$distribution, settings))
+  c(if (nrow(x)) c(format_check_tables(x), ""),
+    if (length(notes)) out_bullets(c(out_as_bullets(notes, "i"), format_check_missing(x))))
 }
 
 ##' One table for each statistic, when there are several models, or one for all
@@ -940,6 +991,7 @@ format_check_variogram <- function(variogram, level) {
 ##' Whether the distributions are inside their envelopes
 ##' @noRd
 format_check_distribution <- function(distribution, settings) {
+  if (is.null(distribution)) return(NULL)
   models <- unique(distribution$model)
   outside <- vapply(models, function(name) {
     any(distribution$outside[distribution$model == name])
@@ -1004,6 +1056,9 @@ to_table.summary.RiskMap_predictive_check <- function(object, digits = 3,
   check_positive_integer(digits, "digits", allow_zero = TRUE)
   if (!is_whole_check_summary(object)) {
     abort_input("{.arg object} must be the whole summary of a predictive check, not a part of it.", arg = "object")
+  }
+  if (!nrow(object)) {
+    abort_input(c("{.arg object} has no statistics to tabulate.", "i" = "Include some in {.arg statistics} of {.fn assess_fit}."), arg = "object")
   }
   render_results_table(check_summary_table(object, digits), row_names = FALSE,
                        col_names = col_names, ...)

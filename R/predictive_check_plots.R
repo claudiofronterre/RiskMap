@@ -7,9 +7,11 @@
 ##' result of [assess_fit()], as `plot()` of the result does.
 ##'
 ##' @param x The result of [assess_fit()].
-##' @param type What to draw, each `"statistic"` (the default), the
+##' @param type What to draw, each `"statistic"` that is a number, the
 ##'   `"distribution"` of the prevalence, the rate or the response, or the
-##'   `"variogram"` of the residuals from the covariates.
+##'   `"variogram"` of the residuals from the covariates. By default, the first of
+##'   these that `x` has, which is the variogram when it is the only one in
+##'   `statistics` of [assess_fit()].
 ##' @param model Names of the models to include, all of them by default.
 ##' @param colour The colour of what is observed. The histograms and the bands
 ##'   have paler versions of it.
@@ -55,16 +57,18 @@
 ##' plot_predictive_check(result)
 ##' plot_predictive_check(result, type = "distribution")
 ##' plot_predictive_check(result, type = "variogram")
+##'
+##' # Only the variogram, which is then what is drawn
+##' result <- assess_fit(fit, "variogram", nsim = 199, seed = 1)
+##' plot(result)
 ##' @export
-plot_predictive_check <- function(x,
-                                  type = c("statistic", "distribution",
-                                           "variogram"),
-                                  model = NULL, colour = "#00857F", ...) {
+plot_predictive_check <- function(x, type = NULL, model = NULL,
+                                  colour = "#00857F", ...) {
   check_supplied(x)
   check_plot_object(x, "RiskMap_predictive_check", "plot_predictive_check",
                     "assess_fit")
   check_dots_unused(...)
-  type <- match_choice(type)
+  type <- check_drawn_type(type, x$types)
   models <- names(x$family)
   check_assessed_model(model, models, "model", several = TRUE)
   check_colour(colour)
@@ -80,6 +84,22 @@ plot_predictive_check <- function(x,
 ##' @method plot RiskMap_predictive_check
 ##' @export
 plot.RiskMap_predictive_check <- function(x, ...) plot_predictive_check(x, ...)
+
+##' What to draw of a predictive check, by default the first thing it has
+##'
+##' @param types What the check has, of what can be drawn.
+##' @noRd
+check_drawn_type <- function(type, types, call = rlang::caller_env()) {
+  if (is.null(type)) return(types[1L])
+  type <- match_choice(type, c("statistic", "distribution", "variogram"),
+                       call = call)
+  if (!type %in% types) {
+    missing <- if (type == "statistic") "statistics that are numbers" else
+      paste("the", type)
+    abort_input(c("{.arg x} doesn't have {missing} to draw.", "i" = "{.arg statistics} of {.fn assess_fit} says what is calculated."), arg = "type", call = call)
+  }
+  type
+}
 
 ##' The theme of the panels of a predictive check
 ##' @noRd

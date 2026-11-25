@@ -327,7 +327,8 @@ test_that("statistics can be given by name, with functions or without", {
   run <- function(statistics, fit = gaussian_model) {
     assess_fit(fit, statistics, nsim = 19, seed = 7)
   }
-  expect_identical(run(c("mean", "sd", "min", "max")), run(NULL))
+  expect_identical(run(c("mean", "sd", "min", "max", "distribution",
+                         "variogram")), run(NULL))
   check <- run(c("zeros", "max"))
   expect_identical(check$observed$statistic, c("zeros", "max"))
   expect_equal(check$observed$value, c(0, max(y)))
@@ -372,6 +373,56 @@ test_that("statistics can be given by name, with functions or without", {
   expect_identical(check$observed$statistic, c("Largest", "sd_prevalence"))
 })
 
+test_that("the distribution and the variogram are calculated if asked for", {
+  run <- function(statistics, ...) {
+    assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
+               statistics, nsim = 99, seed = 7, ...)
+  }
+  expect_identical(checked$types, c("statistic", "distribution", "variogram"))
+
+  # The variogram alone is the one of the default, and is what is drawn.
+  alone <- run("variogram")
+  expect_identical(alone$variogram, checked$variogram)
+  expect_null(alone$distribution)
+  expect_identical(alone$types, "variogram")
+  expect_identical(dim(alone$observed), c(0L, 3L))
+  expect_identical(dim(alone$simulated), c(0L, 4L))
+  expect_identical(plot(alone)$labels$y, "Semivariance of the residuals")
+  expect_identical(nrow(summary(alone)), 0L)
+  expect_named(summary(alone), names(summary(checked)))
+  expect_output(print(alone), "draws\\s+the\\s+variogram")
+  expect_false(any(grepl("At or above|distribution",
+                         capture.output(print(alone)))))
+  expect_output(print(summary(alone)), "The observed variogram")
+  expect_input_error(to_table(alone), "object", "no statistics")
+  expect_input_error(plot(alone, type = "statistic"), "type", "numbers")
+  expect_input_error(plot(alone, type = "distribution"), "type",
+                     "doesn't have the distribution")
+  expect_input_error(plot(alone, type = "pit"), "type", "must be one of")
+
+  # The distribution, and both.
+  expect_identical(run("distribution")$distribution, checked$distribution)
+  expect_match(plot(run("distribution"))$labels$y, "at or below")
+  both <- run(list("variogram", "distribution"))
+  expect_identical(both$types, c("distribution", "variogram"))
+  expect_identical(plot(both)$labels$y, plot(run("distribution"))$labels$y)
+
+  # With numbers, which are the first to be drawn.
+  mixed <- run(list("sd", function(data) c(largest = max(data$y)), "variogram"))
+  expect_identical(mixed$types, c("statistic", "variogram"))
+  expect_null(mixed$distribution)
+  expect_identical(plot(mixed)$labels$y, "Simulated datasets")
+  expect_identical(mixed$variogram, checked$variogram)
+  expect_null(run(function(data) c(a = 1))$variogram)
+
+  # What isn't asked for isn't needed.
+  expect_no_warning(run("sd"))
+  expect_input_error(run("sd", breaks = c(0, 5)), "breaks", "doesn't include")
+  expect_identical(run("variogram", breaks = c(0, 5))$breaks, c(0, 5))
+  expect_input_error(run(list(v = "variogram")), "statistics", "another name")
+  expect_identical(run(c("variogram", "variogram"))$variogram, checked$variogram)
+})
+
 test_that("statistics that can't be used are errors", {
   run <- function(statistics) {
     assess_fit(gaussian_model, statistics, nsim = 19, seed = 7)
@@ -379,6 +430,7 @@ test_that("statistics that can't be used are errors", {
   expect_input_error(run("median"), "statistics", "\"median\" isn't one")
   expect_input_error(run(c("sd", "zero", "median")), "statistics",
                      "aren't among them")
+  expect_input_error(run(variogram), "statistics", "failed")
   expect_input_error(run(1), "statistics", "the names of statistics")
   expect_input_error(run(list("sd", 1)), "statistics", "the names of statistics")
   expect_input_error(run(list(c("sd", "mean"))), "statistics")

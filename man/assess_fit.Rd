@@ -18,16 +18,18 @@ assess_fit(
 \item{models}{A fit from \code{\link[=glgpm]{glgpm()}}, or a list of fits to the same data. The
 names of the list name the models in the results.}
 
-\item{statistics}{The names of statistics, among \code{"mean"}, \code{"sd"}, \code{"min"},
-\code{"max"} and \code{"zeros"}, a function that takes a dataset, as
-\code{\link[=simulated_data]{simulated_data()}} returns it, and gives named numbers, or a list of names
-and functions. The default, \code{NULL}, calculates statistics that depend on
-the family (see Details).}
+\item{statistics}{What to compare, the names of statistics, among \code{"mean"},
+\code{"sd"}, \code{"min"}, \code{"max"}, \code{"zeros"}, \code{"distribution"} and \code{"variogram"}, a
+function that takes a dataset, as \code{\link[=simulated_data]{simulated_data()}} returns it, and gives
+named numbers, or a list of names and functions. The default, \code{NULL}, is
+numbers that depend on the family (see Details), the distribution and the
+variogram.}
 
 \item{breaks}{Optional breakpoints of the distance classes of the variogram,
 in the distance units of the (first) model, as in \code{\link[=variogram]{variogram()}}, whose
 default is used otherwise, 14 classes of equal width up to a third of the
-largest distance between locations.}
+largest distance between locations. An error if \code{statistics} doesn't include
+the variogram.}
 
 \item{nsim}{Number of datasets simulated from each model, at least 19.
 Defaults to 1,000.}
@@ -47,18 +49,19 @@ if it is not set.}
 A list of class \code{RiskMap_predictive_check}, containing
 \describe{
 \item{observed}{A data frame with the observed \code{value} of each \code{statistic}
-for each \code{model}.}
+that is a number for each \code{model}.}
 \item{simulated}{A data frame with the \code{value} of each \code{statistic} in each
 \code{simulation} from each \code{model}.}
 \item{distribution}{A data frame with the distribution function of the
 observed data for each \code{model}, at the values \code{value}, the \code{median} of
 those of the simulated datasets, the limits of the joint envelope,
-\code{lower} and \code{upper}, and whether the observed one is \code{outside} it.}
+\code{lower} and \code{upper}, and whether the observed one is \code{outside} it. \code{NULL}
+if not in \code{statistics}.}
 \item{variogram}{A data frame with the same columns for the semivariance of
 the residuals in each distance class, the mean \code{distance} of its pairs of
-locations and their number, \code{n_pairs}. \code{NULL} when no pair of locations
-is in a class, and without the models whose covariates leave no
-residuals.}
+locations and their number, \code{n_pairs}. \code{NULL} if not in \code{statistics} or
+when no pair of locations is in a class, and without the models whose
+covariates leave no residuals.}
 \item{nsim, seed, breaks, distance_units, level}{The settings. \code{level} is
 the coverage of the joint envelopes, 0.95.}
 \item{family, response, quantity, unit}{The family of each model, the
@@ -83,6 +86,8 @@ prevalence or the proportion of zero counts,
 \item the \strong{variogram} of the residuals from the covariates, which shows
 whether the model describes the spatial correlation that they leave.
 }
+
+All of them are compared by default, and \code{statistics} says which.
 }
 \section{The simulated datasets}{
 Each dataset has a new surface, new values of the nugget and the random
@@ -98,17 +103,17 @@ can miss what is wrong with the model.
 }
 
 \section{Statistics}{
-The statistics with a name are the mean, the standard deviation, the minimum
+The numbers with a name are the mean, the standard deviation, the minimum
 and the maximum of the empirical prevalence, the rate or the Gaussian
 response, and the proportion of zeros. The default ones are \code{"mean"}, \code{"sd"}
 and \code{"zeros"}, and for Gaussian models \code{"mean"}, \code{"sd"}, \code{"min"} and \code{"max"}.
 In the result the names say what the statistic is of, such as
 \code{sd_prevalence}.
 
-The statistics are those of the observations. The exception is a binomial
+These numbers are those of the observations. The exception is a binomial
 model whose denominators are all 1, because the prevalence of a single
 individual is only 0 or 1. The positives and the denominators are then added
-up at each location, and the statistics are those of the locations. With
+up at each location, and the numbers are those of the locations. With
 other denominators the observations are not added up, because that would
 hide the variation between those at the same location.
 
@@ -121,7 +126,10 @@ summary, with a warning.
 }
 
 \section{Distribution and variogram}{
-The distribution is that of the same values as the statistics with a name,
+These are curves and not numbers, and each has a plot of its own. They are
+calculated by default, and with a given \code{statistics} only if they are in it.
+
+The distribution is that of the same values as the numbers with a name,
 the prevalence, the rate or the response of each observation, or the
 prevalence of each location when the denominators of a binomial model are all
 1.
@@ -187,11 +195,12 @@ result <- assess_fit(models, nsim = 199, seed = 1)
 summary(result)
 plot_predictive_check(result, type = "variogram")
 
-# Statistics by name, and one of one's own
+# Numbers by name, one of one's own, and the variogram
 describe <- function(data) {
   c(correlation = cor(data$y, log(data$pop_dens)))
 }
-result <- assess_fit(models, list("sd", "max", describe), nsim = 199, seed = 1)
+result <- assess_fit(models, list("sd", describe, "variogram"), nsim = 199,
+                     seed = 1)
 plot_predictive_check(result)
 
 }
