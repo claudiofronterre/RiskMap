@@ -43,8 +43,13 @@ make_gaussian_profile_problem <- function(fitted) {
   estimate <- profiled$estimate
   log_scale <- log(spatial_scaling$distance_scale)
   # The coefficients are solved in closed form and need no bounds.
-  bounds <- parameter_bounds(parameters, log_scale, coefficients = c(-Inf, Inf))
-  internal_bounds <- parameter_bounds(parameters, coefficients = c(-Inf, Inf))
+  residual_variance <- gaussian_regression(
+    fitted$y, fitted$cov_offset %||% 0, as.matrix(fitted$D), parameters
+  )$variance
+  log_variance <- if (residual_variance > 0) log(residual_variance) else 0
+  bounds <- parameter_bounds(parameters, log_scale, c(-Inf, Inf), log_variance)
+  internal_bounds <- parameter_bounds(parameters, coefficients = c(-Inf, Inf),
+                                      log_variance = log_variance)
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
     labels = profile_labels(parameters, names(estimate)),

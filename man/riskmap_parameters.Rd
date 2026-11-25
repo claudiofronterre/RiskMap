@@ -36,7 +36,8 @@ Every value must be finite, and every one but the coefficients positive.
 The others take their automatic start, given as \code{start} by
 \code{\link[=glgpm_parameters]{glgpm_parameters()}}. \code{regression} is the coefficient of the regression
 without the latent effects, \code{family_regression} the size of the negative
-binomial regression without them, \code{one} the value 1 and
+binomial regression without them, \code{residual_variance} the variance of the
+residuals of a Gaussian model's regression, \code{one} the value 1 and
 \code{distance_quantile} the 10th percentile of the distances between the
 locations. A name the model lacks stops with the names it has.
 }

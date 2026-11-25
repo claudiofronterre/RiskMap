@@ -436,7 +436,7 @@ test_that("glgpm_parameters() shows the parameters that fixed_pars holds", {
 test_that("a held spatial variance leaves the nugget its standard error", {
   data <- replicated_gaussian()
   fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = data, family = "gaussian",
-               fixed_pars = list(sigma2 = 0.5), messages = FALSE)
+               fixed_pars = list(sigma2 = 0.2), messages = FALSE)
   # log tau2 = nu2 + log sigma2, and sigma2 is known.
   limits <- summary(fit)$sp["Variance of the nugget", ]
   expect_true(all(is.finite(limits)))

@@ -1004,7 +1004,44 @@ which values were given (`mcml$starting_given`) and where the others came from.
 `glgpm_parameters(formula, data, family)` lists the parameters of a model,
 with their elements, flat names, labels, start rules and held values, before it
 is fitted, and prints a template of `start_pars`. Fits without `start_pars` are
-unchanged.
+unchanged by this.
+
+- Gaussian fits no longer depend on the units of the response. Every variance
+started at 1 and the coefficients were in the units of the response, so a
+response whose residual variance was far from 1 started far from the maximum,
+and the optimiser's first steps, taken to bring the total variance to that of
+the data, also took the scale of correlation to a value far below or above the
+distances, where the likelihood is flat. On 20 simulated surveys of 50 locations
+(`sigma2` 1, `phi` 20, an error standard deviation of 0.2) multiplied by 1e-6,
+1e-3, 0.1, 1, 10, 100, 1000 and 1e6, the log-likelihood was more than 0.1 below
+the maximum, or the fit failed, in 100, 15, 5, 0, 0, 55, 90 and 90% of them, by
+up to 55 in the small units and 17.8 in the large ones. The engines now fit the residuals of the
+regression divided by their standard deviation (`gaussian_regression()` and
+`scale_gaussian_response()`), and the estimates, their covariance, the score and
+the log-likelihood are returned in the units of the response. Held values and
+starts keep those units. Every variance starts at the mean square of those
+residuals (the rule `residual_variance` of `glgpm_parameters()`). In those 160
+fits, and in models with and without a nugget, `re()` terms, an offset,
+covariates, held parameters and given starts, the fits in every unit agree to
+about 1e-7, and a response far from zero is fitted as the same one around zero.
+The bounds of the variances in the profiles of a Gaussian fit, which cut the
+profiles of a response multiplied by 1e-6 or 1e6 short, are on that scale too.
+The regression that starts the coefficients now takes away the offset, which it
+ignored, and the held coefficients, and is fitted on the standardised design, so
+that a design such as a cubic in the calendar year is no longer refused as rank
+deficient. One that is rank deficient stops even when `start_pars` gives every
+coefficient, where it was fitted with a warning. The trace that
+`messages = TRUE` shows is of the standardised response. A value of `sigma2_me` or `sigma2_re` in
+`start_pars` without one of `sigma2` no longer starts `sigma2` too, which it did
+in models of every family. Other fits of count models are unchanged.
+On the golden battery 68 of the 82 tasks are identical, with every fit of counts.
+In the 14 Gaussian ones the estimates move by at most 1.2e-7 of their value and
+the log-likelihoods by at most 6e-12, except three bootstrap estimates of a
+variance at zero (below 1e-9). In the Gaussian fits of the book's Chapters 3 and
+5 the log-likelihoods move by at most 2e-8 and the estimates by at most 6e-5 of
+their value, except two measurement error variances estimated at zero in the
+Galicia profile over kappa (from 1.2e-10 to 7.8e-11 and from 6.1e-10 to
+3.7e-10).
 
 - On the Woodbury path of Gaussian fits, which `glgpm()` takes above three
 records per latent effect unless the nugget is held at a positive value or the
@@ -1013,7 +1050,7 @@ variances were divided by the start of the spatial variance, while its
 likelihood reads them on their own scale. Only the nugget, which every engine
 fits as its ratio to the spatial variance, should be divided. Every engine now
 takes its start from the parameter table (`working_start()`). A fit whose start
-of the spatial variance is 1, the default, is unchanged. Fits given `start_pars`
+of the spatial variance is 1, the default then, is unchanged. Fits given `start_pars`
 change, and so do the refits of `parametric_bootstrap()`, which start from
 `coef()`. On 20 simulated surveys of 8 records at each of 60 locations, with a
 cluster effect, with and without a nugget, and started from `coef()` of the fit,

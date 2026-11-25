@@ -40,8 +40,9 @@
 ##' - `start`, the rule of the start when `start_pars` does not give one.
 ##'   `regression` for the coefficients of the regression without the latent
 ##'   effects, `family_regression` for a parameter of the family taken from
-##'   the family's regression, `one`, and `distance_quantile`, the 10th
-##'   percentile of the distances between locations (`default_start()`).
+##'   the family's regression, `one`, `residual_variance`, for the variances of
+##'   a Gaussian model, and `distance_quantile`, the 10th percentile of the
+##'   distances between locations (`default_start()`).
 ##' - `held`, the value of a held parameter, NA for one that is estimated. A
 ##'   model without a nugget holds `tau2` at zero.
 ##'
@@ -82,6 +83,13 @@ parameter_table <- function(beta_names, fix_tau2,
   family_start <- function(name) {
     family_parameter(name)$start %||% NA_character_
   }
+  # The variances of a Gaussian model, the one with a measurement error.
+  variance_start <- if ("sigma2_me" %in% c(estimated_family,
+                                           names(held_family))) {
+    "residual_variance"
+  } else {
+    "one"
+  }
   piece <- function(name, element, block, scale, lower, upper,
                     shift = FALSE, limit = "", start = "one") {
     n <- length(element)
@@ -95,12 +103,12 @@ parameter_table <- function(beta_names, fix_tau2,
     piece("beta", if (p) beta_names %||% rep(NA_character_, p) else
       character(), "coefficients", "identity", -30, 30, start = "regression"),
     piece("sigma2", NA_character_, "covariance", "log", -20, 20,
-          limit = "variance"),
+          limit = "variance", start = variance_start),
     piece("phi", NA_character_, "covariance", "log", -20, 10, shift = TRUE,
           start = "distance_quantile"),
     if (nugget) {
       piece("tau2", NA_character_, "covariance", "nugget", -20, 20,
-            limit = "variance")
+            limit = "variance", start = variance_start)
     },
     do.call(rbind, lapply(estimated_family, function(name) {
       piece(name, NA_character_, "family", "family", -20, 20,
@@ -108,7 +116,8 @@ parameter_table <- function(beta_names, fix_tau2,
     })),
     if (n_re > 0) {
       piece("sigma2_re", re_names %||% rep(NA_character_, n_re),
-            "random_effects", "log", -20, 20, limit = "variance")
+            "random_effects", "log", -20, 20, limit = "variance",
+            start = variance_start)
     }
   )
   estimated$stored <- stored
@@ -135,7 +144,7 @@ parameter_table <- function(beta_names, fix_tau2,
   held <- rbind(
     if (held_nugget) {
       piece("tau2", NA_character_, "covariance", "nugget", NA_real_,
-            NA_real_)
+            NA_real_, start = variance_start)
     },
     do.call(rbind, lapply(names(held_family), function(name) {
       piece(name, NA_character_, "family", "family", NA_real_, NA_real_,
@@ -478,13 +487,17 @@ parameter_jacobian <- function(table, names = vector_rows(table)$stored) {
 ##' of `distance_scale` added to those of the scale on the scale of the
 ##' model's distance units, as the profiles see them. `coefficients` replaces
 ##' the bounds of the coefficients, for the Gaussian profile that solves them
-##' in closed form.
+##' in closed form, and `log_variance`, the logarithm of the residual variance
+##' of a Gaussian model, is added to those of its variances, whose units are
+##' those of the response.
 ##' @return A list with `lower` and `upper`.
 ##' @noRd
-parameter_bounds <- function(table, log_scale = NULL, coefficients = NULL) {
+parameter_bounds <- function(table, log_scale = NULL, coefficients = NULL,
+                             log_variance = 0) {
   rows <- vector_rows(table)
-  lower <- rows$lower
-  upper <- rows$upper
+  variances <- rows$start == "residual_variance"
+  lower <- rows$lower + log_variance * variances
+  upper <- rows$upper + log_variance * variances
   if (!is.null(coefficients)) {
     lower[rows$block == "coefficients"] <- coefficients[1L]
     upper[rows$block == "coefficients"] <- coefficients[2L]
@@ -545,17 +558,22 @@ parameter_block <- function(names) {
 
 ##' The start of a parameter by its rule, when `start_pars` does not give it
 ##'
-##' The rules `one` and `distance_quantile` of the table. The coefficients and
-##' the family's parameters start from regressions on the model's records,
-##' which `glgpm()` fits.
+##' The rules `one`, `distance_quantile` and `residual_variance` of the table.
+##' The coefficients and the family's parameters start from regressions on the
+##' model's records, which `glgpm()` fits. The last rule is the variance of the
+##' residuals of a Gaussian model's regression (`gaussian_regression()`), or 1
+##' when it leaves none.
 ##' @noRd
-default_start <- function(table, name, coords = NULL) {
+default_start <- function(table, name, coords = NULL,
+                          residual_variance = NULL) {
   rows <- table$rows[table$rows$name == name, , drop = FALSE]
   rule <- rows$start[1L]
   switch(
     rule,
     one = rep(1, nrow(rows)),
     distance_quantile = quantile(pairwise_distances(coords), 0.1),
+    residual_variance = rep(if (residual_variance > 0) residual_variance else 1,
+                            nrow(rows)),
     riskmap_bug("The start of {.code {name}} comes from the model's regression.")
   )
 }
@@ -877,7 +895,8 @@ given_start_names <- function(given) {
 ##' The others take their automatic start, given as `start` by
 ##' [glgpm_parameters()]. `regression` is the coefficient of the regression
 ##' without the latent effects, `family_regression` the size of the negative
-##' binomial regression without them, `one` the value 1 and
+##' binomial regression without them, `residual_variance` the variance of the
+##' residuals of a Gaussian model's regression, `one` the value 1 and
 ##' `distance_quantile` the 10th percentile of the distances between the
 ##' locations. A name the model lacks stops with the names it has.
 ##'

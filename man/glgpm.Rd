@@ -218,12 +218,16 @@ separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)}
 reproduces a fit exactly.
 
 Parameters not given in \code{start_pars} take RiskMap's defaults, which are
-the coefficients of the regression without latent effects, \code{sigma2 = 1},
-\code{phi} at the 10th percentile of the distances between locations, 1 for an
-estimated nugget variance, a measurement error variance and the variance of
-each \code{re()} term, and for the size of a negative binomial model that of the
-regression without latent effects. A binomial, Poisson or negative binomial
-model with the canonical link and without \code{re()} terms compares them with
+the coefficients of the regression without latent effects and \code{phi} at the
+10th percentile of the distances between locations. In a Gaussian model
+every variance, that of the spatial process, of an estimated nugget, of the
+measurement error and of each \code{re()} term, starts at the variance of the
+residuals of that regression, and the model is fitted to those residuals
+divided by their standard deviation, so that a fit does not depend on the
+units of the response. In the other models the variances start at 1, and
+the size of a negative binomial model at that of the regression without
+latent effects. A binomial, Poisson or negative binomial model with the
+canonical link and without \code{re()} terms compares the defaults with
 the estimates of a Gaussian model fitted to the empirical link of the data
 (the empirical logit of a binomial model), with one observation per
 location, the totals of the location where it has several records, and

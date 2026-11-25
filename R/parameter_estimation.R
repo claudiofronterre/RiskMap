@@ -144,12 +144,16 @@
 ##' reproduces a fit exactly.
 ##'
 ##' Parameters not given in `start_pars` take RiskMap's defaults, which are
-##' the coefficients of the regression without latent effects, `sigma2 = 1`,
-##' `phi` at the 10th percentile of the distances between locations, 1 for an
-##' estimated nugget variance, a measurement error variance and the variance of
-##' each `re()` term, and for the size of a negative binomial model that of the
-##' regression without latent effects. A binomial, Poisson or negative binomial
-##' model with the canonical link and without `re()` terms compares them with
+##' the coefficients of the regression without latent effects and `phi` at the
+##' 10th percentile of the distances between locations. In a Gaussian model
+##' every variance, that of the spatial process, of an estimated nugget, of the
+##' measurement error and of each `re()` term, starts at the variance of the
+##' residuals of that regression, and the model is fitted to those residuals
+##' divided by their standard deviation, so that a fit does not depend on the
+##' units of the response. In the other models the variances start at 1, and
+##' the size of a negative binomial model at that of the regression without
+##' latent effects. A binomial, Poisson or negative binomial model with the
+##' canonical link and without `re()` terms compares the defaults with
 ##' the estimates of a Gaussian model fitted to the empirical link of the data
 ##' (the empirical logit of a binomial model), with one observation per
 ##' location, the totals of the location where it has several records, and
@@ -487,28 +491,36 @@ glgpm <- function(formula,
   }
   # The family's parameters at the start, for the records of the start.
   start_family <- c(family_parameters, start_pars[estimated_family])
+  # A Gaussian model's coefficients and variances start from its regression.
+  regression <- if (model$exact) {
+    gaussian_regression(y, cov_offset, D, parameters)
+  }
   if (ncol(D) > 0L && length(given$beta) == ncol(D)) {
     start_pars[["beta"]] <- unname(given$beta)
+  } else if (model$exact) {
+    start_pars[["beta"]] <- regression$coefficients
   } else {
     # From the records the engine fits, the negative binomial family's as
     # binomial ones (engine_records()). Coefficients given replace theirs.
-    records <- engine_records(family, y, if (!model$exact) units_m,
-                              cov_offset, start_family, invlink)
+    records <- engine_records(family, y, units_m, cov_offset, start_family,
+                              invlink)
     start_pars[["beta"]] <- model$start_coefficients(
       y = records$y, units_m = records$units_m, D = D,
       cov_offset = records$offset, link = if (is.list(invlink)) invlink$link,
       formula = inter_f$pf, data = data
     )
   }
-  start_pars[["sigma2"]] <- given$sigma2 %||% default_start(parameters, "sigma2")
-  start_pars[["phi"]] <- given$phi %||%
-    default_start(parameters, "phi", coords)
-  if (isTRUE(fix_tau2)) {
-    start_pars[["tau2"]] <- given$tau2 %||% default_start(parameters, "tau2")
+  default <- function(name) {
+    default_start(parameters, name, coords, regression$variance)
   }
-  if (n_re > 0) {
-    start_pars[["sigma2_re"]] <- default_start(parameters, "sigma2_re")
+  # [[ ]], because $sigma2 would also match a lone sigma2_me or sigma2_re.
+  start_pars[["sigma2"]] <- given[["sigma2"]] %||% default("sigma2")
+  start_pars[["phi"]] <- given$phi %||% default("phi")
+  if (isTRUE(fix_tau2)) start_pars[["tau2"]] <- given$tau2 %||% default("tau2")
+  if (model$measurement_error && is.null(fix_var_me)) {
+    start_pars[["sigma2_me"]] <- given$sigma2_me %||% default("sigma2_me")
   }
+  if (n_re > 0) start_pars[["sigma2_re"]] <- default("sigma2_re")
   # The held parameters start, and stay, at their values.
   start_pars <- apply_given_start(parameters, start_pars,
                                   combine_given(given, holds$pinned))
@@ -625,10 +637,11 @@ glgpm <- function(formula,
 ##' starting values: the response `y`, the design matrix `D` in the supplied
 ##' covariate units, the unique coordinates `coords` in the model's distance
 ##' units, the location and random-effect indices, the denominators and
-##' offsets, and the correlation and nugget settings. Coordinates and
-##' covariates are rescaled for fitting and the estimate is returned in the
-##' supplied units, with the seed used (`NULL` for Gaussian models) and the
-##' scalings as attributes. It makes no call to sf, so it can run in forked
+##' offsets, and the correlation and nugget settings. Coordinates,
+##' covariates and a Gaussian response (`scale_gaussian_response()`) are
+##' rescaled for fitting and the estimate is returned in the supplied units,
+##' with the seed used (`NULL` for Gaussian models) and the scalings of the
+##' coordinates and the covariates as attributes. It makes no call to sf, so it can run in forked
 ##' processes, where GDAL and PROJ can deadlock. `family_parameters` are the
 ##' family's own (`read_family()`), NULL for a family without them.
 ##' `parameters` is the model's parameter table (`parameter_table()`). `call` is
@@ -649,6 +662,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
   fitting_coords <- spatial_scaling$coordinates
   fitting_start_phi <- spatial_scaling$phi
 
+  if (exact) regression <- gaussian_regression(y, cov_offset, D, parameters)
   design_scaling <- model_design_scaling(D, parameters)
   D <- design_scaling$design
   start_pars[["beta"]] <- as.numeric(
@@ -656,21 +670,20 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
   )
 
   if (exact) {
-    if(is.null(fix_var_me)) {
-      if(is.null(start_pars[["sigma2_me"]])) {
-        start_pars[["sigma2_me"]] <- default_start(parameters, "sigma2_me")
-      } else {
-        check_positive_number(start_pars[["sigma2_me"]], call = call)
-      }
+    if (is.null(fix_var_me)) {
+      check_positive_number(start_pars[["sigma2_me"]], call = call)
     }
-    fitting_start <- start_pars
+    response_scaling <- scale_gaussian_response(regression)
+    fitting_start <- response_scaling$start(start_pars)
     fitting_start$phi <- fitting_start_phi
-    res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
+    res <- glgpm_lm(y = response_scaling$response, D, fitting_coords,
             kappa = kappa,
             ID_coords, ID_re, s_unique, re_unique,
-            fix_var_me, fix_tau2,
+            response_scaling$variance(fix_var_me),
+            response_scaling$variance(fix_tau2),
             parameters = parameters, start = fitting_start,
             messages = messages)
+    res <- response_scaling$restore(res)
     res["mcml_history"] <- list(NULL)
     res["mcml_certified"] <- list(NULL)
     res["mcml_selected_iteration"] <- list(NULL)
@@ -914,6 +927,100 @@ linear_start_values <- function(design, response) {
   }
 
   unname(fit$coefficients)
+}
+
+##' The regression of a Gaussian response without the latent effects
+##'
+##' The least squares coefficients of `y - offset`, given those that the model
+##' holds. They are found on the standardised design (`model_design_scaling()`),
+##' as the engines fit it, so that a design that only its units or a distant
+##' origin make look rank deficient is not refused.
+##' @return A list with the `coefficients`, held ones included, those on the
+##'   `standardised` design, the `residuals` and their `variance`, the mean of
+##'   their squares, or 0 when they are only rounding, as those of a constant
+##'   response.
+##' @noRd
+gaussian_regression <- function(y, offset, design, parameters) {
+  response <- y - offset
+  scaling <- model_design_scaling(design, parameters)
+  pinned <- pinned_rows(parameters)
+  pinned <- pinned[pinned$name == "beta", , drop = FALSE]
+  # A held coefficient has one coordinate on the standardised design.
+  held <- numeric(ncol(design))
+  held[pinned$index] <- pinned$held
+  coefficients <- as.numeric(solve(scaling$coefficient_transform, held))
+  free <- setdiff(seq_len(ncol(design)), pinned$index)
+  coefficients[free] <- 0
+  if (length(free)) {
+    coefficients[free] <- linear_start_values(
+      scaling$design[, free, drop = FALSE],
+      response - as.numeric(scaling$design %*% coefficients)
+    )
+  }
+  fitted <- as.numeric(scaling$design %*% coefficients)
+  residuals <- response - fitted
+  variance <- mean(residuals^2)
+  rounding <- 1e-14 * max(abs(y), abs(offset), abs(fitted))
+  if (is.finite(variance) && sqrt(variance) <= rounding) variance <- 0
+  list(coefficients = as.numeric(scaling$coefficient_transform %*%
+                                   coefficients),
+       standardised = coefficients, residuals = residuals,
+       variance = variance)
+}
+
+##' The standardisation of a Gaussian response
+##'
+##' The Gaussian paths fit the residuals of the regression without the latent
+##' effects, divided by their standard deviation, so that a fit does not
+##' depend on the units or on the mean of the response, as
+##' `scale_spatial_coordinates()` and `model_design_scaling()` make it
+##' independent of those of the distances and the covariates. `nlminb()` takes
+##' its first steps, and stops, by the sizes of the working parameters, which
+##' hold the coefficients in the units of the response and the logarithms of
+##' the variances. A response with a standard deviation of 100 whose variances
+##' started at 1 made it step out to a scale of correlation far from the
+##' distances, where the likelihood is flat and it stopped.
+##'
+##' A regression without residuals, as of a constant response, gives no scale,
+##' so the response is then only centred.
+##' @param regression The regression (`gaussian_regression()`), whose
+##'   coefficients on the standardised design are those the paths fit.
+##' @return A list with the standardised `response`, and functions that take
+##'   `start`, the starting values, and `variance`, a held variance or any
+##'   other value of `fix_tau2` or `fix_var_me`, to its scale, and that
+##'   `restore` a fit to the units of the response.
+##' @noRd
+scale_gaussian_response <- function(regression) {
+  scale <- if (regression$variance > 0) sqrt(regression$variance) else 1
+  log_variance <- 2 * log(scale)
+  list(
+    response = regression$residuals / scale,
+    variance = function(value) if (is.numeric(value)) value / scale^2 else value,
+    start = function(start) {
+      start$beta <- (start$beta - regression$standardised) / scale
+      variances <- intersect(c("sigma2", "tau2", "sigma2_me", "sigma2_re"),
+                             names(start))
+      start[variances] <- lapply(start[variances], function(value) {
+        value / scale^2
+      })
+      start
+    },
+    restore = function(result) {
+      estimate <- result$estimate
+      beta <- seq_along(estimate$beta)
+      result$estimate$beta <- regression$standardised + scale * estimate$beta
+      # The nugget is kept as its ratio to the spatial variance.
+      for (name in intersect(c("sigma2", "sigma2_me", "sigma2_re"),
+                             names(estimate))) {
+        result$estimate[[name]] <- estimate[[name]] + log_variance
+      }
+      result$covariance[beta, ] <- scale * result$covariance[beta, ]
+      result$covariance[, beta] <- scale * result$covariance[, beta]
+      result$grad_MLE[beta] <- result$grad_MLE[beta] / scale
+      result$log_lik <- result$log_lik - length(regression$residuals) * log(scale)
+      result
+    }
+  )
 }
 
 ##' Standardise the fixed-effect design without changing its column space
@@ -1303,8 +1410,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     transformed_start <- current[c("beta", "sigma2", "phi")]
     if (isTRUE(fix_tau2)) transformed_start$tau2 <- current$tau2
     if (is.null(transformed_measurement_variance)) {
-      transformed_start$sigma2_me <- default_start(transformed_parameters,
-                                                   "sigma2_me")
+      transformed_start$sigma2_me <- 1
     }
     glgpm_lm(
       y = transformed_response - totals$offset,
@@ -1443,7 +1549,7 @@ location_totals <- function(y, units_m, D, offset, ID_coords, s_unique) {
 ##'
 ##' `parameters` is the model's parameter table (`parameter_table()`) and
 ##' `start` the starting values on their natural scale, named as users name
-##' them, with the scale in the fitting units. Up to three observations per
+##' them, with the scale and the variances in the fitting units. Up to three observations per
 ##' latent effect the observed covariance is factorised directly
 ##' (`glgpm_lm_direct()`), and beyond that the Woodbury identity works in the
 ##' dimension of the latent effects. Both start from `working_start()`, which

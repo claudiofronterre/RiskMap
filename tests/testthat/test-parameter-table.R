@@ -290,7 +290,10 @@ test_that("the default starts are those glgpm() used", {
     estimated_family = character(), family_parameters = NULL,
     re_names = NULL, distance_units = "km"
   )
-  expect_identical(default_start(gaussian, "sigma2_me"), 1)
+  for (name in c("sigma2", "sigma2_me")) {
+    expect_identical(default_start(gaussian, name, residual_variance = 2.5), 2.5)
+    expect_identical(default_start(gaussian, name, residual_variance = 0), 1)
+  }
   expect_error(default_start(parameters, "beta"),
                class = "riskmap_error_internal")
 })
@@ -362,7 +365,9 @@ test_that("both Gaussian paths start each variance on the scale its likelihood r
   # effect, so the fit takes the Woodbury path unless told otherwise. Both
   # likelihoods read the nugget as its ratio to the spatial variance and the
   # measurement error and random-effect variances on their own scale, so
-  # those start at the values given, not divided by the spatial variance.
+  # those start at the values given, not divided by the spatial variance. Both
+  # fit the residuals of the regression divided by their standard deviation,
+  # so the variances given are divided by the residual variance.
   set.seed(2)
   replicated <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
   replicated$y <- replicated$y + rnorm(nrow(replicated), sd = 0.3)
@@ -405,12 +410,19 @@ test_that("both Gaussian paths start each variance on the scale its likelihood r
          fix_var_me = 0.1, positions = c(3L, 5L, 6L),
          expected = log(c(2, 0.3, 0.6)))
   )
+  residual_variance <- mean(residuals(lm(y ~ cov, replicated))^2)
+  # The ratio of the nugget to the spatial variance has no units.
+  has_units <- function(case) {
+    if (length(case$positions) == 4L) c(1, 0, 1, 1) else rep(1, 3)
+  }
   for (case in cases) {
     woodbury <- start_of(case$formula, case$start, "woodbury",
                          case$fix_var_me)
     direct <- start_of(case$formula, case$start, "direct", case$fix_var_me)
     expect_length(woodbury, max(case$positions))
-    expect_identical(woodbury[case$positions], case$expected)
+    expect_equal(woodbury[case$positions],
+                 case$expected - log(residual_variance) * has_units(case),
+                 tolerance = 1e-12)
     expect_identical(woodbury, direct)
   }
 })
