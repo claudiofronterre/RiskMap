@@ -546,9 +546,11 @@ family_traits <- function(family) {
       validate = function(y, units_m) check_counts(y, units_m, "Poisson"),
       start_coefficients = function(y, units_m, D, cov_offset, link, formula,
                                     data) {
-        pf_aux <- update(formula, . ~ . + offset(log(units_m)) +
-                           offset(cov_offset))
+        # The responses in `data` aren't rounded.
+        pf_aux <- update(formula, .riskmap_response ~ . +
+                           offset(log(units_m)) + offset(cov_offset))
         data_aux <- data
+        data_aux$.riskmap_response <- y
         data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
         glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
         coef(glm_fitted)

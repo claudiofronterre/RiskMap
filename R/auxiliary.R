@@ -1318,7 +1318,7 @@ check_binomial <- function(y, den){
 
   if (!is.null(den)) {
     if (!all(is_whole(den)) || !all(round(den) > 0)) {
-      abort_input(c("The denominators of a binomial model must be positive whole numbers.", "i" = "Check or remove the other rows."), arg = "denominator")
+      abort_input(c("The denominators of a binomial model must be positive whole numbers.", "i" = "Check or remove the rows where they aren't."), arg = "denominator")
     }
     if (!all(round(den) >= round(y))) {
       abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")

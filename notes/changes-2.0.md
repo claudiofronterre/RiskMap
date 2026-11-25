@@ -334,8 +334,9 @@ out the same terms as that of a Poisson fit, so the two can be compared.
 responses of Poisson ones, as it did for a negative binomial model. Binomial
 denominators must be positive whole numbers, Poisson responses non-negative whole
 numbers and Poisson exposures positive and finite. Responses of counts and
-binomial denominators are whole to 1.5e-8, and are rounded, where a response that
-wasn't exactly whole stopped the final sampling. Denominators and responses that
+binomial denominators are whole to 1.5e-8, and are rounded, also in simulations
+from the fit, where a response that wasn't exactly whole stopped the final
+sampling and such a denominator the simulations. Denominators and responses that
 were refused only by that sampling, after the fit, such as a denominator of zero
 or a Poisson response of 1.5, or not at all with `return_samples = FALSE`, stop
 before it. So do a binomial denominator of 10.5, which was fitted with the

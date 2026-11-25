@@ -525,13 +525,24 @@ test_that("responses and denominators of counts are whole to floating point", {
   expect_identical(rounded$y, whole$y)
   expect_identical(rounded$units_m, whole$units_m)
   expect_identical(rounded$S_samples, whole$S_samples)
-  # An exposure isn't rounded.
+  # The simulation takes the denominators of the fit, as whole numbers.
+  expect_identical(simulated_values(simulate_glgpm(rounded, nsim = 2, seed = 1)),
+                   simulated_values(simulate_glgpm(whole, nsim = 2, seed = 1)))
+
+  # The start of a Poisson model regresses the rounded responses, which can be
+  # just below zero, and the exposures aren't rounded.
   data <- poisson_data
-  data$y <- nearly(data$y)
   data$denominator <- data$denominator + 0.5
+  data$y[1] <- 0
+  whole <- fit(data, "poisson")
+  data$y <- nearly(data$y)
+  data$y[1] <- 0.3 - 0.1 * 3
+  data$y[2] <- data$y[2] + 1.2e-8
+  expect_lt(data$y[1], 0)
   rounded <- fit(data, "poisson")
-  expect_identical(rounded$y, as.numeric(poisson_data$y))
+  expect_identical(rounded$y, whole$y)
   expect_identical(rounded$units_m, data$denominator)
+  expect_identical(rounded$S_samples, whole$S_samples)
 })
 
 test_that("a model with re() terms keeps the default start without fitting a Gaussian model", {
