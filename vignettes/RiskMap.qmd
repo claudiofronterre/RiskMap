@@ -193,7 +193,6 @@ liberia_grid$elevation <- terra::extract(liberia_elevation,
 
 ```
 
-<<<<<<< HEAD
 Use `predict()` to generate predictions either at the grid locations or for areal targets - for full details see `?predict.RiskMap`. If only the model is provided, predictions are generated at the observed locations:
 
 ```{r}
