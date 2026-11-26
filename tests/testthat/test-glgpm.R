@@ -995,3 +995,30 @@ test_that("glgpm reads an offset alongside several re() calls and reports unusab
     "only one `offset\\(\\)` term"
   )
 })
+
+test_that("glgpm names the rows whose covariates aren't finite once transformed", {
+  logged <- gaussian_data
+  logged$positive <- exp(logged$cov)
+  logged$positive[c(2, 5)] <- c(0, -1)
+  # Without R's warning about the logarithm of a negative number
+  expect_no_warning(
+    error <- expect_input_error(
+      glgpm(y ~ log(positive) + gp(), data = logged, family = "gaussian",
+            messages = FALSE),
+      "data",
+      "2 rows of `data` give the model a covariate that isn't a finite number"
+    )
+  )
+  expect_match(conditionMessage(error), "They are rows 2 and 5", fixed = TRUE)
+  # A basis that can't be computed where its variable isn't finite
+  expect_input_error(
+    glgpm(y ~ splines::ns(log(positive), 2) + gp(), data = logged,
+          family = "gaussian", messages = FALSE),
+    "data", "2 rows of `data` give"
+  )
+  expect_input_error(
+    glgpm_parameters(y ~ log(positive) + gp(), data = logged,
+                     family = "gaussian"),
+    "data", "isn't a finite number"
+  )
+})

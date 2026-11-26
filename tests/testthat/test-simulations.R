@@ -1016,3 +1016,47 @@ test_that("print() of a simulation model or of simulations stops on an argument 
   expect_input_error(print(simulation, digits = 3), "digits")
   expect_no_error(capture.output(print(model), print(simulation)))
 })
+
+test_that("simulations name the locations whose covariates are missing or not finite", {
+  logged <- gaussian_data
+  logged$positive <- exp(logged$cov)
+  model <- specify_glgpm(y ~ log(positive) + gp(), logged, "gaussian",
+                         list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                              sigma2_me = 0.1))
+  grid <- logged[1:4, ]
+  grid$positive <- c(1, 0, -1, 2)
+  expect_no_warning(
+    expect_input_error(
+      simulate_glgpm(model, what = "surface", prediction_grid = grid, seed = 1),
+      "prediction_grid",
+      "2 rows of `prediction_grid` give the model a covariate that isn't a finite number"
+    )
+  )
+  expect_input_error(
+    simulate_glgpm(model, sample_locations = grid[1:2, ], seed = 1),
+    "sample_locations", "It is row 2. Remove it before simulating."
+  )
+  grid$positive[2:3] <- c(NA, 1)
+  expect_input_error(
+    simulate_glgpm(model, what = "surface", prediction_grid = grid, seed = 1),
+    "prediction_grid",
+    "1 row of `prediction_grid` has missing values in the covariates of the model"
+  )
+  expect_input_error(
+    simulate_glgpm(model, what = "surface",
+                   prediction_grid = grid[c(2, 2), ], seed = 1),
+    "prediction_grid", "2 rows of `prediction_grid` have missing values"
+  )
+  grid$positive[2] <- 3
+  expect_no_error(
+    simulate_glgpm(model, what = "surface", prediction_grid = grid, seed = 1)
+  )
+  # The data of a specified model are checked as those of a fit.
+  logged$positive[3] <- 0
+  expect_input_error(
+    specify_glgpm(y ~ log(positive) + gp(), logged, "gaussian",
+                  list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                       sigma2_me = 0.1)),
+    "data", "1 row of `data` gives the model a covariate"
+  )
+})

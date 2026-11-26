@@ -457,6 +457,95 @@ check_complete_data <- function(data, columns,
   invisible(TRUE)
 }
 
+##' Whether the fixed effects of a model are finite numbers in each row
+##'
+##' A row fails when a numeric part inside a term isn't finite, such as
+##' `log(x)` in `ns(log(x), 2)`, or a numeric column of its model frame isn't,
+##' such as `log(x)` itself. Missing values fail too.
+##' @param formula The formula of the model, which may have `gp()` and `re()`
+##'   terms and a response.
+##' @param data A data frame or `sf` object with the variables of the formula.
+##' @return A logical vector with an element for each row of `data`, all `TRUE`
+##'   when the formula can't be read, since other checks report that.
+##' @noRd
+fixed_effects_are_finite <- function(formula, data) {
+  if (inherits(data, "sf")) data <- st_drop_geometry(data)
+  data <- as.data.frame(data)
+  every <- rep(TRUE, nrow(data))
+  fixed <- tryCatch(update(interpret_formula(formula)$pf, NULL ~ .),
+                    error = function(error) NULL)
+  if (is.null(fixed) || !nrow(data)) return(every)
+  finite <- formula_parts_are_finite(fixed, data)
+  if (!any(finite)) return(finite)
+  # A term such as ns() may fail on the rows whose parts aren't finite.
+  frame <- tryCatch(
+    suppressWarnings(model.frame(fixed, data = data[finite, , drop = FALSE],
+                                 na.action = na.pass)),
+    error = function(error) NULL
+  )
+  if (is.null(frame)) return(finite)
+  in_frame <- rep(TRUE, sum(finite))
+  for (column in frame) {
+    if (is.numeric(column)) {
+      in_frame <- in_frame & rowSums(!is.finite(as.matrix(column))) == 0L
+    }
+  }
+  finite[finite] <- in_frame
+  finite
+}
+
+##' Whether the parts of the terms of a formula are finite at each row
+##'
+##' The parts are the calls and variables inside the variables of the terms,
+##' such as `log(x)` in `ns(log(x), 2)`, that give a number for each row.
+##' @param formula A formula without a response.
+##' @param data A data frame.
+##' @return A logical vector with an element for each row of `data`.
+##' @noRd
+formula_parts_are_finite <- function(formula, data) {
+  terms <- stats::terms(formula)
+  finite <- rep(TRUE, nrow(data))
+  check_parts <- function(expression) {
+    if (!is.call(expression)) return(invisible(NULL))
+    parts <- as.list(expression)[-1L]
+    # Without empty arguments, as in x[, 1]
+    for (part in parts[!vapply(parts, identical, logical(1), quote(expr = ))]) {
+      values <- tryCatch(
+        suppressWarnings(eval(part, data, environment(terms))),
+        error = function(error) NULL
+      )
+      if (is.numeric(values) && length(values) == length(finite)) {
+        finite <<- finite & is.finite(as.numeric(values))
+      }
+      check_parts(part)
+    }
+  }
+  for (variable in as.list(attr(terms, "variables"))[-1L]) {
+    check_parts(variable)
+  }
+  finite
+}
+
+##' Stop because rows give the model a covariate that isn't a finite number
+##'
+##' @param rows The numbers of the rows.
+##' @param arg The argument that holds them.
+##' @param use `"fit"` for data that a model is fitted to or specified with,
+##'   `"simulate"` for locations of a simulation.
+##' @noRd
+abort_non_finite_rows <- function(rows, arg, use = c("fit", "simulate")) {
+  use <- match.arg(use)
+  n <- length(rows)
+  # As text, whose length sets the plurals, not its value.
+  rows <- as.character(rows)
+  advice <- if (use == "fit") {
+    "{?It is row/They are rows} {rows}. Check or remove {?it/them}."
+  } else {
+    "{?It is row/They are rows} {rows}. Remove {?it/them} before simulating."
+  }
+  abort_input(c("{n} row{?s} of {.arg {arg}} {cli::qty(n)}{?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number.", "i" = advice), arg = arg)
+}
+
 ##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
@@ -495,6 +584,10 @@ check_formula <- function(formula, data, response_required = TRUE){
   }
 
   check_complete_data(data, formula_terms)
+  finite <- fixed_effects_are_finite(formula, data)
+  if (!all(finite)) {
+    abort_non_finite_rows(which(!finite), "data", "fit")
+  }
 
   invisible(TRUE)
 }

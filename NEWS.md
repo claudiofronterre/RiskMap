@@ -57,6 +57,8 @@ in the source repository.
   often without spatial variance, or fail.
 - `glgpm()` stops when a binomial denominator isn't a positive whole number, or a
   Poisson response isn't whole or its exposure positive.
+- `glgpm()`, `specify_glgpm()` and `simulate_glgpm()` name the rows whose
+  covariates give the model a term that isn't finite, such as `log(0)`, and stop.
 - Data are `sf` objects. `distance_crs` and `distance_units` set the
   projection and the units of distances in every function that measures them,
   and `propose_crs()` proposes a projection that keeps distances accurate.

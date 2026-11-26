@@ -1729,28 +1729,9 @@ prediction_design_is_finite <- function(object, predictors) {
 #' such as `log(x)` in `ns(log(x), 2)`, that give a number for each row.
 #' @noRd
 prediction_parts_are_finite <- function(object, predictors) {
-  terms <- stats::terms(update(interpret_formula(fit_formula(object))$pf,
-                               NULL ~ .))
-  finite <- rep(TRUE, nrow(predictors))
-  check_parts <- function(expression) {
-    if (!is.call(expression)) return(invisible(NULL))
-    parts <- as.list(expression)[-1L]
-    # Without empty arguments, as in x[, 1]
-    for (part in parts[!vapply(parts, identical, logical(1), quote(expr = ))]) {
-      values <- tryCatch(
-        suppressWarnings(eval(part, predictors, environment(terms))),
-        error = function(error) NULL
-      )
-      if (is.numeric(values) && length(values) == length(finite)) {
-        finite <<- finite & is.finite(as.numeric(values))
-      }
-      check_parts(part)
-    }
-  }
-  for (variable in as.list(attr(terms, "variables"))[-1L]) {
-    check_parts(variable)
-  }
-  finite
+  formula_parts_are_finite(
+    update(interpret_formula(fit_formula(object))$pf, NULL ~ .), predictors
+  )
 }
 
 #' Build a prediction design matrix using the fitted factor structure
@@ -3495,6 +3476,10 @@ assess_simulation <- function(simulation,
     n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
     if (n_incomplete > 0) {
       abort_input(c("The model {.val {model_names[i]}} needs complete values of {.val {required}} on the prediction grid, but {n_incomplete} grid location{?s} {?has/have} missing values.", "i" = "Remove them from the prediction grid before simulating."), arg = "models")
+    }
+    n_infinite <- sum(!fixed_effects_are_finite(formulas[[i]], grid))
+    if (n_infinite > 0) {
+      abort_input(c("The model {.val {model_names[i]}} has a covariate that isn't a finite number, such as the logarithm of zero or of a negative number, at {n_infinite} location{?s} of the prediction grid.", "i" = "Remove {cli::qty(n_infinite)}{?it/them} from the prediction grid before simulating."), arg = "models")
     }
   }
 

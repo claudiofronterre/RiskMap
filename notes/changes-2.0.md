@@ -2074,6 +2074,19 @@ and their `colour` argument changes it.
 - `plot()` of a simulation and of a `simulated_surface()` draws points when the
   prediction locations are not on a regular grid, as for a grid in another CRS
   than the model's. They were drawn as tiles too small to see.
+- A row of `sample_locations` or `prediction_grid` in `simulate_glgpm()` with a
+  missing covariate, or with one that gives the model a term that isn't finite,
+  such as `log(0)` or `log(-1)`, stops the simulation with a message that names
+  the rows and asks to remove them. A missing value gave "has invalid
+  covariates" with R's error about missing values, `log(0)` "gives a design
+  matrix that doesn't match the model" and `log(-1)` also R's warning about
+  NaNs. The data of `glgpm()`, `specify_glgpm()` and `glgpm_parameters()` are
+  checked the same way, where `log(0)` gave an error about a constant column of
+  the design matrix and `log(-1)` R's error about missing values in an object.
+  `assess_simulation()` stops when a candidate model has such a term on the
+  prediction grid, as it did for missing values. The simulated surface keeps
+  every location of the grid, so a location is removed by the user rather than
+  returned as `NA`, as `predict()` does.
 
 ## Other
 
