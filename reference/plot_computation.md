@@ -102,7 +102,7 @@ profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
                     seed = 1, messages = FALSE)
 checked <- check_computation(fit, extra = "radius", profile = profiles)
 #> ℹ Computing the predictions of how often the radius of the bound is too small,
-#>   which should take about 4 seconds, from the 2 seconds the fit took.
+#>   which should take about 3 seconds, from the 1 second the fit took.
 plot_computation(checked)
 
 plot_computation(checked,

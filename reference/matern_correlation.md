@@ -36,9 +36,11 @@ correlation matrix is returned.
 
 ## Details
 
-The Matern correlation function is defined as \$\$\rho(u; \phi; \kappa)
-= (2^{\kappa-1})^{-1}(u/\phi)^\kappa K\_{\kappa}(u/\phi)\$\$ where
-\\\phi\\ and \\\kappa\\ are the scale and smoothness parameters, and
+The Matern correlation function is defined as \$\$\rho(u; \phi, \kappa)
+= \frac{1}{2^{\kappa-1}\Gamma(\kappa)}(u/\phi)^\kappa
+K\_{\kappa}(u/\phi)\$\$ for \\u \> 0\\, with \\\rho(0; \phi, \kappa) =
+1\\, where \\\phi\\ and \\\kappa\\ are the scale and smoothness
+parameters, \\\Gamma(\cdot)\\ is the gamma function, and
 \\K\_{\kappa}(\cdot)\\ denotes the modified Bessel function of the third
 kind of order \\\kappa\\. The parameters \\\phi\\ and \\\kappa\\ must be
 positive.
