@@ -7,16 +7,20 @@
 #' @param parameters A named list containing `beta`, `sigma2` and `phi`.
 #'   `beta` has one entry per design-matrix column, including the intercept
 #'   when present. Supply `tau2` when `gp(nugget = TRUE)`, `sigma2_me` for
-#'   Gaussian measurement error, and `sigma2_re` for each `re()` term.
+#'   Gaussian measurement error, `theta` for the size of a negative binomial
+#'   family, and `sigma2_re` for each `re()` term.
 #'   Variances may be zero. `phi` is expressed in `distance_units`.
+#' @param distance_crs The projected coordinate reference system in which
+#'   distances, and so `phi`, are measured, for example an EPSG code. `data`
+#'   are transformed to it. The default, `NULL`, keeps projected data as they
+#'   are and projects longitude/latitude data to the CRS from [propose_crs()],
+#'   with a message naming it. A warning of class `riskmap_warning_crs` is
+#'   raised when the CRS used distorts distances by more than 1% over the data.
 #' @return A validated `RiskMap_simulation_model` for [simulate_glgpm()]. It
 #'   contains the formula, transformed model data, family, fixed parameters,
 #'   denominator name, distance units, inverse link, fixed-effect design
 #'   information, random-effect terms, offset, Matern smoothness and response.
-#' @details The response in `formula` need not exist in `data`. CRS handling
-#'   follows [glgpm()]: `model_crs` is used when supplied, otherwise
-#'   longitude/latitude data are transformed to an automatically selected UTM
-#'   CRS. A message reports automatic transformations.
+#' @details The response in `formula` need not exist in `data`.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -33,28 +37,37 @@
 #'                                          phi = 2,
 #'                                          sigma2_me = 0.1))
 #'
+#' @seealso [print()][print.RiskMap_simulation_model()] describes the model,
+#'   and [simulate_glgpm()] simulates from it.
 #' @export
-specify_glgpm <- function(formula, data, family, parameters,
-                         denominator = NULL, model_crs = NULL,
-                         distance_units = c("km", "m"), invlink = NULL) {
-  distance_units <- match.arg(distance_units)
+specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
+                          denominator = NULL, distance_crs = NULL,
+                          distance_units = c("km", "m")) {
+  check_supplied(formula)
+  check_supplied(data)
+  check_supplied(family)
+  check_supplied(parameters)
+  distance_units <- match_choice(distance_units)
   check_data(data)
   check_formula(formula, data, response_required = FALSE)
-  if (!is.null(model_crs)) {
-    check_crs(model_crs)
-    data <- st_transform(data, crs = model_crs)
-    if (st_is_longlat(data)) {
-      stop("'model_crs' must be a projected CRS, not longitude/latitude",
-           call. = FALSE)
+  data <- project_for_distances(data, distance_crs, "distance_crs",
+                                "for simulation", units = distance_units)
+  family_link <- read_family(family, invlink)
+  # A size given in `parameters` holds the family's, as `fixed_pars` does in
+  # glgpm(), and must agree with one the family holds.
+  size <- if (is.list(parameters)) parameters$theta
+  if (!is.null(size) && identical(family_link$family, "negative_binomial")) {
+    held <- family_link$parameters$theta
+    if (!is.null(held) && !isTRUE(all.equal(held, size))) {
+      abort_input("{.arg family} holds the size at {held}, and {.code parameters$theta} at {size}.", arg = "parameters")
     }
-  } else if (st_is_longlat(data)) {
-    model_crs <- propose_utm(data)
-    data <- st_transform(data, crs = model_crs)
-    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
-            "automatically reprojecting to EPSG:", model_crs,
-            " for simulation. Set 'model_crs' to override.")
+    family_link <- read_family(held_negative_binomial(size), invlink)
+    parameters$theta <- NULL
   }
-  family <- match.arg(family, c("gaussian", "binomial", "poisson"))
+  family <- family_link$family
+  invlink <- family_link$invlink
+  check_family_held(family_link, hint = "Give it as {.code theta} in {.arg parameters}.")
+  traits <- family_traits(family)
   custom_link <- !is.null(invlink)
   inter <- interpret_formula(formula)
 
@@ -62,24 +75,19 @@ specify_glgpm <- function(formula, data, family, parameters,
   denominator_name <- NULL
   if (!is.null(sub_denominator)) {
     if (!is.symbol(sub_denominator)) {
-      stop("'denominator' must be provided as an unquoted column name for a column in 'data'.",
-           call. = FALSE)
+      abort_input("{.arg denominator} must be the unquoted name of a column of {.arg data}.", arg = "denominator")
     }
     denominator_name <- deparse(sub_denominator)
     if (!denominator_name %in% names(data)) {
-      stop("the variable provided to 'denominator' is not present in 'data'",
-           call. = FALSE)
+      abort_input(c("{.arg denominator} must name a column of {.arg data}.", "x" = "There is no column {.val {denominator_name}}."), arg = "denominator")
     }
   }
-  if (family == "gaussian" &&
+  if (traits$exact &&
       (!is.null(denominator_name) || !is.null(invlink))) {
-    stop("When 'family' is 'gaussian', neither 'denominator' nor 'invlink' should be supplied.",
-         call. = FALSE)
+    abort_input("{.arg denominator} and {.arg invlink} can't be given for a Gaussian model.", arg = if (is.null(invlink)) "denominator" else "invlink")
   }
-  if (is.null(invlink)) {
-    invlink <- switch(family, gaussian = identity, binomial = plogis, poisson = exp)
-  }
-  check_invlink(invlink, family)
+  if (is.null(invlink)) invlink <- traits$inverse_link
+  check_invlink(inverse_link_function(invlink), family)
   fixed_terms <- terms(update(inter$pf, NULL ~ .))
   mf <- model.frame(fixed_terms, data = data, na.action = na.fail)
   design <- model.matrix(fixed_terms, mf)
@@ -98,6 +106,10 @@ specify_glgpm <- function(formula, data, family, parameters,
               xlevels = xlevels, re_terms = re_terms, offset = inter$offset,
               kappa = inter$gp_spec$kappa, response = inter$response,
               custom_link = custom_link)
+  # The family's own parameters, which its simulator takes with the model's.
+  if (!is.null(family_link$parameters)) {
+    out$family_parameters <- family_link$parameters
+  }
   model_coords <- unique(coordinates_in_units(data, distance_units))
   attr(out, "distance_scale") <- if (parameters$sigma2 > 0) {
     scale_spatial_coordinates(model_coords, parameters$phi)$distance_scale
@@ -107,7 +119,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   class(out) <- "RiskMap_simulation_model"
   # Validate data-dependent settings before accepting the specification.
   simulation_inputs(out, data, TRUE, "data")
-  out
+  stamp_version(out)
 }
 
 #' Simulate replicated data and spatial surfaces
@@ -181,22 +193,52 @@ specify_glgpm <- function(formula, data, family, parameters,
 #' simulated_data(sim, simulation = 1)
 #'
 #' simulated_values(sim, component = "spatial_effect")
+#' @seealso The methods for simulations are
+#'   [print()][print.RiskMap_simulation()] and [plot_simulation()], which
+#'   `plot()` of the simulations also calls. [simulated_data()],
+#'   [simulated_surface()] and [simulated_values()] extract them, and
+#'   [assess_simulation()] assesses predictions on them.
 #' @export
 simulate_glgpm <- function(object, nsim = 1, what = "data",
                           sample_locations = NULL, prediction_grid = NULL,
                           seed = NULL) {
+  check_supplied(object)
   check_positive_integer(nsim, "nsim")
   if (!is.character(what) || !length(what) || anyNA(what) ||
       any(!what %in% c("data", "surface")) || anyDuplicated(what)) {
-    stop("'what' must be 'data', 'surface', or c('data', 'surface').", call. = FALSE)
+    abort_input("{.arg what} must be {.val data}, {.val surface} or both.", arg = "what")
   }
   model <- simulation_model(object)
   if (!"data" %in% what && !is.null(sample_locations)) {
-    stop("'sample_locations' requires 'data' in 'what'.", call. = FALSE)
+    abort_input("{.arg sample_locations} is used only when {.arg what} includes {.val data}.", arg = "sample_locations")
   }
   if (!"surface" %in% what && !is.null(prediction_grid)) {
-    stop("'prediction_grid' requires 'surface' in 'what'.", call. = FALSE)
+    abort_input("{.arg prediction_grid} is used only when {.arg what} includes {.val surface}.", arg = "prediction_grid")
   }
+  prepared <- prepare_simulation(model, what, sample_locations,
+                                 prediction_grid)
+  samples <- draw_simulation(prepared, nsim, seed)
+  out <- list(locations = prepared$locations, samples = samples, nsim = nsim,
+              model = model, what = names(prepared$locations), seed = seed)
+  class(out) <- "RiskMap_simulation"
+  stamp_version(out)
+}
+
+#' Prepare the locations, inputs and covariance factor of a simulation
+#'
+#' Everything `simulate_glgpm()` needs before drawing: the locations in the
+#' model CRS, the fixed part of the linear predictor and the denominators at
+#' each location set, the indices of the unique coordinates, the group labels
+#' of the `re()` terms and the factor of the spatial covariance. This step
+#' uses sf. `draw_simulation()` does not, so the draws can run in forked
+#' processes.
+#'
+#' @param model A `RiskMap_simulation_model`.
+#' @inheritParams simulate_glgpm
+#' @return A list used by `draw_simulation()`.
+#' @noRd
+prepare_simulation <- function(model, what, sample_locations = NULL,
+                               prediction_grid = NULL) {
   locations <- list()
   original <- is.null(sample_locations)
   if ("data" %in% what) {
@@ -204,7 +246,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   }
   if ("surface" %in% what) {
     if (is.null(prediction_grid)) {
-      stop("Provide 'prediction_grid' when requesting a surface.", call. = FALSE)
+      abort_input("{.arg prediction_grid} must be given to simulate a surface.", arg = "prediction_grid")
     }
     locations$surface <- prediction_grid
   }
@@ -221,12 +263,10 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   coords <- do.call(rbind, lapply(locations, coordinates_in_units,
                                 distance_units = model$distance_units))
   # Deduplicate exact coordinates before factorising the joint covariance.
-  coord_table <- data.frame(x = coords[, 1], y = coords[, 2])
-  unique_coords <- unique(coord_table)
-  unique_coords$coord_id <- seq_len(nrow(unique_coords))
-  coord_table$row_id <- seq_len(nrow(coord_table))
-  mapping <- merge(coord_table, unique_coords, by = c("x", "y"), sort = FALSE)
-  ids <- mapping$coord_id[order(mapping$row_id)]
+  indexed <- index_coordinate_rows(coords)
+  unique_coords <- data.frame(x = indexed$coordinates[, 1],
+                              y = indexed$coordinates[, 2])
+  ids <- indexed$index
   n_unique <- nrow(unique_coords)
   pars <- model$parameters
   if (pars$sigma2 > 0) {
@@ -238,13 +278,41 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
       phi = fitting_phi, kappa = model$kappa,
       return_sym_matrix = TRUE
     )
-    root <- tryCatch(t(chol(covariance)), error = function(e) {
-      stop("The spatial covariance could not be factorised. Check spatial ",
-           "parameters and nearly coincident locations. ", conditionMessage(e),
-           call. = FALSE)
+    root <- tryCatch(t(factor_covariance(
+      covariance, "spatial covariance of the simulation locations"
+    )), error = function(e) {
+      riskmap_abort(c("The spatial covariance of the simulation locations can't be factorised.", "i" = "Check the spatial parameters and look for nearly coincident locations."), class = "riskmap_error_fit", parent = e)
     })
   }
-  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
+  group_labels <- lapply(model$re_terms, function(term) {
+    unlist(lapply(locations, function(x) as.character(x[[term]])))
+  })
+  names(group_labels) <- model$re_terms
+  list(model = model, locations = locations, inputs = inputs, sizes = sizes,
+       ids = ids, n_unique = n_unique,
+       root = if (model$parameters$sigma2 > 0) root,
+       group_labels = group_labels)
+}
+
+#' Draw simulations from a prepared simulation
+#'
+#' @param prepared Output from `prepare_simulation()`.
+#' @inheritParams simulate_glgpm
+#' @return The `samples` of a `RiskMap_simulation`: one array per location
+#'   set, indexed by location, simulation and component.
+#' @param call The call named in input errors.
+#' @noRd
+draw_simulation <- function(prepared, nsim, seed = NULL,
+                            call = rlang::caller_env()) {
+  model <- prepared$model
+  inputs <- prepared$inputs
+  sizes <- prepared$sizes
+  ids <- prepared$ids
+  n_unique <- prepared$n_unique
+  root <- prepared$root
+  pars <- model$parameters
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE,
+                         call = call)
   if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
@@ -259,7 +327,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   nugget <- nugget[ids, , drop = FALSE]
   grouped <- matrix(0, sum(sizes), nsim)
   for (term in model$re_terms) {
-    labels <- unlist(lapply(locations, function(x) as.character(x[[term]])))
+    labels <- prepared$group_labels[[term]]
     groups <- match(labels, unique(labels))
     draws <- matrix(rnorm(length(unique(labels)) * nsim,
                           sd = sqrt(pars$sigma2_re[[term]])),
@@ -268,11 +336,11 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   }
   eta <- spatial + nugget + grouped + unlist(lapply(inputs, `[[`, "fixed"),
                                              use.names = FALSE)
-  mu <- check_invlink(model$invlink, model$family, eta)
+  mu <- check_invlink(inverse_link_function(model$invlink), model$family, eta)
   mu <- matrix(mu, nrow(eta), nsim)
   samples <- list()
   start <- 0L
-  for (name in names(locations)) {
+  for (name in names(sizes)) {
     rows <- start + seq_len(sizes[[name]])
     components <- c("spatial_effect", "nugget", "group_effect",
                     "linear_predictor", "mean")
@@ -282,15 +350,11 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
     if (name == "data") {
       means <- mu[rows, , drop = FALSE]
       exposure <- inputs[[name]]$denominator
-      response <- switch(model$family,
-                         gaussian = as.numeric(means) + rnorm(length(means),
-                                                             sd = sqrt(pars$sigma2_me)),
-                         binomial = rbinom(length(means), size = exposure,
-                                           prob = as.numeric(means)),
-                         poisson = rpois(length(means), lambda = as.numeric(means) * exposure))
+      response <- family_traits(model$family)$simulate(
+        means, exposure, c(pars, model$family_parameters)
+      )
       if (any(!is.finite(response))) {
-        stop("Response simulation produced non-finite values. Check means and exposures.",
-             call. = FALSE)
+        riskmap_abort(c("The simulated responses aren't all finite.", "i" = "Check the means and the denominators."), class = "riskmap_error_fit")
       }
       values[[length(values) + 1L]] <- response
       components <- c(components, "response")
@@ -300,10 +364,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
                              dimnames = list(NULL, NULL, components))
     start <- start + sizes[[name]]
   }
-  out <- list(locations = locations, samples = samples, nsim = nsim,
-              model = model, what = names(locations), seed = seed)
-  class(out) <- "RiskMap_simulation"
-  out
+  samples
 }
 
 #' Extract simulated values in tidy form
@@ -314,8 +375,9 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
 #'   data simulations, `"response"`. Defaults to all available components.
 #' @param simulation Simulation numbers to extract. Defaults to all simulations.
 #' @param location_set `"data"`, `"surface"`, or both. Defaults to available sets.
-#' @return A tibble with `simulation`, `location_set`, `location_id`, `component`
-#'   and `value`. Location identifiers refer to rows in `object$locations`.
+#' @return A tibble with `simulation`, `location_set`, `location_id`,
+#'   `component` and `value`. Location identifiers refer to rows in
+#'   `object$locations`.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -342,17 +404,19 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
 #' @export
 simulated_values <- function(object, component = NULL, simulation = NULL,
                              location_set = NULL) {
+  check_supplied(object)
   check_simulation(object, simulation)
   if (is.null(simulation)) simulation <- seq_len(object$nsim)
   if (is.null(location_set)) location_set <- names(object$samples)
   if (!is.character(location_set) || !length(location_set) || anyNA(location_set) ||
       any(!location_set %in% names(object$samples)) || anyDuplicated(location_set)) {
-    stop("'location_set' must select available data or surface locations.", call. = FALSE)
+    available_sets <- names(object$samples)
+    abort_input("{.arg location_set} must select among the simulated location sets, {.val {available_sets}}.", arg = "location_set")
   }
   available <- unique(unlist(lapply(object$samples[location_set], function(x) dimnames(x)[[3]])))
   if (!is.null(component) && (!is.character(component) || !length(component) ||
       anyNA(component) || any(!component %in% available) || anyDuplicated(component))) {
-    stop("'component' must select available simulation components.", call. = FALSE)
+    abort_input("{.arg component} must select among the simulated components, {.val {available}}.", arg = "component")
   }
   tables <- lapply(location_set, function(name) {
     x <- object$samples[[name]]
@@ -376,7 +440,9 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #' @return `simulated_data()` returns the sample `sf` data with its response
 #'   column replaced by the selected simulation, ready for refitting.
 #'   `simulated_surface()` returns the grid `sf` data with columns for the
-#'   spatial effect, nugget, group effect, linear predictor and mean.
+#'   spatial effect, nugget, group effect, linear predictor and mean, with
+#'   class `RiskMap_simulated_surface` so that it can be mapped with
+#'   [plot_simulated_surface()] or `plot()`.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -400,18 +466,20 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #'                       seed = 1)
 #'
 #' simulated_data(sim, simulation = 1)
+#' @seealso [plot_simulated_surface()], which `plot()` of a surface also
+#'   calls.
 #' @export
 simulated_data <- function(object, simulation = 1) {
+  check_supplied(object)
   check_simulation(object, simulation, single = TRUE)
   if (is.null(object$samples$data)) {
-    stop("No responses were simulated. Include 'data' in 'what'.", call. = FALSE)
+    abort_input(c("{.arg object} has no simulated responses.", "i" = "Simulate with {.arg what} including {.val data}."), arg = "object")
   }
   out <- object$locations$data
   response <- object$model$response
   if (is.null(response) || length(response) != 1L ||
       !identical(make.names(response), response)) {
-    stop("Refitting requires a simple response name in the model formula. ",
-         "Use simulated_values() to extract responses.", call. = FALSE)
+    abort_input(c("The response of the model formula must be a plain column name to be put in a data set.", "i" = "Use {.fn simulated_values} to extract the responses."), arg = "object")
   }
   out[[response]] <- as.numeric(object$samples$data[, simulation, "response"])
   out
@@ -420,20 +488,124 @@ simulated_data <- function(object, simulation = 1) {
 #' @rdname simulated_data
 #' @export
 simulated_surface <- function(object, simulation = 1) {
+  check_supplied(object)
   check_simulation(object, simulation, single = TRUE)
   if (is.null(object$samples$surface)) {
-    stop("No surface was simulated. Include 'surface' in 'what'.", call. = FALSE)
+    abort_input(c("{.arg object} has no simulated surface.", "i" = "Simulate with {.arg what} including {.val surface}."), arg = "object")
   }
   out <- object$locations$surface
   components <- dimnames(object$samples$surface)[[3]]
   if (any(components %in% names(out))) {
-    stop("Grid columns conflict with simulation component names. ",
-         "Use simulated_values() to keep them separate.", call. = FALSE)
+    clashes <- intersect(components, names(out))
+    abort_input(c("The prediction grid has column{?s} {.val {clashes}} named like simulated components.", "i" = "Use {.fn simulated_values} to keep them apart."), arg = "object")
   }
   for (name in components) {
     out[[name]] <- as.numeric(object$samples$surface[, simulation, name])
   }
+  class(out) <- c("RiskMap_simulated_surface", class(out))
+  # The family names the mean in the legend of plot().
+  attr(out, "family") <- object$model$family
   out
+}
+
+#' Print a simulation model or simulations
+#'
+#' Prints a short description of a model specification from
+#' [specify_glgpm()] or of simulations from [simulate_glgpm()], instead of
+#' every stored value.
+#'
+#' @param x Output from [specify_glgpm()] or [simulate_glgpm()].
+#' @param ... Not used, and an error if given, so that a misspelt argument is
+#'   not ignored.
+#' @return Invisibly returns `x`.
+#' @method print RiskMap_simulation_model
+#' @export
+print.RiskMap_simulation_model <- function(x, ...) {
+  check_dots_unused(...)
+  out_print(c(
+    out_rule("Geostatistical model for simulation"),
+    out_text(paste0(simulation_model_title(x), ", ", deparse_formula(x$formula),
+                    ", at ", out_count(nrow(x$data), "location"), ".")),
+    "",
+    format_simulation_parameters(x$parameters, x$distance_units,
+                                 x$family_parameters)
+  ))
+  invisible(x)
+}
+
+#' @rdname print.RiskMap_simulation_model
+#' @method print RiskMap_simulation
+#' @export
+print.RiskMap_simulation <- function(x, ...) {
+  check_dots_unused(...)
+  simulated <- vapply(x$what, function(name) {
+    paste0("of the ", if (name == "data") "data" else "surface", " at ",
+           out_count(nrow(x$locations[[name]]), "location"))
+  }, character(1))
+  extract <- paste0(out_fun("simulated_data"), ", ",
+                    out_fun("simulated_surface"), " and ",
+                    out_fun("simulated_values"), " extract them.")
+  out_print(c(
+    out_rule("Simulations"),
+    out_text(c(
+      paste0(simulation_model_title(x$model), ", ",
+             deparse_formula(x$model$formula), "."),
+      paste0(out_count(x$nsim, "simulation"),
+             if (!is.null(x$seed)) paste0(" (seed ", x$seed, ")"), ", ",
+             paste(simulated, collapse = " and "), ".")
+    )),
+    "",
+    format_simulation_parameters(x$model$parameters,
+                                 x$model$distance_units,
+                                 x$model$family_parameters),
+    "",
+    out_bullets(c(i = extract))
+  ))
+  invisible(x)
+}
+
+#' The title of a model for simulation, naming a link other than the
+#' canonical one as `print.RiskMap()` does
+#' @noRd
+simulation_model_title <- function(model) {
+  link <- if (is.list(model$invlink)) model$invlink$link
+  if (is.null(link) && isTRUE(model$custom_link)) link <- "custom"
+  paste0(model_title(fit_traits(model)), describe_link(link))
+}
+
+#' A formula on one line
+#' @noRd
+deparse_formula <- function(formula) {
+  paste(trimws(deparse(formula)), collapse = " ")
+}
+
+#' The lines of the parameters of a simulation model, one per parameter
+#'
+#' `family_parameters` are those the family holds, such as the size `theta`
+#' of a negative binomial family, which `specify_glgpm()` takes in its
+#' `parameters`.
+#' @noRd
+format_simulation_parameters <- function(parameters, distance_units,
+                                         family_parameters = NULL) {
+  values <- function(v) {
+    labels <- names(v) %||% paste0("[", seq_along(v), "]")
+    paste(sprintf("%s = %s", labels, signif(v, 4)), collapse = ", ")
+  }
+  others <- unlist(parameters[intersect(c("tau2", "sigma2_me"),
+                                        names(parameters))])
+  others <- others[others != 0]
+  rows <- c(
+    beta = values(parameters$beta),
+    sigma2 = format(signif(parameters$sigma2, 4)),
+    phi = paste(signif(parameters$phi, 4), distance_units),
+    vapply(others, function(value) format(signif(value, 4)), character(1)),
+    vapply(family_parameters, function(value) format(signif(value, 4)),
+           character(1)),
+    sigma2_re = if (length(parameters$sigma2_re)) {
+      values(parameters$sigma2_re)
+    }
+  )
+  c(out_heading("Parameters"), out_pairs(names(rows), rows, indent = 2L))
 }
 
 #' Validate a simulation object and requested simulation indices
@@ -445,15 +617,19 @@ simulated_surface <- function(object, simulation = 1) {
 #' @noRd
 check_simulation <- function(object, simulation, single = FALSE) {
   if (!inherits(object, "RiskMap_simulation") || is.null(object$samples)) {
-    stop("'object' must be output from simulate_glgpm().", call. = FALSE)
+    abort_input("{.arg object} must be made by {.fn simulate_glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   if (is.null(simulation) && !single) return(invisible(NULL))
   if (!is.numeric(simulation) || !length(simulation) || anyNA(simulation) ||
       any(!is.finite(simulation)) || any(simulation != floor(simulation)) ||
       any(simulation < 1 | simulation > object$nsim) || anyDuplicated(simulation) ||
       (single && length(simulation) != 1L)) {
-    stop("'simulation' must select valid simulation numbers",
-         if (single) " (one at a time)" else "", ".", call. = FALSE)
+    problem <- if (single) {
+      "{.arg simulation} must be one simulation number between 1 and {object$nsim}."
+    } else {
+      "{.arg simulation} must be distinct simulation numbers between 1 and {object$nsim}."
+    }
+    abort_input(problem, arg = "simulation")
   }
 }
 
@@ -465,23 +641,29 @@ check_simulation <- function(object, simulation, single = FALSE) {
 #' @return `data`, transformed to `crs` when necessary.
 #' @noRd
 simulation_locations <- function(data, crs, label) {
-  check_data(data)
+  arg <- simulation_location_arg(label)
+  check_data(data, arg = arg)
   if (nrow(data) == 0L || any(st_is_empty(data))) {
-    stop("'", label, "' must contain at least one non-empty POINT geometry.",
-         call. = FALSE)
+    abort_input("{.arg {arg}} must have at least one point and no empty geometries.", arg = arg)
   }
   if (is.na(crs)) {
-    stop("The simulation model must have a known CRS.", call. = FALSE)
+    abort_input("The simulation model must have a coordinate reference system.", arg = "object")
   }
   if (!isTRUE(st_crs(data) == crs)) {
     data <- st_transform(data, crs)
-    message("'", label, "' has been transformed to the model CRS.")
+    riskmap_inform("{.arg {arg}} is projected to the coordinate reference system of the model.")
   }
   coords <- st_coordinates(data)
   if (ncol(coords) != 2L || any(!is.finite(coords))) {
-    stop("'", label, "' must contain finite two-dimensional coordinates.", call. = FALSE)
+    abort_input("{.arg {arg}} must have finite two-dimensional coordinates.", arg = arg)
   }
   data
+}
+
+#' The argument that gives a set of simulation locations
+#' @noRd
+simulation_location_arg <- function(label) {
+  switch(label, data = "sample_locations", surface = "prediction_grid", label)
 }
 
 #' Validate simulation parameters
@@ -496,19 +678,19 @@ simulation_locations <- function(data, crs, label) {
 simulation_parameters <- function(parameters, beta_names, re_terms, family, nugget) {
   if (!is.list(parameters) || is.null(names(parameters)) || anyNA(names(parameters)) ||
       any(names(parameters) == "") || anyDuplicated(names(parameters))) {
-    stop("'parameters' must be a named list with unique names.", call. = FALSE)
+    abort_input("{.arg parameters} must be a list with distinct names.", arg = "parameters")
   }
   unknown <- setdiff(names(parameters), c("beta", "sigma2", "phi", "tau2",
                                          "sigma2_me", "sigma2_re"))
   if (length(unknown)) {
-    stop("Unknown simulation parameters: ", paste(unknown, collapse = ", "), ".",
-         call. = FALSE)
+    abort_input("{.arg parameters} has unknown element{?s} {.val {unknown}}.", arg = "parameters")
   }
+  measurement_error <- family_traits(family)$measurement_error
   required <- c("beta", "sigma2", "phi", if (isTRUE(nugget)) "tau2",
-                 if (family == "gaussian") "sigma2_me", if (length(re_terms)) "sigma2_re")
+                 if (measurement_error) "sigma2_me", if (length(re_terms)) "sigma2_re")
   missing <- required[vapply(required, function(x) is.null(parameters[[x]]), logical(1))]
   if (length(missing)) {
-    stop("Missing simulation parameters: ", paste(missing, collapse = ", "), ".", call. = FALSE)
+    abort_input("{.arg parameters} must have the element{?s} {.val {missing}}.", arg = "parameters")
   }
   if (is.null(parameters$tau2)) {
     parameters$tau2 <- if (is.numeric(nugget)) nugget else 0
@@ -518,28 +700,26 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
     value <- parameters[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
         value < 0 || (name == "phi" && value == 0)) {
-      stop("'", name, "' must be finite and ",
-           if (name == "phi") "positive." else "non-negative.", call. = FALSE)
+      kind <- if (name == "phi") "positive" else "non-negative"
+      abort_input("{.code parameters${name}} must be a single finite {kind} number.", arg = "parameters")
     }
   }
   if (!isTRUE(nugget)) {
     fixed <- if (is.numeric(nugget)) nugget else 0
     if (parameters$tau2 != fixed) {
-      stop("'tau2' must agree with the nugget setting in gp().", call. = FALSE)
+      abort_input("{.code parameters$tau2} must agree with the nugget set in {.fn gp}.", arg = "parameters")
     }
   }
-  if (family != "gaussian" && parameters$sigma2_me != 0) {
-    stop("'sigma2_me' applies only to Gaussian models.", call. = FALSE)
+  if (!measurement_error && parameters$sigma2_me != 0) {
+    abort_input("{.code parameters$sigma2_me} can be given only for a Gaussian model.", arg = "parameters")
   }
   beta <- parameters$beta
   if (!is.numeric(beta) || length(beta) != length(beta_names) || any(!is.finite(beta))) {
-    stop("'beta' must have one finite value per design-matrix column, including ",
-         "the intercept when present. Expected: ", paste(beta_names, collapse = ", "),
-         ".", call. = FALSE)
+    abort_input(c("{.code parameters$beta} must have one finite value for each column of the design matrix, including any intercept.", "i" = "The columns are {.val {beta_names}}."), arg = "parameters")
   }
   if (!is.null(names(beta))) {
     if (anyDuplicated(names(beta)) || !setequal(names(beta), beta_names)) {
-      stop("Names of 'beta' must match the design-matrix columns.", call. = FALSE)
+      abort_input("The names of {.code parameters$beta} must be those of the columns of the design matrix, {.val {beta_names}}.", arg = "parameters")
     }
     beta <- beta[beta_names]
   }
@@ -547,17 +727,17 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
   if (length(re_terms)) {
     re <- parameters$sigma2_re
     if (!is.numeric(re) || length(re) != length(re_terms) || any(!is.finite(re)) || any(re < 0)) {
-      stop("'sigma2_re' must contain one non-negative variance per re() term.", call. = FALSE)
+      abort_input("{.code parameters$sigma2_re} must have one non-negative variance for each {.fn re} term.", arg = "parameters")
     }
     if (!is.null(names(re))) {
       if (anyDuplicated(names(re)) || !setequal(names(re), re_terms)) {
-        stop("Names of 'sigma2_re' must match the re() terms.", call. = FALSE)
+        abort_input("The names of {.code parameters$sigma2_re} must be those of the {.fn re} terms, {.val {re_terms}}.", arg = "parameters")
       }
       re <- re[re_terms]
     }
     parameters$sigma2_re <- setNames(re, re_terms)
   } else if (length(parameters$sigma2_re)) {
-    stop("'sigma2_re' requires re() terms in the formula.", call. = FALSE)
+    abort_input("{.code parameters$sigma2_re} can be given only for a model with {.fn re} terms.", arg = "parameters")
   }
   parameters
 }
@@ -570,30 +750,72 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
 simulation_model <- function(object) {
   if (inherits(object, "RiskMap_simulation_model")) return(object)
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a fitted RiskMap model or output from specify_glgpm().", call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit or a model from {.fn specify_glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
+  # Every parameter of the fit, held ones included, the size of a negative
+  # binomial family among them (fit_family_argument()).
   pars <- coef(object)
-  if (is.null(pars$tau2)) pars$tau2 <- object$fix_tau2
-  if (object$family == "gaussian" && !is.null(object$fix_var_me)) {
-    pars$sigma2_me <- object$fix_var_me
+  if (is.null(pars$tau2)) pars$tau2 <- fit_fix_tau2(object)
+  if (family_traits(object$family)$measurement_error &&
+      !is.null(fit_fix_var_me(object))) {
+    pars$sigma2_me <- fit_fix_var_me(object)
   }
   denominator <- if (!is.null(object$call$denominator)) {
     as.character(object$call$denominator)
   } else {
     NULL
   }
-  invlink <- if (object$family == "gaussian") NULL else object$link_function$inv
-  model <- specify_glgpm(object$formula, object$data, object$family, pars,
-                         distance_units = object$distance_units,
-                         invlink = invlink)
+  # A named or custom link carries its derivatives and name, and a canonical
+  # link its stored inverse. A family with parameters of its own is given by
+  # its specification, which has its link.
+  family <- fit_family_argument(object, hold = TRUE)
+  invlink <- if (is.character(family)) {
+    refit_invlink(object) %||% object$link_function$inv
+  }
+  # The CRS of the fit was checked when it was fitted.
+  model <- without_crs_check(
+    specify_glgpm(fit_formula(object), object$data, family, pars,
+                  distance_units = object$distance_units,
+                  invlink = invlink)
+  )
   attr(model, "distance_scale") <- attr(object, "distance_scale") %||%
     attr(model, "distance_scale")
   model$denominator <- denominator
-  simulation_inputs(model, model$data, TRUE, "data", original = TRUE)
   model$original_denominator <- object$units_m
+  simulation_inputs(model, model$data, TRUE, "data", original = TRUE)
   model$original_offset <- object$cov_offset
   model$custom_link <- identical(object$link_function$name, "custom")
   model
+}
+
+#' The inverse link of a simulation model as a function
+#'
+#' A simulation model stores `invlink` as a function, or in the list form
+#' that also carries derivatives and the name of a link (`read_family()`).
+#' @noRd
+inverse_link_function <- function(invlink) {
+  if (is.list(invlink)) invlink$inv else invlink
+}
+
+#' Check that every variable the model formula references (covariates,
+#' `gp()`'s explicit coordinate columns, and `re()` grouping variables) is
+#' present in one simulation location set
+#'
+#' @param formula The model formula.
+#' @param data Location data to check.
+#' @param label `"data"` or `"surface"`, naming the location set internally;
+#'   mapped to the corresponding `simulate_glgpm()` argument name for the
+#'   error message.
+#' @return Invisible `TRUE`, or an error naming the missing variable(s).
+#' @noRd
+check_simulation_variables <- function(formula, data, label) {
+  required <- setdiff(unique(get_formula_terms(formula)), all.vars(formula[[2L]]))
+  missing <- setdiff(required, names(data))
+  if (length(missing)) {
+    argument <- simulation_location_arg(label)
+    abort_input("{.arg {argument}} must have the column{?s} {.val {missing}} of the model formula.", arg = argument)
+  }
+  invisible(TRUE)
 }
 
 #' Construct model inputs at one simulation location set
@@ -606,76 +828,96 @@ simulation_model <- function(object) {
 #' @return A list containing fixed linear-predictor values and denominators.
 #' @noRd
 simulation_inputs <- function(model, data, response, label, original = FALSE) {
+  check_simulation_variables(model$formula, data, label)
   mf <- tryCatch(model.frame(model$fixed_terms, data = data, na.action = na.fail,
                              xlev = model$xlevels), error = function(e) {
-    stop("Invalid covariates in '", label, "': ", conditionMessage(e), call. = FALSE)
+    arg <- simulation_location_arg(label)
+    abort_input("{.arg {arg}} has invalid covariates.", arg = arg, parent = e)
   })
   design <- model.matrix(model$fixed_terms, mf, contrasts.arg = model$contrasts)
   if (!identical(colnames(design), names(model$parameters$beta)) || any(!is.finite(design))) {
-    stop("The design matrix for '", label, "' does not match the model.", call. = FALSE)
+    arg <- simulation_location_arg(label)
+    abort_input("{.arg {arg}} gives a design matrix that doesn't match the model.", arg = arg)
   }
   prepare_random_effects(data, model$re_terms)
   offset <- rep(0, nrow(data))
   if (!is.null(model$offset)) {
     if (!model$offset %in% names(data)) {
-      stop("Missing offset column '", model$offset, "' in '", label, "'.", call. = FALSE)
+      arg <- simulation_location_arg(label)
+      abort_input("{.arg {arg}} must have the offset column {.val {model$offset}}.", arg = arg)
     }
     offset <- data[[model$offset]]
   }
   if (original && !is.null(model$original_offset)) offset <- model$original_offset
   if (!is.numeric(offset) || length(offset) != nrow(data) || any(!is.finite(offset))) {
-    stop("Offsets in '", label, "' must be finite numeric values.", call. = FALSE)
+    arg <- simulation_location_arg(label)
+    abort_input("The offsets in {.arg {arg}} must be finite numbers.", arg = arg)
   }
   den <- rep(1, nrow(data))
   if (response && !is.null(model$denominator)) {
     if (!model$denominator %in% names(data)) {
-      stop("Missing denominator column '", model$denominator, "' in '", label, "'.", call. = FALSE)
+      arg <- simulation_location_arg(label)
+      abort_input("{.arg {arg}} must have the denominator column {.val {model$denominator}}.", arg = arg)
     }
     den <- data[[model$denominator]]
   }
   if (response && original && !is.null(model$original_denominator)) {
     den <- model$original_denominator
   }
+  whole <- family_traits(model$family)$whole_denominator
   if (response && (!is.numeric(den) || length(den) != nrow(data) ||
       any(!is.finite(den)) || any(den < 0) ||
-      (model$family == "binomial" && any(den != floor(den))))) {
-    stop("Denominators in '", label, "' must be finite, non-negative",
-         if (model$family == "binomial") " integers." else " numbers.", call. = FALSE)
+      (whole && !all(is_whole(den))))) {
+    arg <- simulation_location_arg(label)
+    kind <- if (whole) "whole numbers" else "numbers"
+    abort_input("The denominators in {.arg {arg}} must be finite non-negative {kind}.", arg = arg)
   }
+  if (response && whole) den <- round(den)
   list(fixed = as.numeric(design %*% model$parameters$beta) + offset,
        denominator = den)
 }
 
 #' Adapt unified simulations for the assessment interface
 #'
+#' The true surface is the simulated mean, which `draw_simulation()` computes
+#' through the generating model's own inverse link, whether canonical, named
+#' or custom, so the assessment needs no knowledge of that link.
+#'
 #' @param object A `RiskMap_simulation` containing data and surface draws.
-#' @return The legacy internal structure consumed by [assess_simulation()].
+#' @return A list with the simulated datasets (`data_sim`), each with the
+#'   simulated response and the denominators of the generating model in the
+#'   reserved columns `.riskmap_response` and `.riskmap_denominator`, the
+#'   prediction grid (`grid`), the simulated mean at each grid location with
+#'   one column per simulation (`mean_sim`), and the family, distance units and
+#'   whether the generating model has a nugget.
 #' @noRd
 simulation_assessment_data <- function(object) {
   check_simulation(object, NULL)
   if (!all(c("data", "surface") %in% object$what)) {
-    stop("Assessment requires what = c('data', 'surface').", call. = FALSE)
+    abort_input("{.arg simulation} must be simulated with {.code what = c(\"data\", \"surface\")}.", arg = "simulation")
   }
   model <- object$model
-  if (length(model$re_terms) || isTRUE(model$custom_link)) {
-    stop("The current assess_simulation() interface does not support generating ",
-         "models with re() effects or custom inverse links. Simulated values ",
-         "remain available through the simulation accessors.", call. = FALSE)
+  if (length(model$re_terms)) {
+    abort_input(c("{.fn assess_simulation} can't assess simulations from a model with {.fn re} terms.", "i" = "The simulated values are available through {.fn simulated_values}."), arg = "simulation")
+  }
+  response <- model$response
+  if (is.null(response) || length(response) != 1L ||
+      !identical(make.names(response), response)) {
+    abort_input("The response of the model that simulated {.arg simulation} must be a plain column name, such as {.code y}, for the models to be refitted to it.", arg = "simulation")
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator
+  # The other columns of the data, including one called as the response of the
+  # generating model, may be covariates of a candidate.
   data <- lapply(seq_len(object$nsim), function(i) {
-    x <- simulated_data(object, i)
-    x$y <- as.numeric(object$samples$data[, i, "response"])
-    x$units_m <- den
+    x <- object$locations$data
+    x$.riskmap_response <- as.numeric(object$samples$data[, i, "response"])
+    x$.riskmap_denominator <- den
     x
   })
-  grid <- object$locations$surface
-  for (i in seq_len(object$nsim)) {
-    grid[[paste0("lp_sim_", i)]] <- as.numeric(object$samples$surface[, i, "linear_predictor"])
-  }
-  list(data_sim = data, lp_grid_sim = grid, family = model$family,
-       distance_units = model$distance_units, include_covariates = TRUE,
-       include_cov_offset = !is.null(model$offset),
+  mean_sim <- object$samples$surface[, , "mean"]
+  dim(mean_sim) <- c(nrow(object$locations$surface), object$nsim)
+  list(data_sim = data, grid = object$locations$surface, mean_sim = mean_sim,
+       family = model$family, distance_units = model$distance_units,
        nugget_over_grid = model$parameters$tau2 > 0)
 }

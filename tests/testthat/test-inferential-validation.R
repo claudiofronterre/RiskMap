@@ -1,7 +1,7 @@
 test_that("Gaussian fitting reports the exact marginal likelihood", {
   fit <- glgpm(
     y ~ cov + gp(), data = gaussian_data, family = "gaussian",
-    fix_var_me = 0.2, messages = FALSE
+    fixed_pars = list(sigma2_me = 0.2), messages = FALSE
   )
 
   sigma2 <- exp(fit$estimate$sigma2)
@@ -33,15 +33,15 @@ test_that("independent MCMC seeds agree within estimated Monte Carlo error", {
         y = case$y, units_m = case$units_m, mu = 0,
         Sigma = matrix(case$sigma2), ID_coords = 1L, family = family,
         control_mcmc = set_control_mcmc(
-          n_sim = 3500, burnin = 500, thin = 1, h = case$h, seed = seed
+          n_draws = 3000, burnin = 500, thin = 1, h = case$h
         ),
-        messages = FALSE
+        seed = seed
       )
       as.numeric(fit$samples$S)
     })
     estimates <- vapply(draws, mean, numeric(1))
     mcse <- vapply(draws, function(x) {
-      sqrt(var(x) / max(1, as.numeric(sns::ess(x))))
+      sqrt(var(x) / max(1, mcmc_effective_size(x)))
     }, numeric(1))
 
     differences <- abs(outer(estimates, estimates, "-"))

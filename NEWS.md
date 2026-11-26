@@ -1,183 +1,135 @@
-RiskMap 2.0.0
-=============
+# RiskMap 2.0.0
 
-- This version introduces many breaking changes from v1. The package should not
-be considered stable, but further breaking changes will be handled gracefully.
-- Test coverage has been increased from 0 to 92 %.
-- All functions have examples
-- Many functions have been renamed or removed:
+RiskMap 2.0.0 is a redesign of the package. Almost every function of 1.0.0 was
+renamed, merged or removed, and no name of 1.0.0 remains as a stub, so code
+written for 1.0.0 needs changing. The table gives the replacement of each
+function of 1.0.0, and the main changes follow. The full record of changes is
+in [`notes/changes-2.0.md`](https://github.com/claudiofronterre/RiskMap/blob/main/notes/changes-2.0.md)
+in the source repository.
 
-| v1 | v2 | 
-|----------|----------|
-| `assess_pp` |  `assess_prediction` |
-| `assess_sim` | `assess_simulation` |
-| `check_mcmc` | `plot_mcmc` |
-| `compute_ID_coords` | `create_ids` |
-| `convex_hull_sf` | `create_convex_hull` |
-| `dast()` | Removed; will be replaced in a separate package |
-| `glgpm_sim` | `simulate_glgpm` |
-| `Laplace_sampling_MCMC` | Removed; the replacement is internal |
-| `matern.grad.phi` | `matern_gradient_phi ` |
-| `matern.hessian.phi` | `matern_hessian_phi` |
-| `matern_cor` | `matern_correlation` |
-| `maxim.integrand` | `maxim_integrand` |
-| `plot_score` | `plot_metric` |
-| `plot_s_variogram` | `plot_variogram` |
-| `pred_over_grid` | `predict` |
-| `pred_target_grid` | `predict` |
-| `pred_target_shp` | `predict` with `boundaries` |
-| `set_control_sim` | `set_control_mcmc` |
-| `surf_sim` | `simulate_glgpm` |
-| `s_variogram` | `variogram` |
+## Functions of 1.0.0 and their replacements
 
-## Datasets
-- Apart from `liberia`, all datasets are now in an simple features (sf) format.
+| 1.0.0 | 2.0.0 |
+|---|---|
+| `glgpm(den, crs, convert_to_crs, scale_to_km, par0, S_samples, fix_var_me)` | `glgpm(denominator, distance_crs, distance_units)`. `fixed_pars` replaces `par0` and `fix_var_me`, `start_pars` takes any parameters by name, and `S_samples` is gone |
+| `gp(nugget = 0)` | `gp(nugget = FALSE)`, or `TRUE` for a nugget, which `fixed_pars = list(tau2 = )` can hold |
+| `set_control_sim()` | `set_control_mcmc(n_draws, burnin, thin, h, c1_h, c2_h)` for sampling and `set_control_mcml()` for fitting |
+| `summary(fit, conf_level)` | `summary(fit, level)` |
+| `to_table()` | `to_table()`, which returns a `knitr_kable` table instead of an `xtable` |
+| `pred_over_grid()`, `pred_target_grid()`, `update_predictors()` | `predict()`, with every predictor in `newdata` |
+| `pred_target_shp()` | `predict(boundaries, aggregate)` |
+| `plot()` of `pred_target_grid()` and `pred_target_shp()` results | `plot_prediction()`, or `plot()` of a `predict()` result |
+| `assess_pp()` | `create_test_sets()` for the test sets, and `assess_prediction()`, which takes `models`, `test_sets`, `refit` and `control_mcmc`. Every metric is computed |
+| `plot_score()`, `plot_AnPIT()` | `plot_cross_validation()`, or `plot()` of an `assess_prediction()` result |
+| `assess_sim()` | `assess_simulation()`, which takes `simulation`, `target`, `aggregate`, `boundaries`, `label`, `objective` and `breaks` for `obj_sim`, `f_grid_target`, `f_area_target`, `shp`, `col_names`, `pred_objective` and `categories`, and `spatial_scale = "location"` for `"grid"` |
+| `summary()` of `assess_pp()` and `assess_sim()` results | `summary()` of `assess_prediction()` and `assess_simulation()` results |
+| `glgpm_sim()`, `surf_sim()` | `simulate_glgpm()`, with `specify_glgpm()` for a model given by its parameters and `what = "surface"` for surfaces |
+| `plot_sim_surf()` | `plot_simulation()`, or `plot()` of a `simulate_glgpm()` result |
+| `s_variogram()`, `plot_s_variogram()` | `variogram()` and `plot_variogram()`, with `breaks` for `bins`, `n_permutations` for `n_permutation`, and `distance_crs` and `distance_units` for `convert_to_utm` and `scale_to_km` |
+| `dist_summaries()` | `summarise_distance()`, with `distance_crs` and `distance_units` |
+| `propose_utm()` | `propose_crs()`, which chooses the CRS by its distortion of distances |
+| `convex_hull_sf()` | `create_convex_hull()` |
+| `create_grid(shp, spat_res, grid_crs)` | `create_grid(boundaries, spacing, distance_crs)` |
+| `check_mcmc()` | `plot_mcmc()`, with `locations` for `component`, and `summarise_mcmc()` |
+| `matern_cor()` | `matern_correlation()` |
+| `dast()`, `plot_mda()` | Removed. Models of mass drug administration move to a separate package |
+| `Laplace_sampling_MCMC()`, `maxim.integrand()`, `matern.grad.phi()`, `matern.hessian.phi()`, `compute_ID_coords()` | Removed. Their work is internal |
 
-## Coordinate reference systems
+## Main changes
 
-- Datasets must have a coordinate reference system. When coordinates are in
-latitude/longitude and `model_crs` is not supplied, they are now automatically
-reprojected to an appropriate UTM zone. `predict()`, `simulate_glgpm()` and
-`assess_prediction()` have been updated to match; `simulate_glgpm()`'s own 
-`convert_to_crs`/`scale_to_km` arguments have likewise been replaced with
-`model_crs`/`distance_units`.
-- providing `model_crs` in longitude/latitude now raises an error.
-- In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
-`scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
+### Fitting
 
-## Exploratory analysis
+- `glgpm()` fits Gaussian, binomial, Poisson and negative binomial models with
+  a spatial Gaussian process, `gp()`, and random effects, `re()`, and takes
+  any link. Binomial, Poisson and negative binomial models are fitted by
+  certified Monte Carlo maximum likelihood, which enlarges its samples until
+  the Monte Carlo error of the estimates is small and reports a bound on that
+  error. In binomial and Poisson fits, household effects whose children differ
+  in covariates are integrated out, which makes such fits much faster.
+- Every parameter has one name, the same in `start_pars`, `fixed_pars`,
+  `coef()`, `profile()` and `parametric_bootstrap()`, with `tau2` for the
+  variance of the nugget. `glgpm_parameters()` lists the parameters of a model
+  and `?riskmap_parameters` describes them. `start_pars` starts any of them,
+  so `start_pars = coef(fit)` starts from another fit, and `fixed_pars` holds
+  any of them, or all, in which case `predict()` works with the given values.
+- Gaussian fits no longer depend on the units of the response. With a standard
+  deviation far from 1, a fit could stop at a lower maximum of the likelihood,
+  often without spatial variance, or fail.
+- `glgpm()` stops when a binomial denominator isn't a positive whole number, or a
+  Poisson response isn't whole or its exposure positive.
+- Data are `sf` objects. `distance_crs` and `distance_units` set the
+  projection and the units of distances in every function that measures them,
+  and `propose_crs()` proposes a projection that keeps distances accurate.
+- `?glgpm` lists the components of a fit that code may rely on. `logLik()`,
+  `vcov()` and `nobs()` work on fits, and with them `AIC()`, `BIC()` and
+  `update()`. Every result records the version of RiskMap that made it.
+- `set_control_mcmc()` sets the number of draws it keeps in `n_draws`, and
+  `set_control_mcml()` takes its sample sizes as `initial_draws`,
+  `validation_draws` and `max_draws`.
 
-- In `summarise_distance()` and `variogram()`, `scale_to_km` has been
-replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
-Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for
-`variogram()`).
-- In `summarise_distance()` and `variogram()`, `convert_to_utm` has been replaced
-with `distance_crs`, matching `glgpm()`'s `model_crs` convention: an
-already-projected CRS is retained as-is, longitude/latitude data is automatically
-reprojected to an appropriate UTM zone with a message, and an explicitly supplied
-`distance_crs` must be projected. Distances now correctly account for the CRS's
-native linear units rather than assuming metres.
-- `variogram()` now uses a simultaneous extreme-rank-length permutation envelope
-  instead of separate pointwise intervals. It remains an exploratory diagnostic
-  and does not report a hypothesis-test p-value. Its pairwise permutation engine
-  is compiled, distances and lag bins are computed once, and the default is 999
-  permutations plus the observed curve. The returned columns are now `distance`,
-  `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
-  be supplied without changing the caller's random-number state.
-  `plot_variogram()` now shows the envelope by default and warns when it
-  was omitted with `n_permutations = 0`.
-- The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+### Checking a fit
 
-## Model fitting
+- `check_computation()` reports how a fit was computed and flags anything that
+  needs attention, `profile()` gives profile likelihoods and
+  `parametric_bootstrap()` bootstrap intervals for the parameters.
 
-- The `den` argument in `glgpm()` has been renamed to `denominator`.
-- `glpgm()` now only accepts data in an sf format. 
-Consequently the locations do not need to be passed to `gp()` when fitting a model
-as they are included automatically.
-- The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
-`TRUE` to estimate it.
+### Prediction
 
-- Canonical binomial and Poisson models now use compiled likelihood and MALA
-kernels. The implementation retains the existing sampler, including support
-for nugget effects and multiple unstructured random effects, while avoiding
-the main interpreted-R bottlenecks. Custom inverse-link functions continue to
-use the general R implementation.
+- A single `predict()` method predicts at new locations or over the areas
+  given in `boundaries`, with exceedance probabilities, population weights,
+  standardisation and, if asked, the uncertainty of the estimated parameters.
+  `plot_prediction()` maps the predictions, `to_table()` tabulates them, and
+  `assess_extrapolation()` shows where they go beyond the data.
+- Predictions of Gaussian models with `re()` terms no longer depend on the labels
+  of the groups, and joint predictions that include the random effects have the
+  right covariance between them and the spatial process.
+- Rows of `newdata` with a missing covariate, or with one that gives the model a
+  term that isn't finite, such as `log(0)`, get `NA` predictions with a warning.
+- The covariates of the prediction grid `tz_covariates` now match those of
+  `tz_malaria`. EVI, temperature, night-time light and precipitation come from
+  the same rasters, so temperature is missing at 2 points and precipitation at
+  1, and ITN is a percentage with `NA` for missing values, where it was a
+  proportion with -9999. The help pages give the source and units of each
+  covariate, and population density is not in thousands, as they said.
 
-- Non-Gaussian optimisation now reuses the sample-wise Monte Carlo log
-integrand when the objective, gradient, and Hessian are evaluated at identical
-parameters, avoiding a repeated likelihood calculation.
+### Assessment and simulation
 
-- Non-Gaussian models now use automatically validated local-Laplace MCML.
-Independent fitting and validation banks must contain at least 100 effective
-draws, have acceptable importance-weight tails, agree on the score, and keep
-Monte Carlo standard error below 10% of statistical standard error in every
-parameter direction. Bank size increases only when those diagnostics require
-it. The defaults were chosen in a 1,200-dataset simulation study and checked
-against exact likelihoods on small datasets, Stan-based likelihood ratios and
-1,200 further datasets simulated with fresh seeds; see #194.
+- `assess_fit()` shows whether a model could have produced the data. It compares
+  statistics of the data, their distribution and the variogram of the residuals
+  from the covariates with those of datasets simulated from the model, which
+  `plot_predictive_check()` draws. The statistics can be given by name or as
+  functions. `?assessment` says which function answers which question about a
+  model.
+- `assess_prediction()` compares models by spatial cross-validation, on the test
+  sets of `create_test_sets()` (leave-one-out, random, clusters or spaced), which
+  `plot_test_sets()` draws. Test sets are predicted jointly, with the random
+  effects, and counts are scored with their exact distribution given the draws
+  of the mean. Every score is a loss, so lower is better, `summary()` gives the
+  differences from a reference model, and `PIT_area` is given with the limit that
+  a correct model is below with a probability of 95%. `plot_cross_validation()`
+  draws the calibration with its 95% joint band, and maps the scores.
+- `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
+  model, and `assess_simulation()` assesses predictions on them.
+- In `assess_simulation()` every value belongs to a class, those beyond the
+  `breaks` to the end classes, covariates can have any name, and a prediction
+  at a sampled location uses what the data say about its nugget.
 
-- Adaptive MCML now distinguishes Monte Carlo error from weak
-identification. A variance component estimated as zero (and the spatial range
-when the spatial variance is zero) is held at the boundary, the first stage is
-restarted once from an interior value, and precision is assessed on the
-remaining parameters, which keep their standard errors. A spatial range shorter
-than the median distance between neighbouring locations is held at that
-distance (`set_control_mcml(hold_short_range = FALSE)` disables this). If the
-information matrix is still singular, fitting stops instead of drawing more
-samples. Each case produces a plain-language warning.
+### Plots, printing and messages
 
-- `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
-`glgpm()`. Its documentation no longer lists the Gaussian family, which it has
-never supported, and describes the Newton-type optimisation it actually uses.
-
-- Removed unused internal helpers (`log_mean_exp()`,
-`importance_effective_sample_size()`, `restore_spatial_range()`) and the
-compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
-
-- `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
-Laplace approximation from several starting values before MCML.
-
-## Predictions
-
-- `create_grid()` no longer raises an error when `boundaries` is in
-longitude/latitude; like `glgpm()`, it now automatically reprojects to an
-appropriate UTM zone and reports the conversion with a message.
-- The old three-stage prediction interface has been replaced by
-  `predict.RiskMap()`. Prediction locations, predictors, offsets, grouping
-  variables and weights are supplied together in one `sf` object. Supplying
-  `boundaries` requests blockwise joint prediction and areal aggregation;
-  grids created by `create_grid()` use exact fractional cell coverage.
-  Location- and area-level predictions support exceedance probabilities and
-  named draw-by-draw transformations for additional scientific targets.
-  Response predictions can be standardized over a common empirical or
-  counterfactual reference population, with optional population weights.
-- Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
-with small measurement-error variances while retaining the same conditional model.
-
-## Cross validation
-
-- `"user"` has been added as an option to `method` the parameter of
-`assess_prediction()` replacing the previous behaviour where providing the
-`user_split` parameter overrode any provided `method`
-- In `assess_prediction()`, `n_size` has been renamed to `size` (for consistency
-with `iter` and `fold`) and `which_metric` has been renamed to `metrics`.
-Parameters have also been reordered: mandatory arguments first, then those
-required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`),
-then the remaining optional arguments.
-- `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
-to make the random splits generated for `method = "cluster"` or `"regularized"`
-reproducible.
-- `assess_prediction()`'s `plot_fold = TRUE` plots are now consistent across
-`method`s: `"cluster"` is unchanged (`spatialsample::autoplot()`), while
-`"user"` and `"regularized"` now plot the testing and training datasets.
-- `assess_simulation()` now takes fitted objects returned by `glgpm()` or
-  model specifications returned by `specify_glgpm()` as its `models`
-  templates. `f_grid_target` and `f_area_target` have been renamed to
-  `target_transform` and `area_summary`; their returned values are now checked
-  before they are used. Grid- and area-level objectives can be requested
-  together in one run with `spatial_scale = c("grid", "area")`.
-- In `plot_metric()`; its `which_score`/`which_model`
-parameters have been renamed to `metric`/`model`.
-
-## Simulations
-
-- `simulate_glgpm()` now accepts a fitted model or `specify_glgpm()` model,
-  with `nsim`, `what`, `sample_locations`, `prediction_grid` and `seed`.
-  `what = c("data", "surface")` simulates jointly at the exact union of both
-  sets of locations. This replaces `simulate_surface()` and its nearest-grid
-  approximation. The old simulation arguments and output structure are removed.
-  Parameters remain fixed, offsets and fitted inverse links are retained, and
-  Poisson responses use exposure times the inverse-link mean.
-  Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
-  extract results.
-
-## Other
-
-- A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
-outputs reproducible.
-- `control_sim` parameters have been renamed to `control_mcmc`.
-- `to_table()` now returns a directly renderable `knitr_kable` table, with an
-  explicit `digits` argument that preserves trailing zeroes. This replaces the
-  previous `xtable` return value.
-- The `data_sf` parameter in `create_ids` is now `data`.
-- The `conf_level` parameter in `summary.RiskMap` is now `level`
+- Every plot has a function of its own, such as `plot_variogram()`,
+  `plot_prediction()` and `plot_cross_validation()`, which `plot()` of the
+  result also calls, so users can call either. Each returns one ggplot or
+  patchwork object, which is drawn when printed. Methods and plot functions
+  stop on an argument they don't use.
+- Errors, warnings and messages are written with cli and have classes
+  (`?riskmap_conditions`), long computations show their progress
+  (`?riskmap_progress`), and `options(RiskMap.messages = FALSE)` silences the
+  messages.
+- Packages that only some functions need, such as ggspatial for north arrows and
+  scale bars, and jsonlite for `get_worldpop()`, are suggested rather than
+  imported, and those functions ask for them.
+- RiskMap needs R 4.5.0 or later.
+- Custom links, the negative binomial family, the penalised complexity priors
+  of `set_control_mcml()`, `crs_distortion()` and the spatial indicator of
+  `assess_extrapolation()` are experimental and may change in a minor release,
+  as their help pages say.

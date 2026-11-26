@@ -6,6 +6,8 @@
 \alias{RiskMap-package}
 \title{RiskMap: Geostatistical Modeling of Spatially Referenced Data}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 Geostatistical analysis of continuous and count point data. Implements stationary Gaussian processes with Matérn correlation for spatial prediction, as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7). An accompanying book by Giorgi and Fronterre describes how the package can be used for model-based geostatistics in public health: \url{https://www.mbgr.org/}. It is a successor to 'PrevMap'.
 }
 \seealso{
@@ -17,12 +19,12 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
+\strong{Maintainer}: Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID})
 
 Authors:
 \itemize{
-  \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
   \item Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID})
+  \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
   \item Simon Smart (\href{https://orcid.org/0000-0002-3624-8951}{ORCID})
 }
 

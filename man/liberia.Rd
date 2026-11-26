@@ -26,7 +26,7 @@ Onchocerciasis Control: (2) Pre-Control Endemicity Levels and Estimated Number I
 data(liberia)
 }
 \description{
-Counts of reported onchocerciasis (or riverblindess)
+Counts of reported onchocerciasis (or river blindness)
 cases from 90 villages sampled across Liberia.
 }
 \keyword{datasets}

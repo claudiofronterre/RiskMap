@@ -9,7 +9,8 @@ test_that("Gaussian weights agree with a direct covariance solve", {
       diag(length(location)) * 0.2
     weights <- gaussian_prediction_weights(Matrix::Matrix(incidence, sparse = TRUE),
                                             covariance, cbind(location, group), 0.2)
-    expect_equal(weights(cross_covariance),
+    # Older versions of Matrix add dimnames, so only the values are compared.
+    expect_equal(unname(weights(cross_covariance)),
                  cross_covariance %*% solve(observation_covariance),
                  tolerance = 1e-12)
   }
@@ -19,16 +20,40 @@ test_that("Gaussian predictions remain finite with tiny measurement error", {
   model <- gaussian_intercept_model
   for (variance in c(1e-10, 1e-12)) {
     model$estimate$sigma2_me <- log(variance)
-    for (type in c("marginal", "joint")) {
+    for (joint in c(FALSE, TRUE)) {
       expect_warning(prediction <- predict(
         model,
         newdata = gaussian_data,
-        type = type,
-        control_mcmc = control_mcmc,
+        joint = joint,
+        control_mcmc = control_mcmc, seed = fixture_seed,
         keep_samples = TRUE,
         messages = FALSE
       ), NA)
       expect_true(all(is.finite(prediction$samples$spatial)))
     }
+  }
+})
+
+test_that("Gaussian predictions use a fixed measurement error variance", {
+  # coef() omits sigma2_me when it is fixed, so the fixed value must be
+  # taken from the fit. A copy that treats the same value as estimated
+  # must give identical predictions.
+  fixed_model <- glgpm(y ~ cov + gp(), data = gaussian_data,
+                       family = "gaussian", fixed_pars = list(sigma2_me = 0.2),
+                       messages = FALSE)
+  estimated_model <- fixed_model
+  estimated_model$fixed_pars <- NULL
+  estimated_model$estimate$sigma2_me <- log(0.2)
+  for (joint in c(FALSE, TRUE)) {
+    fixed <- predict(fixed_model, newdata = gaussian_data, joint = joint,
+                     control_mcmc = control_mcmc,
+                     seed = fixture_seed, keep_samples = TRUE,
+                     messages = FALSE)
+    estimated <- predict(estimated_model, newdata = gaussian_data,
+                         joint = joint, control_mcmc = control_mcmc,
+                         seed = fixture_seed,
+                         keep_samples = TRUE, messages = FALSE)
+    expect_equal(fixed$samples$spatial, estimated$samples$spatial,
+                 tolerance = 1e-12)
   }
 })

@@ -9,18 +9,20 @@
   newdata = NULL,
   boundaries = NULL,
   aggregate = NULL,
-  type = c("auto", "marginal", "joint"),
+  joint = NULL,
   include = NULL,
   transform = NULL,
-  standardize = NULL,
+  standardise = NULL,
   summaries = c("mean", "lower", "upper"),
   thresholds = NULL,
   level = 0.95,
   weights = NULL,
   control_mcmc = NULL,
+  parameter_uncertainty = FALSE,
+  parameter_draws = 50L,
   seed = NULL,
   keep_samples = FALSE,
-  messages = TRUE,
+  messages = getOption("RiskMap.messages", TRUE),
   ...
 )
 }
@@ -29,7 +31,7 @@
 
 \item{newdata}{An \code{sf} object with point geometries and the variables needed
 by the fitted model. When \code{NULL}, predictions are made at the observed
-locations.}
+locations, with one row for each record of the data.}
 
 \item{boundaries}{Optional \code{sf} polygon object. When supplied, prediction
 locations are assigned to polygons and their joint samples are aggregated
@@ -46,16 +48,27 @@ list, optionally mixed with built-ins, for example
 function receives a location-by-draw matrix and the location weights and
 must return one numeric value per draw.}
 
-\item{type}{Character string specifying \code{"auto"}, \code{"marginal"}, or
-\code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
-joint prediction when \code{boundaries} are supplied.}
+\item{joint}{\code{NULL}, \code{TRUE} or \code{FALSE}. With \code{TRUE} the predictive draws
+at the locations are joint, so they keep the dependence between
+locations, and with \code{FALSE} each location is drawn on its own (marginal
+prediction), which is faster for many locations. \code{NULL}, the default,
+draws jointly when \code{boundaries} are given and marginally otherwise.
+Summaries over \code{boundaries} need joint draws, so \code{FALSE} can't be used
+with them. At the observed locations of a binomial, Poisson or negative
+binomial fit the draws are the joint conditional samples whatever
+\code{joint} is.}
 
 \item{include}{\code{NULL}, or a character vector specifying optional components
 to add to the complete linear predictor and response. Supported values are
 \code{"random_effects"}, for conditional predictions at known groups, and
 \code{"nugget"}, for a new realization of observation-level predictive
 variation at locations supplied through \code{newdata}. Fixed effects, the
-spatial process and any offset are always returned separately.}
+spatial process and any offset are always returned separately. A level of
+a random effect that isn't in the data of the fit stops a prediction that
+includes \code{"random_effects"}, and doesn't matter to one that doesn't. The
+nugget is one value for each location, so with joint draws rows of
+\code{newdata} at the same location share it, as they share the spatial
+process.}
 
 \item{transform}{Optional named list of functions defining derived predictive
 targets from the complete linear-predictor draws. Each function receives a
@@ -64,12 +77,12 @@ dimensions. The ordinary response-scale prediction is always calculated,
 so this argument is needed only for additional scientific targets, for
 example \code{list(stunting = function(link) pnorm((-2 - link) / sd_child))}.}
 
-\item{standardize}{Optional data frame describing a common reference
+\item{standardise}{Optional data frame describing a common reference
 population over which response-scale predictions are averaged. Its columns
 must be fixed-effect predictors from the fitted model and override the
 corresponding columns in \code{newdata}. Rows receive equal weight unless an
 optional numeric \code{.weight} column is supplied. Predictor values kept
-together on each row are standardized jointly, preserving their empirical
+together on each row are standardised jointly, preserving their empirical
 association. This answers what would be predicted if every location had
 the same reference-population distribution. \code{.weight} weights reference
 people or profiles and is distinct from the polygon \code{weights} argument.}
@@ -103,18 +116,32 @@ affect \code{"min"} or \code{"max"}.}
 conditional samples stored in a non-Gaussian fit are reused. Supplying a
 control object requests a fresh conditional run.}
 
-\item{seed}{Optional integer seed for random draws made during prediction.
-The caller's random-number state is restored on exit. When supplied, this
-seed takes precedence over a seed stored in \code{control_mcmc} for this call.}
+\item{parameter_uncertainty}{Logical. If \code{FALSE} (the default), predictions
+are made at the estimated parameters (plug-in prediction). If \code{TRUE},
+they also reflect the uncertainty in the estimated parameters; see
+Details.}
+
+\item{parameter_draws}{Positive integer giving the number of parameter
+values drawn when \code{parameter_uncertainty = TRUE}. Default 50. Conditional
+samples stored in the fit are not used in that case, because they
+condition on the estimate only; \code{control_mcmc}, if supplied, sets only
+the total number of predictive draws.}
+
+\item{seed}{Optional integer seed for random draws made during prediction,
+including a fresh conditional MCMC run. The caller's random-number state
+is restored on exit.}
 
 \item{keep_samples}{Logical. If \code{TRUE}, retain the minimal latent samples
 needed for custom post-processing. Predictive samples are generated to
 calculate summaries regardless of this setting, but are discarded by
 default to limit memory use.}
 
-\item{messages}{Logical. Display progress messages.}
+\item{messages}{Logical. Display messages, and a progress bar while
+predicting at many locations, as described in \link{riskmap_progress}.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
-\item{...}{Additional arguments reserved for future prediction methods.}
+\item{...}{Not used, and an error if given, so that a misspelt or former
+argument such as \code{type} is not ignored.}
 }
 \value{
 A \code{RiskMap_prediction} object containing:
@@ -128,19 +155,30 @@ boundary, aggregation, component, summary and threshold. \code{boundary_id}
 is the row number of the corresponding polygon in \code{boundaries}.}
 \item{samples}{\code{NULL} when \code{keep_samples = FALSE}; otherwise a list
 containing spatial samples and any requested random-effect or nugget
-samples for location-level prediction. For polygon aggregation it
-is nested first by aggregation and then by component, with one matrix
-row per polygon.}
+samples for location-level prediction, with one row for each row of
+\code{predictions}, and, with parameter
+uncertainty, the fixed-effect contribution of each draw (\code{fixed}).
+For polygon aggregation it is nested first by aggregation and then by
+component, with one matrix row per polygon.}
 \item{include}{Optional components included in the link and response.}
 \item{transform}{Names of additional derived predictive targets.}
-\item{standardized}{Whether response predictions were averaged over a
-reference population supplied through \code{standardize}.}
+\item{standardised}{Whether response predictions were averaged over a
+reference population supplied through \code{standardise}.}
 \item{aggregate}{Names of the within-polygon aggregations.}
 \item{summaries}{Names of the calculated summaries.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
 \item{level}{Probability covered by the interval limits.}
-\item{type}{Whether prediction was marginal or joint.}
+\item{weights}{Name of the weights column used for the polygon
+summaries, or \code{NULL}.}
+\item{joint}{\code{TRUE} when the draws were joint and \code{FALSE} when they were
+marginal.}
+\item{parameter_draws}{The number of parameter draws when parameter
+uncertainty was propagated, otherwise \code{NULL}.}
 \item{family}{The fitted response family.}
+\item{link}{The link of the fit when it is not the canonical one, its
+name or \code{"custom"}, and \code{NULL} for the canonical link.}
+\item{response_name}{Name of the response variable, used to label
+maps of Gaussian predictions.}
 \item{observed_locations}{Whether \code{newdata} was omitted.}
 \item{coverage}{\code{NULL} for location-only prediction. For polygon
 aggregation, \code{"exact"} when fractional grid-cell coverage was used and
@@ -170,14 +208,48 @@ when \code{control_mcmc = NULL}. If the model was fitted with
 \code{\link[=set_control_mcmc]{set_control_mcmc()}} defaults. Supplying \code{control_mcmc} always requests a
 fresh conditional run. For Gaussian models, prediction is based on their
 exact conditional Gaussian distribution.
-At the observed locations, the conditioned location-level Gaussian effect
-already includes the fitted nugget when the model has one. Consequently,
+
+Plug-in prediction treats the estimated parameters as known, so its
+intervals can be too narrow when the parameters, in particular the spatial
+variance and scale, are poorly estimated, as in small or low-prevalence
+surveys. With \code{parameter_uncertainty = TRUE}, \code{parameter_draws} parameter
+values are drawn from the approximate sampling distribution of the
+estimate: a multivariate normal distribution with the estimated covariance
+matrix, on the scale on which the model is estimated (log variances and
+log scale). For each value, conditional samples of the latent effects are
+generated at that value and the prediction is repeated; the draws are then
+pooled, so every summary, aggregation and derived target reflects both the
+latent and the parameter uncertainty. For binomial, Poisson and negative binomial models the
+conditional samples at each parameter value come from a short run of the
+same Langevin (MALA) sampler used for plug-in prediction, in coordinates
+whitened by the Laplace approximation at that value, started from a draw
+of that approximation and using the step size tuned at the estimate (100
+burn-in iterations, then thinning by 10). The total number of predictive
+draws equals that of plug-in prediction, 2,000 by default. Parameters
+without a finite positive variance, such as those held at a boundary, keep
+their estimated value. So does a variance, a scale or a size whose
+logarithm has a standard error above 3, as a variance of a Gaussian model
+estimated at zero has, because draws on the log scale would span more than
+five orders of magnitude. The other parameters are then drawn given it, and
+a warning names it unless it is a variance close to zero. When the
+covariance matrix of the estimates is not
+available, an error is returned; refitting with
+\code{set_control_mcml(pc_prior = TRUE)} usually resolves this. The location
+column \code{fixed} then reports the average fixed-effect contribution.
+
+At the observed locations of a binomial, Poisson or negative binomial fit
+with a nugget, the effect of each location is drawn given the data and
+already includes the nugget. At those of a Gaussian fit the prediction is of
+the spatial process \eqn{S(x)}, without the nugget, as it is at new
+locations, and \link[=fitted.RiskMap]{fitted()} gives the fitted values with the
+nugget and the random effects of the data. For every family,
 \code{include = "nugget"} is available only for predictions supplied through
 \code{newdata}, where it represents a new independent nugget realization.
 
 \code{newdata} and \code{boundaries} are transformed internally to the fitted model
 CRS without changing row order; returned geometries remain in their input
-CRS. Rows with missing required predictors are retained with \code{NA}
+CRS. Rows with missing required predictors, or with predictors that give the
+model a covariate that isn't finite, such as \code{log(0)}, are retained with \code{NA}
 predictions and an informative warning.
 
 When \code{boundaries} are supplied, one prediction run produces both the
@@ -222,14 +294,14 @@ location-level exceedance columns are named, for example,
 \code{response_exceedance_0.2} and \code{response_exceedance_0.5}; polygon output
 stores thresholds in the tidy \code{threshold} column.
 
-When \code{standardize} is supplied, every conditional spatial draw is reused
+When \code{standardise} is supplied, every conditional spatial draw is reused
 across all rows of the reference population. The response and any derived
 targets are evaluated for each reference profile and then averaged using
-\code{.weight}. This is direct standardization (empirical or counterfactual
+\code{.weight}. This is direct standardisation (empirical or counterfactual
 averaging), not simulation of uncertain predictors. The reported \code{fixed}
 and \verb{link_*} quantities use the weighted mean fixed-effect contribution;
 with a nonlinear link, transforming that mean is not the same as the
-standardized \verb{response_*} quantity.
+standardised \verb{response_*} quantity.
 }
 \examples{
 data(italy_sim)
@@ -246,15 +318,25 @@ prediction <- predict(
 )
 prediction$predictions
 
-# Use the same reference distribution of population density at each location
-reference_population <- data.frame(pop_dens = example_data$pop_dens)
-standardized_prediction <- predict(
+# Also reflect the uncertainty in the estimated parameters
+uncertain_prediction <- predict(
   fit,
   newdata = example_data[1:5, ],
-  standardize = reference_population,
+  parameter_uncertainty = TRUE,
+  parameter_draws = 20,
   messages = FALSE
 )
-standardized_prediction$predictions
+uncertain_prediction$predictions
+
+# Use the same reference distribution of population density at each location
+reference_population <- data.frame(pop_dens = example_data$pop_dens)
+standardised_prediction <- predict(
+  fit,
+  newdata = example_data[1:5, ],
+  standardise = reference_population,
+  messages = FALSE
+)
+standardised_prediction$predictions
 
 # Aggregate joint predictions within two example areas
 areas <- sf::st_sf(
@@ -272,5 +354,10 @@ areal_prediction$boundary_summary
 
 }
 \seealso{
-\code{\link[=glgpm]{glgpm()}}, \code{\link[=fitted]{fitted()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}
+The methods for a prediction are
+\link[=print.RiskMap_prediction]{print()},
+\link[=to_table.RiskMap_prediction]{to_table()} and \code{\link[=plot_prediction]{plot_prediction()}},
+which \code{plot()} of the prediction also calls. \code{\link[=assess_extrapolation]{assess_extrapolation()}}
+shows where predictions go beyond the data, and
+\link[=fitted.RiskMap]{fitted()} gives the fitted values at the data.
 }

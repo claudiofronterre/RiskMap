@@ -4,18 +4,54 @@
 \alias{summary.RiskMap}
 \title{Summarize Model Fits}
 \usage{
-\method{summary}{RiskMap}(object, ..., level = 0.95)
+\method{summary}{RiskMap}(object, level = 0.95, ...)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" from \code{\link{glgpm}}}
-
-\item{...}{other parameters.}
+\item{object}{An object of class "RiskMap" from \code{\link[=glgpm]{glgpm()}}}
 
 \item{level}{Confidence level for intervals (default 0.95).}
+
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A list of class \code{"summary.RiskMap"} with parameter estimates,
-standard errors, and confidence intervals.
+standard errors, and confidence intervals. For binomial, Poisson and negative binomial
+models, its component \code{mcml} reports certified Monte Carlo maximum
+likelihood: \code{certificate} (an approximate bound, with probability
+\code{level}, on the Monte Carlo error of the estimate in statistical
+standard errors, \code{NA} when there is none), \code{tolerance},
+\code{certified}, \code{outcome}, \code{correction_refused} (whether
+the Newton correction of the last stage did not converge),
+\code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
+last stage), \code{certification_bank} (the effective draws and Pareto
+shape of the certification draws), \code{checks_to_review}, the number
+of checks of \code{\link[=check_computation]{check_computation()}} that need a look,
+\code{starting_values}, where the starting values of the parameters not
+given in \code{start_pars} came from, \code{"current"} (RiskMap's
+defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
+transformed data, which \code{glgpm()} uses when the Laplace
+approximation of the likelihood prefers it to the defaults), or
+\code{"user"} when \code{start_pars} gives every parameter,
+\code{starting_given}, the names of those given in
+\code{start_pars} (absent when none was), and \code{starting_reason},
+why the defaults were kept other than by being preferred in that
+comparison, such as \code{"re_terms"} when it is not made for a model
+with \code{re()} terms, \code{"not_compared"} when
+\code{set_control_mcml(start_comparison = FALSE)} skips it,
+\code{"candidates_given"} when \code{start_pars} gives every value the
+comparison could change,
+\code{"transformed_failed"} when the Gaussian fit
+failed, or \code{"not_recorded"} for a fit saved by an earlier version
+that did not record why (\code{NULL} when the comparison chose the
+start). \code{mcml} is
+\code{NULL} for Gaussian models. The parameters of the family, such as
+the measurement error variance of a Gaussian model, are in
+\code{family_parameters}, a table of those that were estimated, and
+\code{held_family_parameters}, a list of those held at a given value.
+The other parameters that \code{fixed_pars} holds keep their rows, with
+no interval, and \code{held_parameters} says at what values they are
+held (absent when none is).
 }
 \description{
 Provides a \code{summary} method for the "RiskMap" class that

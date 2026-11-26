@@ -1,17 +1,12 @@
 #include <Rcpp.h>
+#include <algorithm>
 #include <cmath>
+#include <vector>
+#include "matern_kernel.h"
 
 using namespace Rcpp;
 
 namespace {
-
-void check_coordinates(const NumericMatrix& coordinates) {
-  for (R_xlen_t i = 0; i < coordinates.length(); ++i) {
-    if (!R_finite(coordinates[i])) {
-      stop("`coordinates` must contain only finite values.");
-    }
-  }
-}
 
 double euclidean_distance(const NumericMatrix& first,
                           const int first_row,
@@ -32,7 +27,6 @@ double euclidean_distance(const NumericMatrix& first,
 
 // [[Rcpp::export]]
 NumericVector cpp_pairwise_distances(const NumericMatrix coordinates) {
-  check_coordinates(coordinates);
 
   const int number_locations = coordinates.nrow();
   const R_xlen_t number_distances =
@@ -69,12 +63,6 @@ NumericVector cpp_pairwise_distances(const NumericMatrix coordinates) {
 // [[Rcpp::export]]
 NumericMatrix cpp_cross_distances(const NumericMatrix first,
                                   const NumericMatrix second) {
-  check_coordinates(first);
-  check_coordinates(second);
-
-  if (first.ncol() != second.ncol()) {
-    stop("Coordinate matrices must have the same number of columns.");
-  }
 
   NumericMatrix distances(first.nrow(), second.nrow());
 
@@ -109,7 +97,7 @@ NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values,
                                        const IntegerVector second_index,
                                        const IntegerVector bin_index,
                                        const int number_bins) {
-  // The only caller, variogram(), validates the values and builds zero-based
+  // The only caller, binned_semivariances(), is given finite values and zero-based
   // pair and bin indices of equal length, so they are not rechecked here
   const int number_values = permuted_values.nrow();
   const int number_pairs = first_index.length();
@@ -119,27 +107,57 @@ NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values,
     ++bin_counts[bin_index[pair]];
   }
 
-  NumericMatrix semivariances(number_bins, permuted_values.ncol());
+  // Permutations are processed in blocks. The values of a block are copied so
+  // that those of each location are contiguous and the copy fits in cache,
+  // which lets each pair update the whole block at once. Pairs are still
+  // summed in the same order, and halving the sums at the end is exact, so the
+  // result does not depend on the block size. A fixed loop length for full
+  // blocks lets the compiler vectorise the update
+  const int number_curves = permuted_values.ncol();
+  constexpr int block_size = 32;
+  std::vector<double> block_values(static_cast<size_t>(number_values) * block_size);
+  std::vector<double> block_sums(static_cast<size_t>(number_bins) * block_size);
+  NumericMatrix semivariances(number_bins, number_curves);
   const double* values_pointer = permuted_values.begin();
   const int* first_pointer = first_index.begin();
   const int* second_pointer = second_index.begin();
   const int* bin_pointer = bin_index.begin();
-  for (int permutation = 0; permutation < permuted_values.ncol(); ++permutation) {
-    const double* values_column = values_pointer +
-      static_cast<R_xlen_t>(permutation) * number_values;
-    double* output_column = semivariances.begin() +
-      static_cast<R_xlen_t>(permutation) * number_bins;
-    for (int pair = 0; pair < number_pairs; ++pair) {
-      const double difference = values_column[first_pointer[pair]] -
-        values_column[second_pointer[pair]];
-      output_column[bin_pointer[pair]] += 0.5 * difference * difference;
+  for (int block_start = 0; block_start < number_curves; block_start += block_size) {
+    const int width = std::min(block_size, number_curves - block_start);
+    for (int curve = 0; curve < width; ++curve) {
+      const double* values_column = values_pointer +
+        static_cast<R_xlen_t>(block_start + curve) * number_values;
+      for (int location = 0; location < number_values; ++location) {
+        block_values[static_cast<size_t>(location) * block_size + curve] =
+          values_column[location];
+      }
     }
-  }
-
-  for (int bin = 0; bin < number_bins; ++bin) {
-    for (int permutation = 0; permutation < permuted_values.ncol(); ++permutation) {
-      semivariances(bin, permutation) = bin_counts[bin] == 0 ? NA_REAL :
-        semivariances(bin, permutation) / bin_counts[bin];
+    std::fill(block_sums.begin(), block_sums.end(), 0.0);
+    for (int pair = 0; pair < number_pairs; ++pair) {
+      const double* first_values = block_values.data() +
+        static_cast<size_t>(first_pointer[pair]) * block_size;
+      const double* second_values = block_values.data() +
+        static_cast<size_t>(second_pointer[pair]) * block_size;
+      double* sums = block_sums.data() +
+        static_cast<size_t>(bin_pointer[pair]) * block_size;
+      if (width == block_size) {
+        for (int curve = 0; curve < block_size; ++curve) {
+          const double difference = first_values[curve] - second_values[curve];
+          sums[curve] += difference * difference;
+        }
+      } else {
+        for (int curve = 0; curve < width; ++curve) {
+          const double difference = first_values[curve] - second_values[curve];
+          sums[curve] += difference * difference;
+        }
+      }
+    }
+    for (int bin = 0; bin < number_bins; ++bin) {
+      for (int curve = 0; curve < width; ++curve) {
+        semivariances(bin, block_start + curve) = bin_counts[bin] == 0 ? NA_REAL :
+          0.5 * block_sums[static_cast<size_t>(bin) * block_size + curve] /
+          bin_counts[bin];
+      }
     }
   }
 
@@ -155,28 +173,7 @@ NumericVector cpp_half_integer_matern(const NumericVector distances,
   NumericVector correlation(distances.length());
 
   for (R_xlen_t i = 0; i < distances.length(); ++i) {
-    const double distance = distances[i];
-
-    if (distance == 0.0) {
-      correlation[i] = 1.0;
-      continue;
-    }
-
-    const double scaled_distance = distance / phi;
-
-    if (scaled_distance > 600.0) {
-      correlation[i] = 0.0;
-    } else if (kappa == 0.5) {
-      correlation[i] = std::exp(-scaled_distance);
-    } else if (kappa == 1.5) {
-      correlation[i] = (1.0 + scaled_distance) *
-        std::exp(-scaled_distance);
-    } else {
-      // matern_correlation() only calls this kernel for kappa = 0.5, 1.5 or 2.5
-      correlation[i] = (1.0 + scaled_distance +
-        scaled_distance * scaled_distance / 3.0) *
-        std::exp(-scaled_distance);
-    }
+    correlation[i] = half_integer_matern(distances[i], phi, kappa);
   }
 
   return correlation;

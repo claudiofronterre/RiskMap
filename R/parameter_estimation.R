@@ -1,54 +1,116 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data,
 ##' incorporating spatial Gaussian processes with a Matern correlation function.
-##' Supports Gaussian, binomial, and Poisson response families.
+##' Supports Gaussian, binomial, Poisson and negative binomial response families.
 ##' @param formula A formula object specifying the model to be fitted.
 ##' The formula should include fixed effects and spatial effects specified using
-##' [gp()] and optionally, random effects specified using [re()].
+##' [gp()] and optionally, random effects specified using [re()]. It can also
+##' include one `offset()` term that names a column of `data`, e.g. `offset(log_exposure)`.
 ##' @param data An sf object containing the variables in the model.
-##' @param family A character string specifying the distribution of the response variable.
-##' Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
-##' @param invlink A function that defines the inverse of the link function for
-##' the distribution of the data given the random effects.
-##' Not applicable when `family` is `"gaussian"`.
-##' @param denominator Optional denominator or exposure for binomial or Poisson distributions.
-##' Passed as a bare/unquoted column name present in `data`.
-##' If not provided, defaults to `1` for binomial models.
-##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
-##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
-##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
-##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
-##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' @param family The distribution of the response given the random effects,
+##' with its link. Either one of the strings `"gaussian"`, `"binomial"` and
+##' `"poisson"`, which take the identity, logit and log links, a family
+##' object as in [stats::glm()], such as `binomial("probit")`, or
+##' [negative_binomial()] for overdispersed counts with the log link, whose
+##' size is estimated unless it is held, by `fixed_pars` of [glgpm()] or by
+##' the family object `MASS::negative.binomial(2)`. Where nothing is estimated,
+##' as in [specify_glgpm()], the size must be given, as `theta` in its
+##' `parameters`. Binomial
+##' responses take the logit, probit, complementary log-log (`"cloglog"`) and
+##' Cauchy (`"cauchit"`) links, Poisson responses the log link and Gaussian
+##' responses the identity link. `binomial("log")` and `poisson("identity")`
+##' are not accepted, because they can give means outside the range of the
+##' family, nor is `poisson("sqrt")`, whose inverse gives the same mean to a
+##' positive and a negative linear predictor. Quasi-likelihood families, such
+##' as [stats::quasibinomial()], have no likelihood to maximise and are not
+##' accepted either. Any other link can be given in `invlink`. A named link
+##' gives the same estimates as its inverse given in `invlink`, and is faster
+##' when that inverse cannot be differentiated symbolically, as for
+##' `invlink = pnorm`.
+##' @param invlink A function that maps the linear predictor to the mean of
+##' the response given the random effects, for a binomial or Poisson model
+##' whose link is not one of those that `family` names, such as a link for an
+##' imperfect diagnostic test. Its first and second derivatives are found
+##' symbolically where possible and numerically otherwise. They only steer the
+##' importance sampler, so they affect the speed of a fit and not its
+##' estimates. Not applicable for Gaussian models, and not to be combined with
+##' a family object that names a link other than logit or log. Custom links
+##' are experimental, and how they are given and checked may change in a
+##' minor release.
+##' @param denominator Optional denominator for binomial distributions, the
+##' number of trials, or exposure for Poisson and negative binomial ones, the
+##' mean of a count being the exposure times the inverse link of the linear
+##' predictor. A fit needs positive whole numbers of trials, and positive
+##' exposures. Counts and numbers of trials that are whole to floating-point
+##' error are rounded. Passed as a bare/unquoted column name present in `data`.
+##' If not provided, defaults to `1`.
+##' @param distance_crs The projected coordinate reference system in which
+##' distances, and so `phi`, are measured, for example an EPSG code. `data`
+##' are transformed to it, and the model is fitted in it. The default, `NULL`,
+##' keeps projected data as they are and projects data in longitude and
+##' latitude to the CRS from [propose_crs()], a UTM zone or a projection
+##' centred on the data, with a message naming the CRS and the units of
+##' distance. A CRS in longitude and latitude is refused. A warning of class
+##' `riskmap_warning_crs` is raised when the CRS used distorts distances by
+##' more than 1% over the data. [variogram()], [summarise_distance()],
+##' [create_grid()] and [specify_glgpm()] take the same argument, so that
+##' their distances can be measured as the fit's are.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
-##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates in
-##' the returned `data` retain the linear units declared by its CRS.
+##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates of
+##' the data keep the linear units of their CRS.
 ##' Defaults to `"km"`.
-##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
+##' @param start_pars `NULL` (the default), or a named list of starting
+##' values for any of the model's estimated parameters, one, several or all of
+##' them, named as in [riskmap_parameters]. `beta` is matched to the columns of
+##' the design matrix by name, or by position if it is unnamed and has a value
+##' for each, and `sigma2_re` to the `re()` terms in the same way. The flat
+##' names of `unlist(coef(fit))`, such as `"beta.x"`, are accepted too, in a
+##' list or as that named vector, so `start_pars = coef(fit)` starts a fit
+##' from the estimates of another. Every
+##' other parameter takes its automatic start. [glgpm_parameters()] lists the
+##' parameters of a model before it is fitted.
+##' @param fixed_pars `NULL` (the default), or a named list of values at which
+##' to hold any of the model's parameters instead of estimating them, one,
+##' several or all of them, with the names and structure of `start_pars`.
+##' Every value must be finite, and every one but the coefficients positive,
+##' except the measurement error variance of a Gaussian model, which may be
+##' zero. A held coefficient enters the linear predictor as a known term, as an
+##' offset does. The other parameters are estimated with the held ones at their
+##' values, and with every parameter held the fit evaluates the likelihood at
+##' the values (exactly for a Gaussian model, by Monte Carlo on one sample for
+##' the others) and draws the conditional samples there, so that
+##' [predict()][predict.RiskMap()] works with given parameters. A parameter can't be both started and held,
+##' except that a start equal to its held value, as in
+##' `start_pars = coef(fit)` of a fit with the same holds, is left out. With one
+##' observation per location, a Gaussian model can estimate the nugget or the
+##' measurement error variance, not both, and a negative binomial model the
+##' nugget or the size, not both.
 ##' @param control_mcml Control parameters for adaptive Monte Carlo maximum
 ##' likelihood estimation. Must be returned by [set_control_mcml()].
+##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
 ##' @param return_samples Logical indicating whether to draw and retain
 ##' conditional samples at the fitted parameters. These samples are used to
 ##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
 ##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
-##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
-##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
-##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
-##' the `nugget` term in [gp()] is also set to `TRUE`.
-##' @param start_pars Optional list of starting values for model parameters:
-##' \describe{
-##'   \item{beta}{regression coefficients}
-##'   \item{sigma2}{spatial process variance}
-##'   \item{tau2}{nugget effect variance}
-##'   \item{phi}{spatial correlation scale}
-##'   \item{sigma2_me}{measurement error variance - only for Gaussian models}
-##'   \item{sigma2_re}{random effects variances - only when random effects are included}
-##' }
+##' @param seed Optional non-negative integer that seeds every random step of
+##' a binomial or Poisson fit: the Monte Carlo samples of the estimation and
+##' the final conditional samples. When `NULL` (the default), one integer is
+##' drawn from the session's random number generator, so [set.seed()] before
+##' the call also reproduces the fit. The seed used is returned as `seed`.
+##' The caller's random number state is otherwise left unchanged. Ignored for
+##' Gaussian models, which have no random step.
+##' @param messages Logical indicating whether to print messages, and a
+##'   line for each stage of the fit as described in
+##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or
+##'   `TRUE` if it is not set.
 ##' @details
 ##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
 ##' spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
-##' using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
-##' In the case of the Binomial and Poisson families, a Monte Carlo maximum likelihood algorithm is used.
+##' using maximum likelihood methods, allowing for Gaussian, binomial, Poisson and negative binomial
+##' response families. In the case of the binomial, Poisson and negative binomial families, a Monte
+##' Carlo maximum likelihood algorithm is used. A negative binomial model is fitted as the binomial
+##' model of its counts at each value of its size (see [negative_binomial()]).
 ##'
 ##' The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and
 ##' commonly used in geostatistical modeling. The function supports both spatial covariates and
@@ -60,86 +122,89 @@
 ##' at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 ##' in capturing complex spatial patterns.
 ##'
-##' The `model_crs` argument can be used to reproject the spatial coordinates to a different, projected
-##' CRS for model fitting. If `data` are in longitude/latitude and `model_crs` is not supplied, the
-##' coordinates are automatically reprojected to an appropriate UTM zone and a message details the
-##' conversion; automatic projection is avoided for `model_crs` explicitly supplied in longitude/latitude,
-##' which raises an error.
+##' The model is fitted in the projected CRS of `distance_crs`, or of `data`
+##' when it is `NULL`, and the data in longitude and latitude are projected to
+##' the CRS from [propose_crs()] with a message.
 ##' The `distance_units` argument controls whether distances between locations (and so parameters such
 ##' as `phi`) are expressed in kilometers (`"km"`, the default) or meters (`"m"`).
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by [set_control_mcmc()].
-##' For non-Gaussian models, adaptive MCML starts with independent fitting and
-##' validation importance samples. It increases their size only when direct
-##' parameter-scale Monte Carlo error, importance-tail diagnostics, or
-##' independent score agreement show that more information is needed. The
-##' algorithm records every stage and warns if its precision criteria are not
-##' met before the configured limits. `control_mcmc$seed` makes both estimation
-##' banks and final conditional sampling reproducible.
+##' Non-Gaussian models are fitted by certified Monte Carlo maximum likelihood
+##' (MCML), controlled by `control_mcml` (see [set_control_mcml()]). The
+##' estimate is corrected with an independent validation sample and certified
+##' with a second, fresh one, which bounds its Monte Carlo error in statistical
+##' standard errors, with an allowance for that sample's own error taken from
+##' it and from a replicate of it (see [set_control_mcml()]). The samples
+##' are enlarged only when the certificate exceeds
+##' the tolerance, and a warning is issued if the tolerance is not met within
+##' the configured limits. [check_computation()] reports every stage. Warnings
+##' are kept for what changes how a result is read, and [check_computation()]
+##' goes through all the checks on the computation, with what to do about any
+##' that need a look. The estimation samples and the final conditional samples
+##' are drawn from separate streams derived from `seed`, so `glgpm(..., seed =
+##' fit$seed)` reproduces a fit exactly.
 ##'
-##' The `start_pars` argument allows starting values to be supplied explicitly.
-##' Otherwise, binomial and Poisson models compare two automatic candidates
-##' and use the one with the better Laplace approximation.
+##' Parameters not given in `start_pars` take RiskMap's defaults, which are
+##' the coefficients of the regression without latent effects and `phi` at the
+##' 10th percentile of the distances between locations. In a Gaussian model
+##' every variance, that of the spatial process, of an estimated nugget, of the
+##' measurement error and of each `re()` term, starts at the variance of the
+##' residuals of that regression, and the model is fitted to those residuals
+##' divided by their standard deviation, so that a fit does not depend on the
+##' units of the response. In the other models the variances start at 1, and
+##' the size of a negative binomial model at that of the regression without
+##' latent effects. A binomial, Poisson or negative binomial model with the
+##' canonical link and without `re()` terms compares the defaults with
+##' the estimates of a Gaussian model fitted to the empirical link of the data
+##' (the empirical logit of a binomial model), with one observation per
+##' location, the totals of the location where it has several records, and
+##' starts from the one with the higher Laplace approximation of the
+##' likelihood. The values given in `start_pars` replace their own in both,
+##' and `set_control_mcml(start_comparison = FALSE)` skips the comparison. A
+##' start of `phi` far from the distances between the locations, below a
+##' hundredth of the smallest or above ten times the largest, gives a warning,
+##' since it may be in other units. [summary.RiskMap()] says which starting
+##' values a fit used and why.
 ##'
-##' @return An object of class `RiskMap` containing the fitted model and relevant information:
+##' [stats::update()] refits a model with some of its arguments changed, as
+##' in `update(fit, . ~ . + elevation)` or
+##' `update(fit, fixed_pars = list(phi = 20))`. It evaluates the call again,
+##' with the data it names in the environment where `update()` is called.
 ##'
-##' \item{estimate}{Estimated parameters as a named list: \code{beta} (named
-##' regression coefficients on the scale of the supplied covariates), \code{sigma2},
-##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
-##' estimated, \code{sigma2_me} for Gaussian models with an estimated
-##' measurement error variance, and \code{sigma2_re} (a named vector, one
-##' entry per random effect) when random effects are included. Keeping these
-##' in separate list elements - rather than one flat named vector - avoids a
-##' covariate whose name collides with a parameter name (e.g. a covariate
-##' literally called \code{"sigma2"}) corrupting name-based lookups.
-##' \code{covariance} is estimated as one joint matrix over every parameter;
-##' its rows/columns are named to match \code{unlist(estimate)}.}
-##' \item{grad_MLE}{Gradient of the maximum likelihood function}
-##' \item{covariance}{Covariance}
-##' \item{log_lik}{Log likelihood}
-##' \item{y}{Response variable}
-##' \item{D}{Covariate matrix}
-##' \item{coords}{Unique spatial coordinates}
-##' \item{ID_coords}{Index of coordinates}
-##' \item{re}{Random effects if `re()` is included in `formula`}
-##' \item{ID_re}{Index of random effects if `re()` is included in `formula`}
-##' \item{fix_tau2}{Fixed nugget effect variance}
-##' \item{fix_var_me}{Fixed measurement error variance}
-##' \item{formula}{Model formula}
-##' \item{family}{Response family}
-##' \item{distance_units}{Units (`"km"` or `"m"`) used for internal coordinate distances and spatial parameters}
-##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
-##' \item{input_crs}{The CRS of the input data}
-##' \item{kappa}{Spatial correlation parameter}
-##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
-##' \item{cov_offset}{Covariate offset}
-##' \item{call}{Matched call}
-##' \item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
-##' evaluated at the fitted parameters when `return_samples` is `TRUE`. These
-##' are not the reference samples used for MCML estimation. The first block is
-##' the location-level Gaussian effect (including the nugget when present),
-##' followed by any unstructured random-effect blocks.}
-##' \item{linear_predictors}{Conditional fitted linear predictors. For
-##' non-Gaussian models these are Monte Carlo means over the final-parameter
-##' latent samples and are `NULL` when `return_samples = FALSE`; for Gaussian
-##' models they use the conditional latent mean.}
-##' \item{fitted_values}{Conditional fitted response means. Binomial models
-##' return probabilities; Poisson models return expected counts and therefore
-##' include any supplied exposure in `denominator`. These are `NULL` for
-##' non-Gaussian models when `return_samples = FALSE`.}
-##' \item{mcml_history}{For non-Gaussian models, one entry per adaptive stage,
-##' containing the bank size, estimate, optimizer result, effective sample
-##' sizes, Pareto tail diagnostics, parameter Monte Carlo error,
-##' independent-score agreement, timing, stopping decision, and the reason for
-##' any increase in sample size. Estimates use the same parameterisation as
-##' `estimate`, with regression coefficients and spatial range restored to the
-##' supplied covariate and distance units. `NULL` for Gaussian models.}
-##' \item{mcml_converged}{Whether the final adaptive stage met every Monte
-##' Carlo precision and independent-validation criterion. `NULL` for Gaussian
+##' @return A fitted model of class `RiskMap`, a list. These components are
+##' part of its interface.
+##' \item{data}{The `sf` data of the fit, in the CRS in which the model was
+##' fitted, so that distances between them are those that `phi` describes.
+##' `sf::st_crs(fit$data)` gives that CRS, and
+##' `sf::st_transform(fit$data, fit$input_crs)` gives the data in the CRS
+##' they were given in.}
+##' \item{input_crs}{The CRS of `data` as it was given.}
+##' \item{formula}{The model formula.}
+##' \item{family}{The name of the family, such as `"binomial"`.}
+##' \item{call}{The matched call.}
+##' \item{seed}{The seed used for the random steps of a binomial, Poisson or
+##' negative binomial fit, whether given or drawn, so that
+##' `glgpm(..., seed = fit$seed)` reproduces the fit. `NULL` for Gaussian
 ##' models.}
-##' \item{mcml_selected_iteration}{The adaptive stage whose estimate is
-##' returned. `NULL` for Gaussian models.}
+##' \item{distance_units}{The units of distance, `"km"` or `"m"`, in which
+##' `phi` is given.}
+##'
+##' The other components are internal and may change in any version of
+##' RiskMap. The estimates, their covariance and the likelihood are read with
+##' [coef()][coef.RiskMap()], [vcov()][vcov.RiskMap()],
+##' [logLik()][logLik.RiskMap()] and [nobs()][nobs.RiskMap()], fitted values
+##' with [fitted()][fitted.RiskMap()], standard errors and intervals with
+##' [summary()][summary.RiskMap()], and how the fit was computed with
+##' [check_computation()].
+##'
+##' Every result of RiskMap that can be saved and read again, such as a fit, a
+##' prediction or a profile, has the attribute `riskmap_version`, a list with
+##' the `version` of RiskMap that made it, as a [package_version()], and
+##' `sha`, the commit it was installed from when it was installed from GitHub
+##' and `NA` otherwise. An object without it was made before RiskMap stamped
+##' its results, by an earlier version or an early development build of
+##' 2.0.0.
 ##'
 ##' @examples
 ##'
@@ -156,12 +221,7 @@
 ##' summary(fit)
 ##'
 ##' # add a covariate
-##' fit <- glgpm(
-##'   formula = y ~ gp() + pop_dens,
-##'   data = italy_sim[1:100,],
-##'   family = "gaussian",
-##'   messages = FALSE
-##' )
+##' fit <- update(fit, . ~ . + pop_dens)
 ##'
 ##' summary(fit)
 ##'
@@ -188,67 +248,80 @@
 ##' # binomial model
 ##' data(loaloa)
 ##'
-##' # reduce iterations to speed up fit and add
+##' # reduce iterations to speed up the fit, and set a
 ##' # seed for reproducibility
-##' control_mcmc <- set_control_mcmc(n_sim = 100,
-##'                                  burnin = 20,
-##'                                  seed = 42)
+##' control_mcmc <- set_control_mcmc(n_draws = 8,
+##'                                  burnin = 20)
 ##'
 ##' fit <- glgpm(NO_INF ~ gp(),
 ##'              data = loaloa[1:50,],
 ##'              denominator = NO_EXAM,
 ##'              family = "binomial",
 ##'              control_mcmc = control_mcmc,
+##'              seed = 42,
 ##'              messages = FALSE)
 ##'
 ##' summary(fit)
 ##'
-##' @seealso [set_control_mcmc()], [set_control_mcml()],
-##'   \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+##' # family = binomial("probit") fits the same model with a probit link
+##'
+##' @seealso The methods for a fit are [print()][print.RiskMap()],
+##'   [summary()][summary.RiskMap()], [coef()][coef.RiskMap()],
+##'   [fitted()][fitted.RiskMap()], [logLik()][logLik.RiskMap()] with
+##'   [vcov()][vcov.RiskMap()] and [nobs()][nobs.RiskMap()],
+##'   [predict()][predict.RiskMap()], [profile()][profile.RiskMap()] and
+##'   [to_table()]. [check_computation()], [plot_mcmc()], [summarise_mcmc()],
+##'   [parametric_bootstrap()], [assess_prediction()] and
+##'   [assess_extrapolation()] take a fit too. [glgpm_parameters()] lists the
+##'   parameters of a model before it is fitted, and [set_control_mcml()] and
+##'   [set_control_mcmc()] set how it is fitted.
 ##' @export
 glgpm <- function(formula,
                  data,
                  family,
                  invlink = NULL,
                  denominator = NULL,
-                 model_crs = NULL,
+                 distance_crs = NULL,
                  distance_units = c("km", "m"),
-                 control_mcmc = set_control_mcmc(),
+                 start_pars = NULL,
+                 fixed_pars = NULL,
                  control_mcml = set_control_mcml(),
+                 control_mcmc = set_control_mcmc(),
                  return_samples = TRUE,
-                 messages = TRUE,
-                 fix_var_me = NULL,
-                 start_pars = list(beta = NULL,
-                                   sigma2 = NULL,
-                                   tau2 = NULL,
-                                   phi = NULL,
-                                   sigma2_me = NULL,
-                                   sigma2_re = NULL)) {
+                 seed = NULL,
+                 messages = getOption("RiskMap.messages", TRUE)) {
+  check_supplied(formula)
+  check_supplied(data)
+  check_supplied(family)
 
   check_data(data)
   check_formula(formula, data)
-  if(!family %in% c("gaussian", "binomial", "poisson"))
-    stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
-  not_gaussian <- family != "gaussian"
+  family_link <- read_family(family, invlink)
+  family <- family_link$family
+  invlink <- family_link$invlink
+  family_parameters <- family_link$parameters
+  # The family's own parameters that the fit estimates, as the size of a
+  # negative binomial family given without one.
+  estimated_family <- family_link$estimated %||% character()
+  model <- family_traits(family)
 
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")),
-            "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
-            "'messages' must be either TRUE or FALSE" = is.logical(messages))
-  distance_units <- match.arg(distance_units)
-  if (!inherits(control_mcml, "RiskMap_control_mcml")) {
-    stop("the argument passed to 'control_mcml' must be an output from ",
-         "the function set_control_mcml; see ?set_control_mcml for details")
-  }
+  distance_units <- match_choice(distance_units)
+  check_logical(return_samples)
+  check_logical(messages)
+  check_control(control_mcml, "set_control_mcml")
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
-  if (family == "gaussian"){
-    stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
-              "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'fix_var_me' must be NULL or a single positive value or zero" =
-                is.null(fix_var_me) ||
-                (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
-  } else {
-    if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
+  if (model$exact) {
+    if (!is.null(invlink)) {
+      abort_input("{.arg invlink} can't be given for a Gaussian model, which has the identity link.", arg = "invlink")
+    }
+    # `denominator` names a column, so it is read without being evaluated,
+    # but a variable holding NULL passed on by another function is accepted.
+    given <- !is.null(substitute(denominator)) &&
+      !is.null(tryCatch(denominator, error = function(error) TRUE))
+    if (given) {
+      abort_input("{.arg denominator} can't be given for a Gaussian model.", arg = "denominator")
+    }
   }
 
   inter_f <- interpret_formula(formula)
@@ -270,28 +343,32 @@ glgpm <- function(formula,
   }
 
   # Define denominators for Binomial and Poisson distributions
-  if (not_gaussian) {
+  if (!model$exact) {
     sub_den <- substitute(denominator)
     if (is.null(sub_den)){
       units_m <- rep(1, nrow(data))
-      if (family == "binomial") warning("'denominator' is assumed to be 1 for all observations")
+      if (model$warn_missing_denominator) {
+        riskmap_warn("{.arg denominator} isn't given, so it is taken to be 1 for every observation.")
+      }
     } else {
-      if (!is.symbol(sub_den)){
-        stop("'denominator' must be provided as an unquoted column name for a column in 'data'")
+      if (!is.symbol(sub_den)) {
+        abort_input("{.arg denominator} must be the unquoted name of a column of {.arg data}.", arg = "denominator")
       }
       do_name <- deparse(sub_den)
-      if (!do_name %in% names(data)){
-        stop("the variable provided to 'denominator' is not present in 'data'")
+      if (!do_name %in% names(data)) {
+        abort_input(c("{.arg denominator} must name a column of {.arg data}.", "x" = "There is no column {.val {do_name}}."), arg = "denominator")
       }
       units_m <- data[[do_name]]
     }
-    if (family == "binomial") check_binomial(y, units_m)
-    if(is.integer(units_m)) units_m <- as.numeric(units_m)
-    if(!is.numeric(units_m)) stop("the variable passed to 'denominator' must be numeric")
-    if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
-      stop("the argument passed to 'control_mcmc' must be an output
-           from the function set_control_mcmc; see ?set_control_mcmc for more details")
+    if (!is.numeric(units_m)) {
+      abort_input("{.arg denominator} must name a numeric column, not {.obj_type_friendly {units_m}}.", arg = "denominator")
     }
+    if (is.integer(units_m)) units_m <- as.numeric(units_m)
+    model$validate(y, units_m)
+    # Counts and numbers of trials are whole to a tolerance.
+    y <- round(y)
+    if (model$whole_denominator) units_m <- round(units_m)
+    check_control(control_mcmc, "set_control_mcmc")
   }
 
   if (length(inter_f$re_spec) > 0L) {
@@ -313,22 +390,16 @@ glgpm <- function(formula,
 
   # transform crs and extract coordinates
   input_crs <- st_crs(data)
-  if(!is.null(model_crs)) {
-    check_crs(model_crs)
-    data <- st_transform(data, crs = model_crs)
-    if(st_is_longlat(data)) {
-      stop("'model_crs' must be a projected CRS, not longitude/latitude")
-    }
-  } else if(st_is_longlat(data)) {
-    auto_crs <- propose_utm(data)
-    data <- st_transform(data, crs = auto_crs)
-    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
-            "automatically reprojecting to EPSG:", auto_crs,
-            " for model fitting. Set 'model_crs' to override.")
-  }
-  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
+  # The message on a projection is shown even with `messages = FALSE`,
+  # because it changes the model. It names the units of distance, so that
+  # the fit has one message on where it is fitted.
+  projected_here <- is.null(distance_crs) && isTRUE(st_is_longlat(data))
+  data <- project_for_distances(data, distance_crs, "distance_crs",
+                                "for fitting", units = distance_units)
 
-  coords_o <- coordinates_in_units(data, distance_units)
+  coords_o <- coordinates_in_units(
+    data, distance_units, if (is.null(distance_crs)) "data" else "distance_crs"
+  )
   coordinate_index <- index_coordinate_rows(coords_o)
   coords <- coordinate_index$coordinates
   ID_coords <- coordinate_index$index
@@ -336,21 +407,31 @@ glgpm <- function(formula,
   m <- nrow(coords_o)
   s_unique <- unique(ID_coords)
 
-  fix_tau2 <- inter_f$gp_spec$nugget
+  # The values `fixed_pars` holds, read against every parameter the model
+  # could estimate, and the holds as the engines take them: the nugget as
+  # TRUE, its held variance or 0 without one, the measurement error variance
+  # held or NULL, and the family's held parameters with those it estimates.
+  has_nugget <- isTRUE(inter_f$gp_spec$nugget)
+  holds <- read_model_holds(colnames(D), has_nugget, model, family_link,
+                            names_re, distance_units, fixed_pars)
+  held <- holds$held
+  fix_tau2 <- holds$fix_tau2
+  fix_var_me <- holds$fix_var_me
+  family_parameters <- holds$family_parameters
+  estimated_family <- holds$estimated_family
 
   if(all(table(ID_coords) == 1) &&
-     family == "gaussian" &&
+     model$measurement_error &&
      isTRUE(fix_tau2) &&
      is.null(fix_var_me)){
-    stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
+    abort_input(c("The nugget and the measurement error variance can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} in {.fn gp}, or hold {.code tau2} or {.code sigma2_me} in {.arg fixed_pars}."), arg = "formula")
   }
 
   # For the Gaussian family, an observation-level random effect is perfectly
   # confounded with an estimated measurement-error variance. When there is
   # only one observation per location, it is also confounded with an estimated
   # nugget. Fixed variance components do not create this identifiability issue.
-  if (family == "gaussian" && n_re > 0) {
+  if (model$measurement_error && n_re > 0) {
     n_levels_re <- vapply(re_unique, length, integer(1))
     is_saturated_re <- n_levels_re == n
     confounded_with_me <- is.null(fix_var_me)
@@ -364,98 +445,112 @@ glgpm <- function(formula,
       } else {
         "the nugget"
       }
-      stop("The random effect(s) '",
-           paste(names_re[is_saturated_re], collapse = "', '"),
-           "' have one level per observation, which cannot be distinguished ",
-           "from ", confounded_component, " when 'family' is 'gaussian'. ",
-           "Drop the random effect or fix the confounded variance component(s).")
+      saturated <- names_re[is_saturated_re]
+      n_saturated <- length(saturated)
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "In a Gaussian model {cli::qty(n_saturated)}{?such an effect/these effects} can't be told apart from {confounded_component}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or hold the variance of {confounded_component} in {.arg fixed_pars}."), arg = "formula")
     }
   }
 
-  if(messages) message("Distances between locations are computed in ", distance_units, " ")
-
-  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
-  invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
-  if (length(invalid)) {
-    stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
+  # With one record per location, an estimated parameter of the family, such
+  # as the size of a negative binomial family, adds variation at each
+  # location as a nugget does, and only the shapes of their distributions
+  # tell them apart.
+  if (length(estimated_family) && all(table(ID_coords) == 1) &&
+      isTRUE(fix_tau2)) {
+    family_words <- family_parameter_words(estimated_family[1L])
+    abort_input(c("The nugget and the {family_words} can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} in {.fn gp}, or hold {.code tau2} or the {family_words} in {.arg fixed_pars}."), arg = "formula")
   }
-  user_supplied_start <- any(vapply(
-    start_pars,
-    function(value) !is.null(value),
-    logical(1)
-  ))
-
-  if(is.null(start_pars[["beta"]])) {
-    if(family=="gaussian") {
-      start_pars[["beta"]] <- linear_start_values(D, y)
-    } else if(family=="binomial") {
-      aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
-      if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
-      glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
-                        data = aux_data, family = binomial)
-      start_pars[["beta"]] <- coef(glm_fitted)
-    } else if(family=="poisson") {
-      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
-      data_aux <- data
-      data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
-      glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars[["beta"]] <- coef(glm_fitted)
+  # So does a random effect with one level per observation, as it does with
+  # the measurement error of a Gaussian model.
+  if (length(estimated_family) && n_re > 0) {
+    saturated <- names_re[vapply(re_unique, length, integer(1)) == n]
+    if (length(saturated)) {
+      family_words <- family_parameter_words(estimated_family[1L])
+      n_saturated <- length(saturated)
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "{cli::qty(n_saturated)}{?It/They} can't be told apart from the {family_words}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or hold the {family_words} in {.arg fixed_pars}."), arg = "formula")
     }
+  }
+
+  if (messages && !projected_here) {
+    crs <- as.list(st_crs(data))$input
+    riskmap_inform("The model is fitted in {crs}, with distances in {distance_units}.")
+  }
+
+  # The parameters of the model, from its design, nugget, family and holds.
+  parameters <- model_parameter_table(
+    colnames(D), fix_tau2 = fix_tau2, exact = model$exact,
+    fix_var_me = fix_var_me, estimated_family = estimated_family,
+    family_parameters = family_parameters, re_names = names_re,
+    distance_units = distance_units, pinned = holds$pinned
+  )
+
+  # The starts given in `start_pars`, checked against the model's
+  # parameters (read_start_pars()), and every other start from its rule.
+  given <- read_start_pars(parameters, start_pars, coords, distance_units)
+  start_pars <- list()
+  # The start of an estimated parameter of the family, from the regression
+  # without the latent effects, unless it is given.
+  for (name in estimated_family) {
+    start_pars[[name]] <- given[[name]] %||%
+      model$start_parameters(y, units_m, D, cov_offset)[[name]]
+  }
+  # The family's parameters at the start, for the records of the start.
+  start_family <- c(family_parameters, start_pars[estimated_family])
+  # A Gaussian model's coefficients and variances start from its regression.
+  regression <- if (model$exact) {
+    gaussian_regression(y, cov_offset, D, parameters)
+  }
+  if (ncol(D) > 0L && length(given$beta) == ncol(D)) {
+    start_pars[["beta"]] <- unname(given$beta)
+  } else if (model$exact) {
+    start_pars[["beta"]] <- regression$coefficients
   } else {
-    if(length(start_pars[["beta"]]) != ncol(D))
-      stop("The number of starting values provided for 'beta' do not match the number of
-      covariates specified in the model, including the intercept")
-    if (any(!is.numeric(start_pars[["beta"]]))){
-      stop("The starting values for 'beta' must be numeric")
-    }
+    # From the records the engine fits, the negative binomial family's as
+    # binomial ones (engine_records()). Coefficients given replace theirs.
+    records <- engine_records(family, y, units_m, cov_offset, start_family,
+                              invlink)
+    start_pars[["beta"]] <- model$start_coefficients(
+      y = records$y, units_m = records$units_m, D = D,
+      cov_offset = records$offset, link = if (is.list(invlink)) invlink$link,
+      formula = inter_f$pf, data = data
+    )
   }
-
-  if(is.null(start_pars[["sigma2"]])) {
-    start_pars[["sigma2"]] <- 1
-  } else {
-    check_positive_number(start_pars[["sigma2"]])
+  default <- function(name) {
+    default_start(parameters, name, coords, regression$variance)
   }
-
-  if(is.null(start_pars[["phi"]])) {
-    start_pars[["phi"]] <- quantile(pairwise_distances(coords), 0.1)
-  } else {
-    check_positive_number(start_pars[["phi"]])
+  # [[ ]], because $sigma2 would also match a lone sigma2_me or sigma2_re.
+  start_pars[["sigma2"]] <- given[["sigma2"]] %||% default("sigma2")
+  start_pars[["phi"]] <- given$phi %||% default("phi")
+  if (isTRUE(fix_tau2)) start_pars[["tau2"]] <- given$tau2 %||% default("tau2")
+  if (model$measurement_error && is.null(fix_var_me)) {
+    start_pars[["sigma2_me"]] <- given$sigma2_me %||% default("sigma2_me")
   }
+  if (n_re > 0) start_pars[["sigma2_re"]] <- default("sigma2_re")
+  # The held parameters start, and stay, at their values.
+  start_pars <- apply_given_start(parameters, start_pars,
+                                  combine_given(given, holds$pinned))
 
-  if(isTRUE(fix_tau2)) {
-    if(is.null(start_pars[["tau2"]])) {
-      start_pars[["tau2"]] <- 1
-    } else {
-      check_positive_number(start_pars[["tau2"]])
-    }
-  } else {
-    if(!is.null(start_pars[["tau2"]]))
-      stop("The starting value for 'tau2' cannot be provided when 'nugget' in 'gp()' is FALSE")
-  }
-
-  if(n_re > 0) {
-    if(is.null(start_pars[["sigma2_re"]])) {
-      start_pars[["sigma2_re"]] <- rep(1,n_re)
-    } else {
-      if(length(start_pars[["sigma2_re"]]) != n_re)
-        stop("The starting values for 'sigma2_re' do not match the number
-             of specified unstructured random effects")
-      if(any(start_pars[["sigma2_re"]] < 0))
-        stop("All the starting values for 'sigma2_re' must be positive")
-    }
-  } else {
-    if(!is.null(start_pars[["sigma2_re"]])) {
-      stop("Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model")
-    }
-  }
-
+  # The comparison of starts runs unless it is switched off or every
+  # estimated parameter is given, and each candidate takes the given values.
+  # The transformed candidate gives the coefficients, the spatial variance,
+  # the scale and the nugget, so when all of those are given the two
+  # candidates are the same and there is nothing to compare.
+  every_given <- all_starts_given(parameters, given)
+  candidates_given <- all_starts_given(parameters, given,
+                                       names = c("beta", "sigma2", "phi",
+                                                 "tau2"))
+  switched_off <- isFALSE(control_mcml$start_comparison)
+  compare <- !model$exact && !candidates_given && !switched_off
   starting_diagnostics <- list(
-    selected = if (user_supplied_start) "user" else "current",
+    selected = if (every_given) "user" else "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
-    fallback_reason = NULL
+    fallback_reason = NULL,
+    reason = if (!model$exact && !every_given && !compare) {
+      if (candidates_given) "candidates_given" else "not_compared"
+    }
   )
-  if (not_gaussian && !user_supplied_start) {
+  if (compare) {
     selection <- select_nongaussian_start(
       current = start_pars,
       y = y,
@@ -469,77 +564,166 @@ glgpm <- function(formula,
       invlink = invlink,
       fix_tau2 = fix_tau2,
       n_re = n_re,
-      ID_re = ID_re,
       s_unique = s_unique,
-      re_unique = re_unique,
-      messages = messages
+      family_parameters = start_family,
+      parameters = parameters,
+      given = combine_given(given, holds$pinned)
     )
-    start_pars <- selection$start
+    # The transformed start has none of the family's parameters.
+    start_pars <- utils::modifyList(selection$start,
+                                    start_pars[estimated_family])
     starting_diagnostics <- selection$diagnostics
   }
+  starting_diagnostics$given <- given_start_names(given)
 
+  res <- fit_glgpm_design(
+    y = y, D = D, coords = coords, ID_coords = ID_coords, ID_re = ID_re,
+    s_unique = s_unique, re_unique = re_unique,
+    units_m = if (!model$exact) units_m, cov_offset = cov_offset,
+    kappa = kappa, fix_tau2 = fix_tau2,
+    fix_var_me = fix_var_me, family = family, invlink = invlink,
+    parameters = parameters,
+    start_pars = start_pars, control_mcmc = control_mcmc,
+    control_mcml = control_mcml, seed = seed,
+    return_samples = return_samples, messages = messages,
+    family_parameters = family_parameters,
+    estimated_family = estimated_family
+  )
+
+  res$y <- y
+  res$D <- original_D
+  res$coords <- coords
+  if (!model$exact) {
+    attr(res, "starting_values") <- starting_diagnostics
+  }
+  res$ID_coords <- ID_coords
+  if(n_re > 0) {
+    res$re <- re_unique_f
+    res$ID_re <- as.data.frame(ID_re)
+    colnames(res$ID_re) <- names_re
+  } else {
+    res["re"] <- list(NULL)
+    res["ID_re"] <- list(NULL)
+  }
+  # Whether the model has a nugget, and whether it is estimated or held, and
+  # every value held (fixed_pars, or the size of MASS::negative.binomial()),
+  # in the order of the table (fit_fix_tau2(), fit_fixed_pars()).
+  res$nugget <- if (!has_nugget) "none" else if (is.null(held$tau2)) {
+    "estimated"
+  } else {
+    "fixed"
+  }
+  all_held <- c(held[names(held) != "theta"], family_parameters)
+  all_held <- all_held[intersect(unique(parameters$rows$name), names(all_held))]
+  res["fixed_pars"] <- list(if (length(all_held)) all_held)
+  res$formula <- formula
+  res$family <- family
+  res$distance_units <- distance_units
+  # Retain fitting controls as metadata so a fitted object can serve as a
+  # complete specification when refitted to simulated or held-out data.
+  attr(res, "control_mcml") <- control_mcml
+  res$data <- data
+  res$input_crs <- input_crs
+  res$kappa <- kappa
+  if (!model$exact) res$units_m <- units_m
+  res$cov_offset <- cov_offset
+  res$call <- match.call()
+  if (model$exact) {
+    gaussian_fitted <- gaussian_conditional_fitted(res)
+    res$linear_predictors <- gaussian_fitted
+    res$fitted_values <- gaussian_fitted
+  }
+  stamp_version(res)
+}
+
+##' Fit a geostatistical model to its design
+##'
+##' The estimation step of [glgpm()], from validated inputs and complete
+##' starting values: the response `y`, the design matrix `D` in the supplied
+##' covariate units, the unique coordinates `coords` in the model's distance
+##' units, the location and random-effect indices, the denominators and
+##' offsets, and the correlation and nugget settings. Coordinates,
+##' covariates and a Gaussian response (`scale_gaussian_response()`) are
+##' rescaled for fitting and the estimate is returned in the supplied units,
+##' with the seed used (`NULL` for Gaussian models) and the scalings of the
+##' coordinates and the covariates as attributes. It makes no call to sf, so it can run in forked
+##' processes, where GDAL and PROJ can deadlock. `family_parameters` are the
+##' family's own (`read_family()`), NULL for a family without them.
+##' `parameters` is the model's parameter table (`parameter_table()`). `call` is
+##' the call named in input errors, [glgpm()] when it calls this function.
+##' @noRd
+fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
+                             re_unique, units_m, cov_offset, kappa, fix_tau2,
+                             fix_var_me, family, invlink, parameters,
+                             start_pars,
+                             control_mcmc, control_mcml, seed,
+                             return_samples, messages,
+                             family_parameters = NULL,
+                             estimated_family = character(),
+                             call = rlang::caller_env()) {
+  exact <- family_traits(family)$exact
+  n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
   fitting_coords <- spatial_scaling$coordinates
   fitting_start_phi <- spatial_scaling$phi
 
-  design_scaling <- standardize_design_matrix(D)
+  if (exact) regression <- gaussian_regression(y, cov_offset, D, parameters)
+  design_scaling <- model_design_scaling(D, parameters)
   D <- design_scaling$design
   start_pars[["beta"]] <- as.numeric(
     solve(design_scaling$coefficient_transform, start_pars[["beta"]])
   )
 
-  if(!not_gaussian) {
-    if(is.null(fix_var_me)) {
-      if(is.null(start_pars[["sigma2_me"]])) {
-        start_pars[["sigma2_me"]] <- 1
-      } else {
-        check_positive_number(start_pars[["sigma2_me"]])
-      }
+  if (exact) {
+    if (is.null(fix_var_me)) {
+      check_positive_number(start_pars[["sigma2_me"]], call = call)
     }
-    gaussian_layout <- cov_par_layout(ncol(D), fix_tau2 = fix_tau2,
-                                      sigma2_me = is.null(fix_var_me), n_re = n_re)
-    res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
-            kappa = inter_f$gp_spec$kappa,
+    response_scaling <- scale_gaussian_response(regression)
+    fitting_start <- response_scaling$start(start_pars)
+    fitting_start$phi <- fitting_start_phi
+    res <- glgpm_lm(y = response_scaling$response, D, fitting_coords,
+            kappa = kappa,
             ID_coords, ID_re, s_unique, re_unique,
-            fix_var_me, fix_tau2,
-            start_beta = start_pars[["beta"]],
-            start_cov_pars = pack_cov_pars(gaussian_layout,
-                                           sigma2    = start_pars[["sigma2"]],
-                                           phi       = fitting_start_phi,
-                                           nu2       = start_pars[["tau2"]],
-                                           sigma2_me = start_pars[["sigma2_me"]],
-                                           sigma2_re = start_pars[["sigma2_re"]]),
+            response_scaling$variance(fix_var_me),
+            response_scaling$variance(fix_tau2),
+            parameters = parameters, start = fitting_start,
             messages = messages)
+    res <- response_scaling$restore(res)
     res["mcml_history"] <- list(NULL)
-    res["mcml_converged"] <- list(NULL)
+    res["mcml_certified"] <- list(NULL)
     res["mcml_selected_iteration"] <- list(NULL)
-  } else if(not_gaussian) {
+  } else {
+    # Without a seed, draw one from the session's stream, which advances it
+    # like any random call. Every random step of the fit derives from it.
+    if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
+    seed <- as.integer(seed)
     fitting_reference <- start_pars
     fitting_reference$phi <- fitting_start_phi
     res <- glgpm_nong_adaptive(
       y = y, D = D, coords = fitting_coords, units_m = units_m,
-      kappa = inter_f$gp_spec$kappa, reference_pars = fitting_reference,
+      kappa = kappa, reference_pars = fitting_reference,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
-      control_mcml = control_mcml, seed = control_mcmc$seed,
-      messages = messages
+      parameters = parameters,
+      control_mcml = control_mcml, seed = seed,
+      messages = messages, distance_scale = spatial_scaling$distance_scale,
+      family_parameters = family_parameters,
+      estimated_family = estimated_family
     )
     optimizer <- attr(res, "optimizer")
     mcml_history <- optimizer$mcml_history
     res$mcml_history <- mcml_history
-    res$mcml_converged <- optimizer$mcml_supported
+    res$mcml_certified <- optimizer$mcml_certified
     res$mcml_selected_iteration <- length(mcml_history)
 
     if (return_samples) {
-      # The samples used by MCML target the current reference distribution,
-      # not necessarily the fitted parameters. When requested, draw once more
-      # at the final estimate and use that draw for fitted values as well as
-      # user-facing diagnostics.
-      final_control_mcmc <- final_sampling_control(
-        control_mcmc, length(mcml_history)
-      )
+      # The MCML draws target importance distributions along the optimisation
+      # path, not the conditional distribution at the estimate. When
+      # requested, draw once more at the final estimate and use that draw for
+      # fitted values as well as user-facing diagnostics.
+      progress_step("Drawing conditional samples at the estimate", messages)
       final_draw <- sample_at_nongaussian_fit(
-        estimate = res$estimate,
+        estimate = res$estimate, parameters = parameters,
         y = y,
         units_m = units_m,
         D = D,
@@ -547,13 +731,19 @@ glgpm <- function(formula,
         cov_offset = cov_offset,
         ID_coords = ID_coords,
         ID_re = ID_re,
-        fix_tau2 = fix_tau2,
         family = family,
-        inverse_link = res$link_function$inv,
+        link_function = res$link_function,
         kappa = kappa,
-        control_mcmc = final_control_mcmc,
-        messages = messages
+        control_mcmc = control_mcmc,
+        seed = final_sampling_seed(seed, length(mcml_history)),
+        messages = messages,
+        # The records at the estimate of a parameter the fit estimates.
+        family_parameters = c(family_parameters, lapply(
+          stats::setNames(nm = estimated_family),
+          function(name) family_parameter(name)$natural(res$estimate[[name]])
+        ))
       )
+      progress_step_done(messages)
       res$linear_predictors <- final_draw$linear_predictors
       res$fitted_values <- final_draw$fitted_values
       res$S_samples <- final_draw$samples
@@ -575,49 +765,24 @@ glgpm <- function(formula,
       design_scaling$coefficient_transform,
       spatial_scaling$distance_scale
     )
+    # The optimiser keeps the same records of the check for other maxima.
+    optimizer <- attr(res, "optimizer")
+    if (!is.null(optimizer$mcml_maxima_check)) {
+      optimizer$mcml_maxima_check <- res$mcml_history[[1L]]$maxima_check
+    }
+    if (!is.null(optimizer$mcml_maxima_screen)) {
+      optimizer$mcml_maxima_screen <- res$mcml_history[[1L]]$maxima_screen
+    }
+    attr(res, "optimizer") <- optimizer
   }
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
   # shift restores the original distance units without changing its Hessian.
   res$estimate$phi <- res$estimate$phi +
     log(spatial_scaling$distance_scale)
-
-  res$y <- y
-  res$D <- original_D
   attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
-  res$coords <- coords
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
-  if (not_gaussian) {
-    attr(res, "starting_values") <- starting_diagnostics
-  }
-  res$ID_coords <- ID_coords
-  if(n_re > 0) {
-    res$re <- re_unique_f
-    res$ID_re <- as.data.frame(ID_re)
-    colnames(res$ID_re) <- names_re
-  } else {
-    res["re"] <- list(NULL)
-    res["ID_re"] <- list(NULL)
-  }
-  res$fix_tau2 <- fix_tau2
-  res["fix_var_me"] <- list(fix_var_me)
-  res$formula <- formula
-  res$family <- family
-  res$distance_units <- distance_units
-  # Retain fitting controls as metadata so a fitted object can serve as a
-  # complete specification when refitted to simulated or held-out data.
-  attr(res, "control_mcml") <- control_mcml
-  res$data <- data
-  res$input_crs <- input_crs
-  res$kappa <- kappa
-  if(not_gaussian) res$units_m <- units_m
-  res$cov_offset <- cov_offset
-  res$call <- match.call()
-  if (!not_gaussian) {
-    gaussian_fitted <- gaussian_conditional_fitted(res)
-    res$linear_predictors <- gaussian_fitted
-    res$fitted_values <- gaussian_fitted
-  }
-  return(res)
+  res["seed"] <- list(if (!exact) seed)
+  res
 }
 
 ##' Conditional fitted mean for a Gaussian RiskMap model
@@ -634,7 +799,7 @@ gaussian_conditional_fitted <- function(object) {
     kappa = object$kappa, return_sym_matrix = TRUE
   )
   tau2 <- pars$tau2 %||%
-    if (is.numeric(object$fix_tau2)) object$fix_tau2 else 0
+    if (is.numeric(fit_fix_tau2(object))) fit_fix_tau2(object) else 0
   spatial_covariance <- pars$sigma2 * correlation
   diag(spatial_covariance) <- diag(spatial_covariance) + tau2
 
@@ -654,7 +819,7 @@ gaussian_conditional_fitted <- function(object) {
 
   Z <- do.call(cbind, latent_designs)
   G <- as.matrix(Matrix::bdiag(latent_covariances))
-  measurement_variance <- pars$sigma2_me %||% object$fix_var_me %||% 0
+  measurement_variance <- pars$sigma2_me %||% fit_fix_var_me(object) %||% 0
   observed_covariance <- Z %*% G %*% t(Z)
   diag(observed_covariance) <- diag(observed_covariance) +
     measurement_variance
@@ -670,22 +835,26 @@ gaussian_conditional_fitted <- function(object) {
 ##'
 ##' Single source of truth for where each non-beta parameter sits in the flat
 ##' numeric vector used by the fitting engines: `sigma2`, `phi`,
-##' optionally `nu2` (only when the nugget is estimated), optionally
-##' `sigma2_me` (Gaussian models only, when the measurement error variance is
-##' not fixed), and finally one entry per unstructured random effect.
-##' Fixed-effect coefficients always occupy `1:p` and are handled separately.
+##' optionally `nu2` (only when the nugget is estimated), then the family
+##' block, the family's own parameters that are estimated (the measurement
+##' error variance `sigma2_me` of a Gaussian model whose variance is not
+##' fixed, #253 step 2), and finally one entry per unstructured random
+##' effect. Fixed-effect coefficients always occupy `1:p` and are handled
+##' separately.
 ##'
 ##' @param p Number of fixed-effect coefficients.
 ##' @param fix_tau2 Logical; `TRUE` when the nugget is estimated, so `nu2` is
 ##' a free parameter.
-##' @param sigma2_me Logical; `TRUE` when the (Gaussian) measurement-error
-##' variance is estimated.
+##' @param family_parameters The names of the family's own parameters that are
+##' estimated, in the order of `riskmap_families`.
 ##' @param n_re Number of unstructured random effects (`0` for none).
 ##' @return A list with `index` (a named list of integer positions: `beta`,
-##' `sigma2`, `phi`, and - only when applicable - `nu2`, `sigma2_me`,
-##' `sigma2_re`) and `length` (the total vector length, including `beta`).
+##' `sigma2`, `phi`, and - only when applicable - `nu2`, one for each family
+##' parameter, `sigma2_re`), `family`, the names of the family block, and
+##' `length` (the total vector length, including `beta`).
 ##' @noRd
-cov_par_layout <- function(p, fix_tau2, sigma2_me = FALSE, n_re = 0L) {
+cov_par_layout <- function(p, fix_tau2, family_parameters = character(),
+                           n_re = 0L) {
   index <- list(beta = seq_len(p), sigma2 = p + 1L, phi = p + 2L)
   idx   <- p + 2L
 
@@ -693,82 +862,25 @@ cov_par_layout <- function(p, fix_tau2, sigma2_me = FALSE, n_re = 0L) {
     idx <- idx + 1L
     index$nu2 <- idx
   }
-  if (isTRUE(sigma2_me)) {
+  for (name in family_parameters) {
     idx <- idx + 1L
-    index$sigma2_me <- idx
+    index[[name]] <- idx
   }
   if (n_re > 0) {
     index$sigma2_re <- idx + seq_len(n_re)
     idx <- idx + n_re
   }
 
-  list(index = index, length = idx)
+  list(index = index, family = family_parameters, length = idx)
 }
 
-##' Pack working-scale starting values using a `cov_par_layout()` layout
+##' The family parameters a Gaussian model estimates
 ##'
-##' @param layout A layout from `cov_par_layout()`.
-##' @param sigma2,phi Starting values (always required).
-##' @param nu2,sigma2_me,sigma2_re Starting values for the parameters the
-##' layout includes; only consulted when `layout$index` has a matching entry,
-##' so passing e.g. `sigma2_me` when the layout has no `sigma2_me` slot is
-##' silently ignored (matching this family/specification not using it).
-##' @return A numeric vector of the non-beta working-scale parameters, in
-##' `layout`'s order - the same contract `start_cov_pars` has always had.
+##' `"sigma2_me"` unless `fix_var_me` holds the measurement error variance,
+##' for the family block of `cov_par_layout()`.
 ##' @noRd
-pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, sigma2_me = NULL, sigma2_re = NULL) {
-  p   <- length(layout$index$beta)
-  out <- numeric(layout$length - p)
-
-  out[layout$index$sigma2 - p] <- sigma2
-  out[layout$index$phi - p]    <- phi
-  if (!is.null(layout$index$nu2))       out[layout$index$nu2 - p]       <- nu2
-  if (!is.null(layout$index$sigma2_me)) out[layout$index$sigma2_me - p] <- sigma2_me
-  if (!is.null(layout$index$sigma2_re)) out[layout$index$sigma2_re - p] <- sigma2_re
-
-  out
-}
-
-##' Structure the raw parameter vector returned by the optimizer
-##'
-##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
-##' returned by the fitting engines into a named list, using the same
-##' `cov_par_layout()` those fitting engines build their `ind_*` positions
-##' from, so this can never drift out of step with them (see #135/#117).
-##'
-##' A flat named vector (as used prior to #92) can't safely be keyed by
-##' parameter name: a covariate literally named e.g. `"sigma2"` collides with
-##' the spatial variance parameter's own name, silently corrupting name-based
-##' lookups. Structuring `estimate` as a list instead - `estimate$beta` for
-##' the regression coefficients, `estimate$sigma2` for the spatial variance,
-##' etc. - keeps those namespaces separate. `coef.RiskMap()`/`summary.RiskMap()`
-##' read from this list directly; `summary.RiskMap()` additionally needs a
-##' *flat* vector to line up against `covariance` (which is estimated as one
-##' joint matrix over every parameter) - `unlist()` provides that, and
-##' disambiguates the same way (e.g. `"beta.sigma2"` vs `"sigma2"`).
-##'
-##' @noRd
-structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
-  p      <- length(beta_names)
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = sigma2_me,
-                           n_re = length(re_names))
-
-  beta <- par[layout$index$beta]
-  names(beta) <- beta_names
-
-  out <- list(beta = beta,
-              sigma2 = unname(par[layout$index$sigma2]),
-              phi    = unname(par[layout$index$phi]))
-
-  if (!is.null(layout$index$nu2))       out$nu2       <- unname(par[layout$index$nu2])
-  if (!is.null(layout$index$sigma2_me)) out$sigma2_me <- unname(par[layout$index$sigma2_me])
-  if (!is.null(layout$index$sigma2_re)) {
-    sigma2_re <- unname(par[layout$index$sigma2_re])
-    names(sigma2_re) <- re_names
-    out$sigma2_re <- sigma2_re
-  }
-
-  out
+gaussian_family_block <- function(fix_var_me) {
+  if (is.null(fix_var_me)) "sigma2_me" else character()
 }
 
 ##' Compute the nugget-to-spatial variance ratio
@@ -782,8 +894,7 @@ structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_
 nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
   if (isTRUE(fix_tau2)) {
     if (is.null(log_nu2)) {
-      stop("'log_nu2' is required when the nugget is estimated.",
-           call. = FALSE)
+      riskmap_bug("{.arg log_nu2} is required when the nugget is estimated.")
     }
 
     return(exp(log_nu2))
@@ -801,7 +912,7 @@ nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
 normalise_log_weights <- function(log_weights) {
   shift <- max(log_weights)
   if (!is.finite(shift)) {
-    stop("All Monte Carlo importance weights are non-finite.", call. = FALSE)
+    riskmap_abort("All Monte Carlo importance weights are non-finite.", class = "riskmap_error_fit")
   }
 
   weights <- exp(log_weights - shift)
@@ -817,30 +928,125 @@ normalise_log_weights <- function(log_weights) {
 linear_start_values <- function(design, response) {
   fit <- lm.fit(x = design, y = response)
   if (fit$rank < ncol(design)) {
-    stop("The model matrix is rank deficient; regression starting values ",
-         "cannot be determined.", call. = FALSE)
+    abort_input(c("The design matrix is rank deficient, so starting values for the regression coefficients can't be found.", "i" = "Check {.arg formula} for covariates that are linear combinations of others."), arg = "formula")
   }
 
   unname(fit$coefficients)
+}
+
+##' The regression of a Gaussian response without the latent effects
+##'
+##' The least squares coefficients of `y - offset`, given those that the model
+##' holds. They are found on the standardised design (`model_design_scaling()`),
+##' as the engines fit it, so that a design that only its units or a distant
+##' origin make look rank deficient is not refused.
+##' @return A list with the `coefficients`, held ones included, those on the
+##'   `standardised` design, the `residuals` and their `variance`, the mean of
+##'   their squares, or 0 when they are only rounding, as those of a constant
+##'   response.
+##' @noRd
+gaussian_regression <- function(y, offset, design, parameters) {
+  response <- y - offset
+  scaling <- model_design_scaling(design, parameters)
+  pinned <- pinned_rows(parameters)
+  pinned <- pinned[pinned$name == "beta", , drop = FALSE]
+  # A held coefficient has one coordinate on the standardised design.
+  held <- numeric(ncol(design))
+  held[pinned$index] <- pinned$held
+  coefficients <- as.numeric(solve(scaling$coefficient_transform, held))
+  free <- setdiff(seq_len(ncol(design)), pinned$index)
+  coefficients[free] <- 0
+  if (length(free)) {
+    coefficients[free] <- linear_start_values(
+      scaling$design[, free, drop = FALSE],
+      response - as.numeric(scaling$design %*% coefficients)
+    )
+  }
+  fitted <- as.numeric(scaling$design %*% coefficients)
+  residuals <- response - fitted
+  variance <- mean(residuals^2)
+  rounding <- 1e-14 * max(abs(y), abs(offset), abs(fitted))
+  if (is.finite(variance) && sqrt(variance) <= rounding) variance <- 0
+  list(coefficients = as.numeric(scaling$coefficient_transform %*%
+                                   coefficients),
+       standardised = coefficients, residuals = residuals,
+       variance = variance)
+}
+
+##' The standardisation of a Gaussian response
+##'
+##' The Gaussian paths fit the residuals of the regression without the latent
+##' effects, divided by their standard deviation, so that a fit does not
+##' depend on the units or on the mean of the response, as
+##' `scale_spatial_coordinates()` and `model_design_scaling()` make it
+##' independent of those of the distances and the covariates. `nlminb()` takes
+##' its first steps, and stops, by the sizes of the working parameters, which
+##' hold the coefficients in the units of the response and the logarithms of
+##' the variances. A response with a standard deviation of 100 whose variances
+##' started at 1 made it step out to a scale of correlation far from the
+##' distances, where the likelihood is flat and it stopped.
+##'
+##' A regression without residuals, as of a constant response, gives no scale,
+##' so the response is then only centred.
+##' @param regression The regression (`gaussian_regression()`), whose
+##'   coefficients on the standardised design are those the paths fit.
+##' @return A list with the standardised `response`, and functions that take
+##'   `start`, the starting values, and `variance`, a held variance or any
+##'   other value of `fix_tau2` or `fix_var_me`, to its scale, and that
+##'   `restore` a fit to the units of the response.
+##' @noRd
+scale_gaussian_response <- function(regression) {
+  scale <- if (regression$variance > 0) sqrt(regression$variance) else 1
+  log_variance <- 2 * log(scale)
+  list(
+    response = regression$residuals / scale,
+    variance = function(value) if (is.numeric(value)) value / scale^2 else value,
+    start = function(start) {
+      start$beta <- (start$beta - regression$standardised) / scale
+      variances <- intersect(c("sigma2", "tau2", "sigma2_me", "sigma2_re"),
+                             names(start))
+      start[variances] <- lapply(start[variances], function(value) {
+        value / scale^2
+      })
+      start
+    },
+    restore = function(result) {
+      estimate <- result$estimate
+      beta <- seq_along(estimate$beta)
+      result$estimate$beta <- regression$standardised + scale * estimate$beta
+      # The nugget is kept as its ratio to the spatial variance.
+      for (name in intersect(c("sigma2", "sigma2_me", "sigma2_re"),
+                             names(estimate))) {
+        result$estimate[[name]] <- estimate[[name]] + log_variance
+      }
+      result$covariance[beta, ] <- scale * result$covariance[beta, ]
+      result$covariance[, beta] <- scale * result$covariance[, beta]
+      result$grad_MLE[beta] <- result$grad_MLE[beta] / scale
+      result$log_lik <- result$log_lik - length(regression$residuals) * log(scale)
+      result
+    }
+  )
 }
 
 ##' Standardise the fixed-effect design without changing its column space
 ##'
 ##' With an intercept, non-intercept columns are centred and scaled. Without
 ##' an intercept they are only scaled, because centring would implicitly add
-##' an intercept to the fitted model. `coefficient_transform` maps coefficients
-##' on the standardised scale back to the scale supplied by the user.
+##' an intercept to the fitted model. With `centre = FALSE` they are only
+##' scaled too, for a model that holds its intercept, which centring would mix
+##' with the other coefficients (`model_design_scaling()`).
+##' `coefficient_transform` maps coefficients on the standardised scale back to
+##' the scale supplied by the user.
 ##'
 ##' @noRd
-standardize_design_matrix <- function(design) {
+standardize_design_matrix <- function(design, centre = TRUE) {
   design <- as.matrix(design)
   p <- ncol(design)
   coefficient_names <- colnames(design)
   intercept <- which(coefficient_names == "(Intercept)")
 
   if (length(intercept) > 1L) {
-    stop("The model matrix contains more than one intercept column.",
-         call. = FALSE)
+    abort_input("The design matrix has more than one intercept column.", arg = "formula")
   }
 
   columns_to_scale <- setdiff(seq_len(p), intercept)
@@ -848,7 +1054,7 @@ standardize_design_matrix <- function(design) {
   scale <- setNames(rep(1, p), coefficient_names)
 
   if (length(columns_to_scale) > 0L) {
-    if (length(intercept) == 1L) {
+    if (length(intercept) == 1L && centre) {
       center[columns_to_scale] <-
         colMeans(design[, columns_to_scale, drop = FALSE])
     }
@@ -866,12 +1072,7 @@ standardize_design_matrix <- function(design) {
       scale[columns_to_scale] == 0
     if (any(invalid)) {
       invalid_names <- coefficient_names[columns_to_scale][invalid]
-      stop(
-        "The model matrix contains constant or numerically constant column",
-        if (length(invalid_names) > 1L) "s" else "",
-        ": ", paste(invalid_names, collapse = ", "), ".",
-        call. = FALSE
-      )
+      abort_input("The design matrix has {?a /}constant or numerically constant column{?s}, {.val {invalid_names}}.", arg = "formula")
     }
   }
 
@@ -881,7 +1082,7 @@ standardize_design_matrix <- function(design) {
   if (length(columns_to_scale) > 0L) {
     coefficient_transform[cbind(columns_to_scale, columns_to_scale)] <-
       1 / scale[columns_to_scale]
-    if (length(intercept) == 1L) {
+    if (length(intercept) == 1L && centre) {
       coefficient_transform[intercept, columns_to_scale] <-
         -center[columns_to_scale] / scale[columns_to_scale]
     }
@@ -901,13 +1102,17 @@ standardize_design_matrix <- function(design) {
 ##' covariance matrix, including cross-covariances with covariance parameters.
 ##' The score is transformed with the inverse transpose Jacobian.
 ##'
+##' The Jacobian is block diagonal, so each block is transformed on its own.
+##' A parameter without a standard error, such as a variance estimated at
+##' zero, has missing values in its row and column of the covariance matrix,
+##' and a product with the full Jacobian would spread them to every entry.
+##'
 ##' @noRd
 restore_fixed_effect_scale <- function(result, coefficient_transform) {
   p <- nrow(coefficient_transform)
   parameter_names <- names(unlist(result$estimate))
-  n_parameters <- length(parameter_names)
-  jacobian <- diag(n_parameters)
-  jacobian[seq_len(p), seq_len(p)] <- coefficient_transform
+  beta_index <- seq_len(p)
+  other_index <- setdiff(seq_along(parameter_names), beta_index)
 
   beta_names <- names(result$estimate$beta)
   result$estimate$beta <- as.numeric(
@@ -915,12 +1120,32 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
   )
   names(result$estimate$beta) <- beta_names
 
-  result$covariance <- jacobian %*% result$covariance %*% t(jacobian)
+  covariance <- result$covariance
+  # A coefficient that fixed_pars holds has no variance, which the transform
+  # mixes into the others as zero, and its rows are NA again after it.
+  held_beta <- which(is.na(diag(covariance))[beta_index])
+  if (length(held_beta)) {
+    covariance[held_beta, ] <- 0
+    covariance[, held_beta] <- 0
+  }
+  covariance[beta_index, beta_index] <- coefficient_transform %*%
+    covariance[beta_index, beta_index, drop = FALSE] %*%
+    t(coefficient_transform)
+  cross <- coefficient_transform %*%
+    covariance[beta_index, other_index, drop = FALSE]
+  covariance[beta_index, other_index] <- cross
+  covariance[other_index, beta_index] <- t(cross)
+  if (length(held_beta)) {
+    covariance[held_beta, ] <- NA_real_
+    covariance[, held_beta] <- NA_real_
+  }
+  result$covariance <- covariance
   dimnames(result$covariance) <- list(parameter_names, parameter_names)
 
-  result$grad_MLE <- as.numeric(
-    solve(t(jacobian), result$grad_MLE)
+  result$grad_MLE[beta_index] <- solve(
+    t(coefficient_transform), result$grad_MLE[beta_index]
   )
+  result$grad_MLE <- as.numeric(result$grad_MLE)
   names(result$grad_MLE) <- parameter_names
   result
 }
@@ -930,7 +1155,7 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    for (field in intersect("estimate", names(entry))) {
+    for (field in intersect(c("estimate", "fitted_estimate"), names(entry))) {
       if (is.list(entry[[field]])) {
         entry[[field]]$beta <- as.numeric(
           coefficient_transform %*% entry[[field]]$beta
@@ -946,6 +1171,32 @@ restore_mcml_history_scale <- function(history, coefficient_transform,
           entry[[field]][p + 2L] + log(distance_scale)
       }
     }
+    if (!is.null(entry$maxima_check)) {
+      entry$maxima_check$log_phi <- entry$maxima_check$log_phi +
+        log(distance_scale)
+    }
+    screen <- entry$maxima_screen
+    if (!is.null(screen$screen)) {
+      screen$screen$log_phi <- screen$screen$log_phi + log(distance_scale)
+    }
+    if (!is.null(screen$alarm)) {
+      screen$alarm$log_phi <- screen$alarm$log_phi + log(distance_scale)
+      for (table in intersect(c("bounds", "shares"), names(screen$alarm))) {
+        screen$alarm[[table]]$log_phi <- screen$alarm[[table]]$log_phi +
+          log(distance_scale)
+      }
+    }
+    if (!is.null(screen$near_limit)) {
+      screen$near_limit$log_phi <- screen$near_limit$log_phi +
+        log(distance_scale)
+    }
+    if (!is.null(screen$independent$beta)) {
+      screen$independent$beta <- as.numeric(
+        coefficient_transform %*% screen$independent$beta
+      )
+      names(screen$independent$beta) <- colnames(coefficient_transform)
+    }
+    if (!is.null(screen)) entry$maxima_screen <- screen
     entry
   })
 }
@@ -987,9 +1238,20 @@ collect_optimizer_diagnostics <- function(estimate, objective, gradient,
     attr(objective, "diagnostics")$invalid_evaluations
   diagnostics$max_abs_gradient <- max(abs(gradient))
   diagnostics$stationary <- diagnostics$max_abs_gradient <= 1e-3
-  diagnostics$information_rcond <- rcond(information)
+  diagnostics$information_rcond <- information_rcond(information)
   diagnostics$information_jitter <- attr(information_root, "jitter")
   diagnostics
+}
+
+##' Reciprocal condition number of an observed information
+##'
+##' The information is empty when every parameter is held. rcond() returns Inf
+##' for an empty matrix from R 4.4.0, and raises a LAPACK error before.
+##'
+##' @noRd
+information_rcond <- function(information) {
+  if (is.matrix(information) && !length(information)) Inf else
+    rcond(information)
 }
 
 ##' Report an optimiser result that should not be treated as converged
@@ -997,13 +1259,8 @@ collect_optimizer_diagnostics <- function(estimate, objective, gradient,
 ##' @noRd
 warn_unconverged_optimizer <- function(diagnostics) {
   if (diagnostics$convergence != 0 && !diagnostics$stationary) {
-    warning(
-      "Model optimisation did not converge (code ",
-      diagnostics$convergence, "): ", diagnostics$message,
-      ". The maximum absolute score is ",
-      format(diagnostics$max_abs_gradient, scientific = TRUE), ".",
-      call. = FALSE
-    )
+    largest_score <- format(diagnostics$max_abs_gradient, scientific = TRUE)
+    riskmap_warn(c("Model optimisation did not converge (code {diagnostics$convergence}).", "i" = "The optimiser reported {.val {diagnostics$message}}.", "i" = "The largest absolute score is {largest_score}."), class = "riskmap_warning_fit")
   }
 }
 
@@ -1018,13 +1275,13 @@ softplus <- function(x) {
 ##'
 ##' Constants that do not depend on the candidate are retained for clarity.
 ##' The comparison is only used to choose an initial posterior reference; it is
-##' not reported as the fitted model likelihood.
+##' not reported as the fitted model likelihood. The model has no `re()`
+##' terms (`select_nongaussian_start()`).
 ##'
 ##' @noRd
 starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
                                           ID_coords, family, kappa,
-                                          cov_offset, ID_re = NULL,
-                                          fix_tau2 = FALSE) {
+                                          cov_offset, fix_tau2 = FALSE) {
   distances <- pairwise_distances(coords)
   covariance <- candidate$sigma2 * matern_correlation(
     distances,
@@ -1053,50 +1310,18 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
     mu = mu,
     Sigma = covariance,
     ID_coords = ID_coords,
-    ID_re = ID_re,
-    sigma2_re = candidate$sigma2_re,
     family = family
   )
   mode <- laplace$mode
   eta <- mu + mode[ID_coords]
-  if (!is.null(ID_re)) {
-    offset <- nrow(covariance)
-    for (j in seq_len(ncol(ID_re))) {
-      n_levels <- max(ID_re[, j])
-      indices <- offset + seq_len(n_levels)
-      eta <- eta + mode[indices][ID_re[, j]]
-      offset <- offset + n_levels
-    }
-  }
-  log_likelihood <- if (family == "binomial") {
-    sum(y * eta - units_m * softplus(eta))
-  } else {
-    means <- exp(eta)
-    if (any(!is.finite(means))) {
-      return(-Inf)
-    }
-    sum(y * eta - units_m * means)
-  }
+  log_likelihood <- family_traits(family)$start_log_likelihood(eta, y,
+                                                                units_m)
+  if (is.null(log_likelihood)) return(-Inf)
   log_prior <- -0.5 * (
     nrow(covariance) * log(2 * pi) +
       log_determinant_from_cholesky(covariance_root) +
-      sum(mode[seq_len(nrow(covariance))] * solve_from_cholesky(
-        covariance_root, mode[seq_len(nrow(covariance))]
-      ))
+      sum(mode * solve_from_cholesky(covariance_root, mode))
   )
-  if (!is.null(ID_re)) {
-    offset <- nrow(covariance)
-    for (j in seq_len(ncol(ID_re))) {
-      n_levels <- max(ID_re[, j])
-      random_mode <- mode[offset + seq_len(n_levels)]
-      variance <- candidate$sigma2_re[j]
-      log_prior <- log_prior - 0.5 * (
-        n_levels * log(2 * pi * variance) +
-          sum(random_mode^2) / variance
-      )
-      offset <- offset + n_levels
-    }
-  }
   laplace_root <- factor_covariance(
     laplace$Sigma.tilde,
     "starting-value Laplace covariance"
@@ -1110,80 +1335,115 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
 ##'
 ##' The conservative eligibility conditions match the model structures used in
 ##' validation. All failures retain the existing start so that automatic
-##' initialisation cannot make a previously valid fit fail.
+##' initialisation cannot make a previously valid fit fail. Both starts are
+##' judged on the records the engine fits (`engine_records()`), with the
+##' family's own `family_parameters`, so a negative binomial model is started
+##' as the binomial model of its records.
+##'
+##' A model with `re()` terms keeps the existing start without a comparison.
+##' Its transformed-Gaussian candidate needed the covariance of all the
+##' records, or of all the levels of the terms, in dense matrices, which on a
+##' survey of households took longer than the fit or more memory than the
+##' laptop had. The comparison could never choose that candidate either. Its
+##' Laplace value carried the name of the term, so
+##' `scores["transformed_gaussian"]` was missing and the existing start was
+##' kept.
 ##'
 ##' @noRd
 select_nongaussian_start <- function(current, y, units_m, D, coords,
                                      ID_coords, family, kappa, cov_offset,
                                      invlink, fix_tau2, n_re,
-                                     ID_re = NULL, s_unique = NULL,
-                                     re_unique = NULL,
-                                     messages = TRUE) {
+                                     s_unique = NULL,
+                                     family_parameters = NULL,
+                                     parameters = NULL, given = list()) {
   diagnostics <- list(
     selected = "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
-    fallback_reason = NULL
+    fallback_reason = NULL,
+    reason = NULL
   )
-  ineligible_reason <- if (!is.null(invlink)) {
-    "custom inverse links are not supported by the transformed initializer"
-  } else {
-    NULL
+  # The existing start, with the reason (`describe_starting_values()`) and
+  # its text.
+  keep_current <- function(reason, text) {
+    diagnostics$reason <- reason
+    diagnostics$fallback_reason <- text
+    list(start = current, diagnostics = diagnostics)
   }
-  if (!is.null(ineligible_reason)) {
-    diagnostics$fallback_reason <- ineligible_reason
-    return(list(start = current, diagnostics = diagnostics))
+  if (!is.null(invlink)) {
+    return(keep_current(
+      "link",
+      "custom inverse links are not supported by the transformed initializer"
+    ))
+  }
+  if (n_re > 0L) {
+    return(keep_current(
+      "re_terms",
+      "models with re() terms are not compared with the transformed initializer"
+    ))
   }
 
+  records <- engine_records(family, y, units_m, cov_offset,
+                            family_parameters)
+  family <- records$family
+  units_m <- records$units_m
+  cov_offset <- records$offset
+  traits <- family_traits(family)
+  # The Gaussian model is fitted to one record per location, the totals of
+  # the location where it has several records, so that it is no larger than
+  # the locations.
+  totals <- location_totals(y, units_m, D, cov_offset, ID_coords, s_unique)
   transformed_fit <- tryCatch({
-    transformed_response <- if (family == "binomial") {
-      log((y + 0.5) / (units_m - y + 0.5))
-    } else {
-      log((y + 0.5) / units_m)
-    }
+    transformed_response <- traits$empirical_link(totals$y, totals$units_m)
     # With one observation per location, transformed sampling variation and a
     # Gaussian nugget are otherwise confounded. The Gaussian engine currently
     # accepts a scalar measurement variance, so fix it at the median
     # delta-method variance when the nugget is estimated.
     transformed_measurement_variance <- if (isTRUE(fix_tau2)) {
-      if (family == "binomial") {
-        median(1 / (y + 0.5) + 1 / (units_m - y + 0.5))
-      } else {
-        median(1 / (y + 0.5))
-      }
+      traits$transform_variance(totals$y, totals$units_m)
     } else {
       NULL
     }
+    # The transformed model is Gaussian, with its measurement error variance
+    # held where the nugget is estimated and started at 1 otherwise.
+    transformed_parameters <- model_parameter_table(
+      colnames(totals$D), fix_tau2 = fix_tau2, exact = TRUE,
+      fix_var_me = transformed_measurement_variance,
+      estimated_family = character(), family_parameters = NULL,
+      re_names = NULL, distance_units = NULL
+    )
+    transformed_start <- current[c("beta", "sigma2", "phi")]
+    if (isTRUE(fix_tau2)) transformed_start$tau2 <- current$tau2
+    if (is.null(transformed_measurement_variance)) {
+      transformed_start$sigma2_me <- 1
+    }
     glgpm_lm(
-      y = transformed_response - cov_offset,
-      D = D,
+      y = transformed_response - totals$offset,
+      D = totals$D,
       coords = coords,
       kappa = kappa,
-      ID_coords = ID_coords,
-      ID_re = ID_re,
-      s_unique = s_unique,
-      re_unique = re_unique,
+      ID_coords = totals$ID_coords,
+      ID_re = NULL,
+      s_unique = totals$s_unique,
+      re_unique = NULL,
       fix_var_me = transformed_measurement_variance,
       fix_tau2 = fix_tau2,
-      start_beta = current$beta,
-      start_cov_pars = c(
-        current$sigma2,
-        current$phi,
-        if (isTRUE(fix_tau2)) current$tau2,
-        if (is.null(transformed_measurement_variance)) 1,
-        current$sigma2_re
-      ),
+      parameters = transformed_parameters,
+      start = transformed_start,
       messages = FALSE
     )
   }, error = identity)
   if (inherits(transformed_fit, "error")) {
-    diagnostics$fallback_reason <- paste(
-      "transformed Gaussian fit failed:",
-      conditionMessage(transformed_fit)
-    )
-    return(list(start = current, diagnostics = diagnostics))
+    return(keep_current(
+      "transformed_failed",
+      paste("transformed Gaussian fit failed:",
+            condition_text(transformed_fit))
+    ))
   }
 
+  # The nugget is the spatial variance times exp(nu2), not exp(nu2 +
+  # log(sigma2)) as natural_values() gives it, which differs in the last
+  # bits and would move the fits that start here (step 2b of the table).
   transformed <- current
   transformed$beta <- unname(transformed_fit$estimate$beta)
   transformed$sigma2 <- exp(transformed_fit$estimate$sigma2)
@@ -1192,45 +1452,49 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     transformed$tau2 <- transformed$sigma2 *
       exp(transformed_fit$estimate$nu2)
   }
-  if (n_re > 0L) {
-    transformed$sigma2_re <- exp(transformed_fit$estimate$sigma2_re)
-  }
   candidate_values <- c(
     transformed$beta,
     transformed$sigma2,
     transformed$phi,
-    transformed$tau2,
-    transformed$sigma2_re
+    transformed$tau2
   )
   if (any(!is.finite(candidate_values)) ||
       transformed$sigma2 <= 0 || transformed$phi <= 0 ||
-      (!is.null(transformed$tau2) && transformed$tau2 <= 0) ||
-      (!is.null(transformed$sigma2_re) &&
-       any(transformed$sigma2_re <= 0))) {
-    diagnostics$fallback_reason <-
+      (!is.null(transformed$tau2) && transformed$tau2 <= 0)) {
+    return(keep_current(
+      "transformed_invalid",
       "transformed Gaussian fit returned invalid starting values"
-    return(list(start = current, diagnostics = diagnostics))
+    ))
   }
 
+  # The transformed candidate takes the values given in `start_pars` in
+  # place of its own, as the existing start does.
+  if (length(given)) {
+    transformed <- apply_given_start(parameters, transformed, given)
+  }
+
+  # The two values are read by name, so their own names are dropped. With
+  # re() terms the second carried the name of the term, which made
+  # scores["transformed_gaussian"] missing.
   scores <- tryCatch(
     c(
-      current = starting_laplace_log_marginal(
+      current = unname(starting_laplace_log_marginal(
         current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset,
-        ID_re, fix_tau2
-      ),
-      transformed_gaussian = starting_laplace_log_marginal(
+        fix_tau2
+      )),
+      transformed_gaussian = unname(starting_laplace_log_marginal(
         transformed, y, units_m, D, coords, ID_coords, family, kappa,
-        cov_offset, ID_re, fix_tau2
-      )
+        cov_offset, fix_tau2
+      ))
     ),
     error = identity
   )
   if (inherits(scores, "error")) {
-    diagnostics$fallback_reason <- paste(
-      "starting-value Laplace comparison failed:",
-      conditionMessage(scores)
-    )
-    return(list(start = current, diagnostics = diagnostics))
+    return(keep_current(
+      "comparison_failed",
+      paste("starting-value Laplace comparison failed:",
+            condition_text(scores))
+    ))
   }
   diagnostics$current_laplace <- unname(scores["current"])
   diagnostics$transformed_laplace <-
@@ -1238,27 +1502,69 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   if (is.finite(scores["transformed_gaussian"]) &&
       (!is.finite(scores["current"]) ||
        scores["transformed_gaussian"] > scores["current"])) {
+    # summary() reports the choice, so the fit doesn't announce it.
     diagnostics$selected <- "transformed_gaussian"
-    if (messages) {
-      message("Using transformed-Gaussian automatic starting values.")
-    }
     return(list(start = transformed, diagnostics = diagnostics))
   }
 
   if (!is.finite(scores["current"])) {
+    diagnostics$reason <- "neither_finite"
     diagnostics$fallback_reason <-
       "neither automatic starting candidate had a finite Laplace value"
   } else if (!is.finite(scores["transformed_gaussian"])) {
+    diagnostics$reason <- "transformed_not_finite"
     diagnostics$fallback_reason <-
       "transformed Gaussian candidate had a non-finite Laplace value"
   }
   list(start = current, diagnostics = diagnostics)
 }
 
+##' The records of the transformed-Gaussian start, one per location
+##'
+##' Where every location has one record, the records as they are. Otherwise
+##' the totals of each location, in the order of the rows of `coords`: the
+##' sums of the responses and of the denominators, and the rows of the design
+##' matrix and the offsets averaged with the denominators as weights, or with
+##' equal weights at a location whose denominators are all zero. The
+##' Gaussian model fitted to them has no more observations than locations,
+##' and the empirical link of a total follows the proportion at the location,
+##' where that of a binary record, as of a child in a household, is always
+##' log(3) or -log(3).
+##' @noRd
+location_totals <- function(y, units_m, D, offset, ID_coords, s_unique) {
+  if (!anyDuplicated(ID_coords)) {
+    return(list(y = y, units_m = units_m, D = D, offset = offset,
+                ID_coords = ID_coords, s_unique = s_unique))
+  }
+  location <- factor(ID_coords, levels = seq_len(max(ID_coords)))
+  total <- function(values) {
+    rowsum(as.matrix(values), location, reorder = TRUE)
+  }
+  units <- as.numeric(total(units_m))
+  weights <- ifelse(units[ID_coords] > 0, units_m, 1)
+  weight_totals <- as.numeric(total(weights))
+  design <- total(D * weights) / weight_totals
+  dimnames(design) <- list(NULL, colnames(D))
+  list(y = as.numeric(total(y)), units_m = units, D = design,
+       offset = as.numeric(total(offset * weights)) / weight_totals,
+       ID_coords = seq_along(units), s_unique = seq_along(units))
+}
+
+##' Fit a Gaussian model by maximum likelihood
+##'
+##' `parameters` is the model's parameter table (`parameter_table()`) and
+##' `start` the starting values on their natural scale, named as users name
+##' them, with the scale and the variances in the fitting units. Up to three observations per
+##' latent effect the observed covariance is factorised directly
+##' (`glgpm_lm_direct()`), and beyond that the Woodbury identity works in the
+##' dimension of the latent effects. Both start from `working_start()`, which
+##' gives each parameter on the scale on which their likelihoods read it. The
+##' nugget is read as its ratio to the spatial variance, and the measurement
+##' error and random-effect variances as they are.
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @noRd
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
-                     fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
+                     fix_var_me, fix_tau2, parameters, start, messages) {
 
   latent_dimension <- nrow(coords)
   if (!is.null(ID_re)) {
@@ -1270,7 +1576,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   )) {
     return(glgpm_lm_direct(
       y, D, coords, kappa, ID_coords, ID_re,
-      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages
+      fix_var_me, fix_tau2, parameters, start, messages
     ))
   }
 
@@ -1310,7 +1616,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   C_g_m <- forceSymmetric(C_g_m)
 
 
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = is.null(fix_var_me), n_re = n_re)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
+                           family_parameters = gaussian_family_block(fix_var_me),
+                           n_re = n_re)
   ind_beta   <- layout$index$beta
   ind_sigma2 <- layout$index$sigma2
   ind_phi    <- layout$index$phi
@@ -2105,32 +2413,19 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     return(H)
   }
 
-  start_cov_pars[-(1:2)] <- start_cov_pars[-(1:2)]/start_cov_pars[1]
-  start_par <- c(start_beta, log(start_cov_pars))
+  start_par <- working_start(parameters, start)
 
   out <- list()
   objective <- safe_optimizer_objective(function(x) -log.lik(x))
-  estim <- nlminb(start_par,
-                  objective,
-                  function(x) -grad.log.lik(x),
-                  function(x) -hessian.log.lik(x),
-                  control = list(trace = 1 * messages))
-
-  out$estimate <- structure_estimate(
-    estim$par,
-    beta_names = colnames(D),
-    fix_tau2   = fix_tau2,
-    sigma2_me  = is.null(fix_var_me),
-    re_names   = if (n_re > 0) names(ID_re) else NULL
-  )
+  optimised <- optimise_gaussian(start_par, objective, grad.log.lik,
+                                 hessian.log.lik, held_index(parameters),
+                                 messages)
+  estim <- optimised$fit
+  out$estimate <- working_estimate(parameters, estim$par)
   out$grad_MLE <- grad.log.lik(estim$par)
-  hess.MLE <- hessian.log.lik(estim$par)
-  information <- -hess.MLE
-  information_root <- factor_covariance(
-    information,
-    "observed information matrix"
-  )
-  out$covariance <- chol2inv(information_root)
+  information <- optimised$information
+  information_root <- optimised$root
+  out$covariance <- optimised$covariance
   flat_names <- names(unlist(out$estimate))
   dimnames(out$covariance) <- list(flat_names, flat_names)
   out$log_lik <- -estim$objective
@@ -2152,12 +2447,35 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##'
 ##' Used to auto-derive a missing `d1`/`d2` from a user-supplied inverse link
 ##' (or from an already-derived `d1`, for `d2`). Tries symbolic
-##' differentiation via `Deriv::Deriv()` first, since the result is fast and
-##' stable when evaluated repeatedly; `Deriv::Deriv()` raises a hard error
-##' when it cannot process `f`'s body (e.g. a call it has no derivative rule
-##' for), so that attempt - construction and validation together - is wrapped
-##' in a single `tryCatch()`. If it fails for any reason, falls back to
-##' numerical differentiation via `numDeriv::grad()`, vectorised over `eta`.
+##' differentiation via `Deriv::Deriv()` first, since the result is exact,
+##' fast, and smooth in `eta`. Numerical derivatives are accurate but not
+##' smooth, and the Laplace start's optimiser, which differences the Laplace
+##' approximation and so the curvature, can stop short on them.
+##' `Deriv::Deriv()` raises a hard error when it cannot process `f`'s body
+##' (e.g. a call it has no derivative rule for), so it is wrapped in
+##' `tryCatch()`, and a derivative that fails validation is dropped.
+##'
+##' A function that `Deriv::Deriv()` differentiates with its own rules gets
+##' that derivative, as before. Otherwise, and for a bare function of
+##' `link_functions_by_name()`, whose compiled body it cannot read and which
+##' is called by its name instead, it is tried again with the rules of
+##' `link_derivative_rules()`. Since `Deriv::Deriv()` applies a rule for the
+##' first argument of a call whatever its other arguments, and so would
+##' differentiate `plogis(eta, location = 1)` as `dlogis(eta)`, such a
+##' derivative is kept only if it agrees on a probe with the numerical
+##' derivative of `f` to 1e-7 of the largest value there. `f` is then exact
+##' or symbolic, so its numerical derivative is accurate to about 1e-10 of
+##' that value, and a rule applied to a call with other arguments is off by
+##' more, unless those arguments are within about 1e-7 of the defaults.
+##'
+##' The derivative is evaluated in an environment holding only `f`, under
+##' `f`'s own, so that a link built inside a function finds its variables
+##' and no variable of this function hides one of the user's.
+##'
+##' If none of this succeeds, falls back to numerical differentiation by the
+##' method of `numDeriv::grad()`, with the steps of
+##' `compute_richardson_derivative()`, applied to all elements of `eta` at
+##' once.
 ##'
 ##' @param f Function of a single argument `eta`, returning a numeric vector.
 ##' @param ncheck Length of the probe vector used to validate a candidate
@@ -2169,97 +2487,186 @@ differentiate <- function(f, ncheck) {
     out <- tryCatch(d(rep(0, ncheck)), error = function(e) NULL)
     is.numeric(out) && length(out) == ncheck && all(is.finite(out))
   }
+  symbolic_with <- function(wrapped, rules) {
+    derivative <- tryCatch(Deriv::Deriv(wrapped, "eta", drule = rules),
+                           error = function(e) NULL)
+    if (!is.null(derivative) && is_valid(derivative)) derivative
+  }
 
-  symbolic <- tryCatch({
-    wrapped <- function(eta) f(eta)
-    d <- Deriv::Deriv(wrapped, "eta")
-    if (!is_valid(d)) stop("symbolic derivative failed validation")
-    d
-  }, error = function(e) NULL)
+  named <- Find(function(name) identical(f, link_functions_by_name()[[name]]),
+                names(link_functions_by_name()))
+  home <- new.env(parent = environment(f) %||% baseenv())
+  assign(".riskmap_link", f, envir = home)
+  wrapped <- eval(quote(function(eta) .riskmap_link(eta)), home)
+  if (is.null(named)) {
+    symbolic <- symbolic_with(wrapped, Deriv::drule)
+    if (!is.null(symbolic)) return(symbolic)
+  } else {
+    # Called with its default arguments, as the link is.
+    wrapped <- eval(call("function", as.pairlist(alist(eta = )),
+                         call(named, quote(eta))), asNamespace("stats"))
+  }
+  symbolic <- symbolic_with(wrapped, link_derivative_rules())
 
-  if (!is.null(symbolic)) return(symbolic)
+  # An inverse link acts element by element, so every element can share each
+  # evaluation of `f`. A function that does not is caught on a probe and
+  # differentiated one value at a time, as numDeriv::grad() requires.
+  shared <- function(eta) compute_richardson_derivative(f, eta)
+  one_at_a_time <- function(eta) {
+    vapply(eta, function(z) {
+      numDeriv::grad(f, z, method.args = list(zero.tol = 1))
+    }, numeric(1))
+  }
+  probe <- c(-2.5, -0.7, 0, 0.3, 1.9)
+  numerical <- tryCatch(shared(probe), error = function(e) NULL)
 
-  function(eta) vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+  if (!is.null(symbolic) && !is.null(numerical)) {
+    exact <- tryCatch(symbolic(probe), error = function(e) NULL)
+    if (is.numeric(exact) && length(exact) == length(probe) &&
+        all(abs(exact - numerical) <=
+            1e-7 * max(abs(numerical), .Machine$double.xmin))) {
+      return(symbolic)
+    }
+  }
+
+  agrees <- !is.null(numerical) && tryCatch(
+    isTRUE(all.equal(numerical, one_at_a_time(probe), tolerance = 1e-10)),
+    error = function(e) FALSE
+  )
+  if (agrees) shared else one_at_a_time
 }
 
-##' Validate and construct inverse-link functions
+##' The functions that a link can be given as bare and differentiated by name
 ##'
-##' This is the single internal representation used by the conditional-mode,
-##' sampling and non-Gaussian likelihood code. Keeping the validation and
-##' derivative construction here prevents those paths from interpreting a
-##' user-supplied link differently.
-##'
+##' A bare `pnorm`, `plogis` or `pcauchy` of stats, or `exp` of base, has a
+##' compiled body that `Deriv::Deriv()` cannot read, so `differentiate()`
+##' recognises it and differentiates a call by its name with its default
+##' arguments. A bare `pt` cannot be a link, since it needs its degrees of
+##' freedom.
 ##' @noRd
-make_inverse_link_functions <- function(family, invlink, ncheck,
-                                        second_derivative = TRUE) {
-  validate <- function(f, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, ncheck)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) {
-      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    }
-    if (!is.numeric(out)) {
-      stop(sprintf("`%s` must return a numeric vector.", name))
-    }
-    if (length(out) != length(x)) {
-      stop(sprintf(
-        "`%s` must return a vector of the same length as its input.", name
-      ))
-    }
-    if (!all(is.finite(out))) {
-      stop(sprintf("`%s` returns non-finite values.", name))
-    }
-    invisible(TRUE)
-  }
+link_functions_by_name <- function() {
+  list(pnorm = stats::pnorm, plogis = stats::plogis,
+       pcauchy = stats::pcauchy, exp = base::exp)
+}
 
-  if (is.null(invlink)) {
-    if (family == "poisson") {
-      inv <- function(x) exp(x)
-      d1 <- function(x) exp(x)
-      d2 <- if (second_derivative) function(x) exp(x) else NULL
-    } else {
-      inv <- function(x) plogis(x)
-      d1 <- function(x) {
-        probability <- inv(x)
-        probability * (1 - probability)
-      }
-      d2 <- if (second_derivative) function(x) {
-        probability <- inv(x)
-        derivative <- probability * (1 - probability)
-        derivative * (1 - 2 * probability)
-      } else NULL
+##' Derivative rules for `Deriv::Deriv()` with the distribution functions of links
+##'
+##' A copy of `Deriv::drule`, which is never changed, with rules for
+##' `plogis`, `pt` and `pcauchy` in their first argument and for their
+##' densities, which their second derivatives need, each added only where
+##' `Deriv` has no rule of its own. Each holds only for the default location
+##' and scale, the lower tail and probabilities that are not logged (and for
+##' `pt`, a central distribution), and `differentiate()` checks the result,
+##' so a call with other arguments is differentiated numerically.
+##' @noRd
+link_derivative_rules <- function() {
+  rules <- list2env(as.list(Deriv::drule, all.names = TRUE),
+                    envir = new.env(parent = emptyenv()))
+  # quote() rather than alist(), which builds the same lists, so that the
+  # check of the code doesn't take x for a global variable.
+  added <- list(
+    plogis = list(q = quote(dlogis(q))),
+    dlogis = list(x = quote((1 - 2 * plogis(x)) * dlogis(x))),
+    pt = list(q = quote(dt(q, df))),
+    dt = list(x = quote(-(df + 1) * x / (df + x^2) * dt(x, df))),
+    pcauchy = list(q = quote(dcauchy(q))),
+    dcauchy = list(x = quote(-2 * x / (1 + x^2) * dcauchy(x)))
+  )
+  for (name in names(added)) {
+    if (is.null(rules[[name]])) rules[[name]] <- added[[name]]
+  }
+  rules
+}
+
+##' Derivative of an elementwise function by Richardson extrapolation
+##'
+##' The default method of `numDeriv::grad()` (central differences with
+##' `rounds` halvings of the step and Richardson extrapolation) applied to
+##' every element of `eta` at once. For a function that acts element by
+##' element it gives the same values as `numDeriv::grad()` called on each
+##' element with `method.args = list(zero.tol = 1)`, with `2 * rounds` calls
+##' of `f` in all in place of `2 * rounds` per element.
+##'
+##' The first step is `d * |eta|`, plus `eps` where `|eta|` is below
+##' `zero_tolerance`. numDeriv's default tolerance, about 1.8e-5, suits a
+##' parameter of any scale, but a linear predictor has the scale of its link,
+##' and just above that tolerance the step falls to about 2e-9. The rounding
+##' error of `f`, about 1e-16, divided by such a step is then about 1e-7 in a
+##' first derivative, and a second derivative taken as the derivative of that
+##' first derivative was wrong by up to about 2,000 (-40 at a linear
+##' predictor of 1e-4 for an inverse link of 0.01 + 0.89 plogis(eta), where it
+##' is -1.1e-5). With a tolerance of 1 no step is below `eps` = 1e-4, and for
+##' the logit, probit, cauchit, t and imperfect-test links of the tests the
+##' errors from -30 to 30 are then at most about 1e-11 in a first derivative
+##' and 1e-6 in a second. From `|eta|` = 1 the steps are numDeriv's own.
+##' @noRd
+compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
+                                          zero_tolerance = 1,
+                                          rounds = 4L, ratio = 2) {
+  step <- abs(d * eta) + eps * (abs(eta) < zero_tolerance)
+  estimates <- matrix(NA_real_, rounds, length(eta))
+  for (round in seq_len(rounds)) {
+    estimates[round, ] <- (f(eta + step) - f(eta - step)) / (2 * step)
+    if (anyNA(estimates[round, ])) {
+      abort_input("{.arg invlink} returns {.code NA} near the values being differentiated.", arg = "invlink")
     }
-    validate(inv, "canonical invlink")
-    validate(d1, "canonical invlink_prime")
-    if (second_derivative) validate(d2, "canonical invlink_second")
-    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
+    step <- step / ratio
   }
-
-  if (is.function(invlink)) {
-    inv <- invlink
-    d1 <- NULL
-    d2 <- NULL
-  } else if (is.list(invlink)) {
-    inv <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-    d1 <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
-    d2 <- invlink$d2 %||% invlink$inv_link_second
-  } else {
-    stop("'invlink' must be NULL, a function, or a list with inverse-link functions.")
+  for (m in seq_len(rounds - 1L)) {
+    estimates <- (estimates[2:(rounds + 1L - m), , drop = FALSE] * (4^m) -
+                    estimates[1:(rounds - m), , drop = FALSE]) / (4^m - 1)
   }
+  c(estimates)
+}
 
-  validate(inv, "invlink")
-  check_invlink(inv, family)
-  if (is.null(d1)) d1 <- differentiate(inv, ncheck)
-  validate(d1, "invlink_prime")
-  if (second_derivative) {
-    if (is.null(d2)) d2 <- differentiate(d1, ncheck)
-    validate(d2, "invlink_second")
-  } else {
-    d2 <- NULL
+##' The binomial regression that gives the starting regression coefficients
+##'
+##' A named link starts from a regression with its own link, since the
+##' coefficients of a logit regression are on another scale (an intercept of
+##' -2.94 where a cauchit regression gives -6.31). Should that regression fail
+##' or not converge, as one with a cauchit link can, the logit regression is
+##' used, as it is for the canonical link and for a link given as a function.
+##' The regression is on the columns of the model's design matrix, so it has
+##' an intercept only when the model has one, and its coefficients are in the
+##' order of those columns.
+##' @param y,units_m The positives and the denominators.
+##' @param D The design matrix of the model.
+##' @param link The name of the link, NULL for a link given as a function.
+##' @param quasi Whether to regress with the quasi-binomial family, for the
+##'   records of a negative binomial model, whose trials need not be whole.
+##' @noRd
+binomial_start_regression <- function(y, units_m, D, cov_offset,
+                                      link = NULL, quasi = FALSE) {
+  regress <- function(glm_family) {
+    glm.fit(x = D, y = cbind(y, units_m - y), offset = cov_offset,
+            family = glm_family)
   }
+  if (!is.null(link) && !identical(link, "logit")) {
+    own <- tryCatch(suppressWarnings(regress(binomial(link))),
+                    error = function(e) NULL)
+    if (isTRUE(own$converged)) return(own)
+  }
+  # The quasi-binomial family gives the same estimates without glm()'s
+  # warning about trials that are not whole, as those of the negative
+  # binomial records are (engine_records()).
+  regress(if (quasi) stats::quasibinomial() else binomial())
+}
 
-  list(inv = inv, d1 = d1, d2 = d2, name = "custom")
+##' What a refit of a fitted model passes as `invlink`
+##'
+##' `NULL` for a Gaussian fit or a canonical link, so that the refit takes the
+##' canonical path again, and otherwise the stored inverse, its derivatives
+##' and the name of the link, in the list form of `invlink`. The likelihood
+##' that `profile()` rebuilds from a fit takes its link from here too.
+##' @noRd
+refit_invlink <- function(object) {
+  link_function <- object$link_function
+  if (is.null(link_function) ||
+      identical(link_function$name, "canonical")) {
+    return(NULL)
+  }
+  list(inv = link_function$inv, d1 = link_function$d1,
+       d2 = link_function$d2, link = link_function$link)
 }
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
@@ -2281,48 +2688,59 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable: `"binomial"`
-##'   or `"poisson"`.
+##' @param family The distribution of the response, `"binomial"` or
+##'   `"poisson"`, a binomial or Poisson family object with one of the
+##'   links that [glgpm()] accepts, such as `binomial("probit")`, or a negative
+##'   binomial family with its size, such as `MASS::negative.binomial(2)`,
+##'   with `denominator` the exposure.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
-##' @param invlink A function that defines the inverse of the link function for
-##'   the distribution of the data given the random effects.
+##' @param invlink A function that maps the linear predictor to the mean of
+##'   the response given the random effects, for a link that `family` does
+##'   not name, as in [glgpm()].
 ##'
 ##' @details
 ##' The mode is found by Newton-type optimisation ([stats::nlminb()]) using the
 ##' analytic gradient and Hessian of the integrand. The integrand includes terms
 ##' for the spatial process (`Sigma`), the unstructured random effects
 ##' (`sigma2_re`), and the log-likelihood of the responses for the specified
-##' family.
+##' family. With the canonical links, the terms of a response whose
+##' probability rounds to 0 or 1, or whose mean underflows to 0, are computed
+##' in their exact canonical form, so that the optimisation is not stopped
+##' there.
 ##'
 ##' @return A list with the mode (`mode`), the name of the inverse link used
 ##'   (`invlink_used`) and either the Hessian of the integrand at the mode
 ##'   (`hessian`, if `hessian = TRUE`) or the inverse of its negative
 ##'   (`Sigma.tilde`, otherwise). If `gradient = TRUE`, the gradient at the mode
 ##'   is also returned (`gradient`).
-##' @examples
-##' coords <- cbind(c(0, 1, 2), c(0, 0, 1))
-##' Sigma <- exp(-as.matrix(dist(coords)))
-##' mode <- maxim_integrand(
-##'   y = c(3, 5, 1), denominator = c(10, 10, 10), mu = rep(-0.5, 3),
-##'   Sigma = Sigma, ID_coords = 1:3, family = "binomial"
-##' )
-##' mode$mode
-##' @export
+##' @noRd
 maxim_integrand <- function(
     y, denominator, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
+  check_supplied(y)
+  check_supplied(mu)
+  check_supplied(Sigma)
+  check_supplied(ID_coords)
+  check_supplied(family)
   if (missing(denominator)) {
-    stop("'denominator' must be provided.", call. = FALSE)
+    abort_input("{.arg denominator} must be given.", arg = "denominator")
   }
-  if (length(family) != 1L || !family %in% c("binomial", "poisson")) {
-    stop("'family' must be either \"binomial\" or \"poisson\".", call. = FALSE)
-  }
+  family_link <- read_family(family, invlink, families = engine_families())
+  family <- family_link$family
+  invlink <- family_link$invlink
+  check_family_held(family_link)
   # The integrand and its derivatives below refer to the denominator as
   # `units_m`, the name used by the package's internal fitting functions.
-  units_m <- denominator
+  # The records are those the engine fits, the negative binomial family's as
+  # binomial ones, whose offset goes into `mu`.
+  records <- engine_records(family, y, denominator, mu,
+                            family_link$parameters, invlink)
+  family <- records$family
+  units_m <- records$units_m
+  mu <- records$offset
 
   # ---------- utilities ----------
   sum_by_group <- function(v, grp, nlev) {
@@ -2345,7 +2763,7 @@ maxim_integrand <- function(
 
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
-    stop("To add unstructured random effects, provide both `ID_re` and `sigma2_re`.")
+    abort_input("{.arg ID_re} and {.arg sigma2_re} must be given together.", arg = if (is.null(ID_re)) "ID_re" else "sigma2_re")
   }
 
   if (is.null(ID_re)) {
@@ -2365,43 +2783,22 @@ maxim_integrand <- function(
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
 
   linkf <- make_inverse_link_functions(family, invlink, n)
-  inv_link <- linkf$inv
-  inv1     <- linkf$d1
-  inv2     <- linkf$d2
+  model <- make_family(family, linkf)
 
   # Per-observation contributions for arbitrary inverse link
   contribs <- function(eta) {
-    if (family == "poisson") {
-      mu  <- inv_link(eta)
-      mu1 <- inv1(eta)
-      mu2 <- inv2(eta)
-
-      if (any(!is.finite(mu))) stop("invlink produced non-finite values for Poisson.")
-      if (any(mu <= 0)) stop("invlink must return strictly positive means for Poisson.")
-
-      g  <- (y / mu - units_m) * mu1
-      l2 <- - y * (mu1^2) / (mu^2) + (y / mu - units_m) * mu2
-      w  <- -l2
-
-      llik <- sum(y * log(pmax(units_m * mu, .Machine$double.eps)) - units_m * mu)
-      list(g = g, w = w, llik = llik)
-    } else { # binomial
-      p  <- inv_link(eta)
-      p1 <- inv1(eta)
-      p2 <- inv2(eta)
-
-      if (any(!is.finite(p))) stop("invlink produced non-finite values for Binomial.")
-      if (any(p <= 0 | p >= 1)) stop("invlink must return values in (0,1) for Binomial.")
-
-      den <- p * (1 - p)
-      g  <- (y - units_m * p) * p1 / den
-      l2 <- - units_m * (p1^2) / den + (y - units_m * p) * ( p2 / den - (p1^2) * (1 - 2 * p) / (den^2) )
-      w  <- -l2
-
-      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
-                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
-      list(g = g, w = w, llik = llik)
+    terms <- model$terms(eta, y, units_m)
+    if (is.null(terms)) {
+      if (!model$canonical) {
+        riskmap_abort("{.arg invlink} gives a mean outside the support of the family, or a derivative that isn't finite, at the current linear predictor.", class = "riskmap_error_fit")
+      }
+      if (any(!is.finite(eta))) {
+        riskmap_abort("The linear predictor isn't finite.", class = "riskmap_error_fit")
+      }
+      # Only the canonical Poisson mean, exp(eta), overflows.
+      riskmap_abort("The Poisson mean isn't finite at the current linear predictor.", class = "riskmap_error_fit")
     }
+    list(g = terms$score, w = terms$curvature, llik = terms$log_likelihood)
   }
 
   # ---------- core functions ----------
@@ -2485,8 +2882,22 @@ maxim_integrand <- function(
   }
 
   # ---------- optimize ----------
+  start <- rep(0, n_tot)
+  if (model$moves_start) {
+    start <- move_start_off_limits(
+      start,
+      function(S_tot) {
+        eta <- mu + S_tot[ID_coords]
+        if (n_re > 0) for (i in seq_len(n_re)) {
+          eta <- eta + S_tot[ind_re[[i]]][ID_re[, i]]
+        }
+        eta
+      },
+      y, units_m, family, linkf, ID_coords
+    )
+  }
   estim <- nlminb(
-    rep(0, n_tot),
+    start,
     function(x) -integrand(x),
     function(x) -grad.integrand(x),
     function(x) -hessian.integrand(x)
@@ -2506,81 +2917,93 @@ maxim_integrand <- function(
 ##' @title Laplace-sampling MCMC for Generalized Linear Gaussian Process Models
 ##'
 ##' @description
-##' Runs Markov chain Monte Carlo (MCMC) sampling using a Laplace
-##' approximation for Generalized Linear Gaussian Process Models (GLGPMs).
-##' The latent Gaussian field is integrated via a second-order Taylor
-##' expansion around the mode, and a Gaussian proposal is used for
-##' Metropolis–Hastings updates with adaptive step-size tuning.
+##' Draws the latent effects of a binomial or Poisson model given the data
+##' (the spatial effects at the locations, then the levels of each `re()`
+##' term) with a Metropolis-adjusted Langevin chain preconditioned by the
+##' Laplace approximation at their conditional mode, with the step size
+##' tuned during burn-in.
 ##'
 ##' @param y Numeric vector of responses of length \eqn{n}: the number of
-##'   positives for \code{family = "binomial"}, or counts for
-##'   \code{family = "poisson"}.
+##'   positives for `family = "binomial"`, or counts for
+##'   `family = "poisson"`.
 ##' @param units_m Numeric vector of positive values, one per response: the
-##'   number of trials for \code{family = "binomial"}, or the exposure for
-##'   \code{family = "poisson"} (the \code{denominator} of [glgpm()]).
+##'   number of trials for `family = "binomial"`, or the exposure for
+##'   `family = "poisson"` (the `denominator` of [glgpm()]).
 ##' @param mu Numeric vector of length \eqn{n} providing the fixed part of the
 ##'   linear predictor for each observation.
 ##' @param Sigma Numeric positive-definite covariance matrix for the latent spatial
-##'   process \eqn{S} at the unique locations referenced by \code{ID_coords}.
+##'   process \eqn{S} at the unique locations referenced by `ID_coords`.
 ##' @param ID_coords Integer vector of length \eqn{n} mapping each response in
-##'   \code{y} to a row/column of \code{Sigma} (i.e., the index of the corresponding location).
+##'   `y` to a row/column of `Sigma` (i.e., the index of the corresponding location).
 ##' @param ID_re Optional matrix or data.frame with one column per unstructured
 ##'   random effect (RE). Each column is an integer vector of length \eqn{n}
-##'   mapping observations in \code{y} to RE levels (e.g., cluster, survey, etc.).
-##'   Use \code{NULL} to exclude REs.
+##'   mapping observations in `y` to RE levels (e.g., cluster, survey, etc.).
+##'   Use `NULL` to exclude REs.
 ##' @param sigma2_re Optional named numeric vector of RE variances. Names must
-##'   match the column names of \code{ID_re}. Ignored if \code{ID_re = NULL}.
-##' @param family Character string: \code{"binomial"} or \code{"poisson"}.
+##'   match the column names of `ID_re`. Ignored if `ID_re = NULL`.
+##' @param family Character string: `"binomial"` or `"poisson"`.
 ##' @param control_mcmc List of control parameters:
 ##'   \describe{
-##'     \item{n_sim}{Total number of MCMC iterations (including burn-in).}
+##'     \item{n_draws}{Number of draws kept, after burn-in and thinning.}
 ##'     \item{burnin}{Number of initial iterations to discard.}
 ##'     \item{thin}{Thinning interval for saving samples.}
 ##'     \item{h}{Initial step size for the Gaussian proposal. Defaults to \eqn{1.65 / n_\mathrm{tot}^{1/6}} if not supplied.}
-##'     \item{c1.h, c2.h}{Positive tuning constants for adaptive step-size updates.}
+##'     \item{c1_h, c2_h}{Positive tuning constants for adaptive step-size updates.}
 ##'   }
-##' @param invlink Optional inverse-link function. If \code{NULL}, defaults are used:
-##'   \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).
-##' @param Sigma_pd Optional covariance matrix used in the Laplace approximation.
-##'   If \code{NULL}, it is obtained internally at the current mode.
-##' @param mean_pd Optional mean vector used in the Laplace approximation.
-##'   If \code{NULL}, it is obtained internally as the mode of the integrand.
-##' @param messages Logical; if \code{TRUE}, prints progress and acceptance diagnostics.
+##' @param seed Optional integer seed for the chain. When supplied, the
+##'   caller's random number state is restored on exit.
+##' @param invlink Optional inverse-link function. If `NULL`, defaults are used:
+##'   `identity` (gaussian), `plogis` (binomial), and `exp` (poisson).
+##' @param start Optional starting value for the search for the mode, in the
+##'   order of the latent effects, such as the mode at nearby parameter values.
+##' @param average_step Logical. If `TRUE`, the step kept after burn-in is the
+##'   geometric mean of the tuned step over the second half of burn-in, and
+##'   otherwise its last value.
+##' @param start_from_draw Logical. If `TRUE`, the chain starts from a draw of
+##'   the Laplace approximation, and otherwise at the mode, from which a chain
+##'   in many dimensions accepts almost nothing until its step has shrunk.
+##' @param adapt_step Logical. If `FALSE`, the step is not tuned during burn-in
+##'   and stays at `control_mcmc$h`, so that burn-in only discards draws.
+##' @param family_parameters The family's own parameters (`read_family()`),
+##'   NULL for a family without them. The chain samples the records the
+##'   engine fits (`engine_records()`), the negative binomial family's as
+##'   binomial ones.
 ##'
 ##' @details
-##' The algorithm alternates between:
-##' \enumerate{
-##'   \item Locating the mode of the joint integrand for the latent variables
-##'         (via \code{maxim_integrand}) when \code{Sigma_pd} and \code{mean_pd}
-##'         are not provided, yielding a Gaussian approximation.
-##'   \item Metropolis–Hastings updates using a Gaussian proposal centered at
-##'         the current approximate mean with proposal variance governed by \code{h}.
-##'         The step size is adapted based on empirical acceptance probability.
-##' }
+##' The mode is found by Newton's method (`find_sampler_mode()`). The Laplace
+##' precision there, Q = P + A' W A for prior precision P, record weights W
+##' and the map A from latent effects to records, is factored through the
+##' Schur complement of the diagonal block of the `re()` term with most
+##' levels (`sampler_latent_structure()`), so that an iteration of the chain
+##' (`cpp_latent_mala()`) costs two triangular solves of the size of the
+##' locations and passes over the records, whatever the number of levels.
+##' Every link runs in the compiled chain, a custom link through one call of
+##' its R functions per iteration.
 ##'
 ##' Dimensions must be consistent:
-##' \code{length(y) = n}, \code{nrow(Sigma) = ncol(Sigma) = n_loc},
-##' and \code{length(ID_coords) = n} with entries in \eqn{1,\dots,n_\mathrm{loc}}.
-##' If \code{ID_re} is provided, each column must have length \eqn{n}; when
-##' \code{sigma2_re} is supplied, it must be named and match \code{colnames(ID_re)}.
+##' `length(y) = n`, `nrow(Sigma) = ncol(Sigma) = n_loc`,
+##' and `length(ID_coords) = n` with entries in \eqn{1,\dots,n_\mathrm{loc}}.
+##' If `ID_re` is provided, each column must have length \eqn{n}; when
+##' `sigma2_re` is supplied, it must be named and match `colnames(ID_re)`.
 ##'
-##' @return An object of class \code{"RiskMap_mcmc"} with components:
+##' @return An object of class `"RiskMap_mcmc"` with components:
 ##' \describe{
 ##'   \item{samples}{A list containing posterior draws. Always includes
-##'                 \code{$S} (latent spatial field). If \code{ID_re} is supplied,
-##'                 each unstructured RE is returned under \code{$<re_name>}.}
-##'   \item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
+##'                 `$S` (latent spatial field). If `ID_re` is supplied,
+##'                 each unstructured RE is returned under `$<re_name>`.}
+##'   \item{tuning_par}{Numeric vector of step sizes (`h`) used over iterations.}
 ##'   \item{acceptance_prob}{Numeric vector of cumulative Metropolis–Hastings acceptance rates.}
 ##'   \item{acceptance}{Logical vector recording whether each proposal was accepted.}
 ##'   \item{acceptance_rate}{Named vector giving acceptance rates during burn-in
 ##'                         and retained-sample iterations.}
+##'   \item{mode}{The conditional mode of the latent effects.}
 ##' }
 ##'
 ##' @section Default links:
 ##' The default inverse links are: identity (gaussian), logistic (binomial),
-##' and exponential (poisson). Supply \code{invlink} to override.
+##' and exponential (poisson). Supply `invlink` to override.
 ##'
-##' @seealso \code{\link{maxim_integrand}}
+##' @seealso `maxim_integrand()`
 ##' @noRd
 laplace_sampling_mcmc <- function(y,
                                   units_m,
@@ -2591,458 +3014,594 @@ laplace_sampling_mcmc <- function(y,
                                   sigma2_re = NULL,
                                   family,
                                   control_mcmc,
+                                  seed = NULL,
                                   invlink = NULL,
-                                  Sigma_pd = NULL,
-                                  mean_pd = NULL,
-                                  messages = TRUE
-                                  ){
+                                  start = NULL,
+                                  average_step = TRUE,
+                                  start_from_draw = TRUE,
+                                  adapt_step = TRUE,
+                                  family_parameters = NULL) {
 
-  if (length(family) != 1L || !family %in% c("poisson", "binomial")) {
-    stop("'family' must be either 'poisson' or 'binomial'.")
-  }
+  traits <- check_engine_family(family)
 
   n <- length(y)
   n_loc <- nrow(Sigma)
   if (!is.numeric(y) || n < 1L || any(!is.finite(y)) ||
       any(y < 0) || any(y != as.integer(y))) {
-    stop("'y' must be a non-empty vector of non-negative integer counts.")
+    abort_input("The response must be non-negative whole numbers.", arg = "data")
   }
   if (!is.numeric(units_m) || length(units_m) != n ||
       any(!is.finite(units_m)) || any(units_m <= 0)) {
-    stop("'units_m' must contain one positive finite value per response.")
+    abort_input("The denominators must be positive finite numbers, one for each response.", arg = "denominator")
   }
-  if (family == "binomial" && any(y > units_m)) {
-    stop("Binomial responses in 'y' cannot exceed 'units_m'.")
+  if (traits$upper_limit && any(y > units_m)) {
+    abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")
   }
   if (!is.numeric(Sigma) || length(dim(Sigma)) != 2L ||
       n_loc != ncol(Sigma) || n_loc < 1L) {
-    stop("'Sigma' must be a non-empty square numeric matrix.")
+    riskmap_bug("{.arg Sigma} must be a non-empty square numeric matrix.")
   }
   if (!is.numeric(mu) || length(mu) != n || any(!is.finite(mu))) {
-    stop("'mu' must contain one finite value per response.")
+    riskmap_bug("{.arg mu} must contain one finite value per response.")
   }
   if (length(ID_coords) != n || anyNA(ID_coords) ||
       any(ID_coords != as.integer(ID_coords)) ||
       any(ID_coords < 1L | ID_coords > n_loc)) {
-    stop("'ID_coords' must contain one valid integer location index per response.")
+    riskmap_bug("{.arg ID_coords} must contain one valid location index per response.")
   }
 
   # set seed if it exists and reset on exit
-  if (!is.null(control_mcmc$seed)){
+  if (!is.null(seed)){
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
+    set.seed(seed)
   }
 
   # ---------- dimensions ----------
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
-    stop("To introduce unstructured random effects both `ID_re` and `sigma2_re` must be provided.")
+    riskmap_bug("{.arg ID_re} and {.arg sigma2_re} must be given together.")
   }
 
   if (is.null(ID_re)) {
     n_re <- 0L
     n_dim_re <- integer(0)
-    ind_re <- list()
   } else {
     ID_re <- as.matrix(ID_re)
     if (nrow(ID_re) != n || ncol(ID_re) < 1L || anyNA(ID_re) ||
         any(ID_re != as.integer(ID_re)) || any(ID_re < 1L)) {
-      stop("'ID_re' must contain positive integer indices and one row per response.")
+      riskmap_bug("{.arg ID_re} must contain positive integer indices and one row per response.")
     }
     n_re <- length(sigma2_re)
     if (n_re != ncol(ID_re) || any(!is.finite(sigma2_re)) ||
         any(sigma2_re <= 0)) {
-      stop("'sigma2_re' must contain one positive finite variance per random effect.")
+      riskmap_bug("{.arg sigma2_re} must contain one positive finite variance per random effect.")
     }
     if (!is.null(names(sigma2_re)) && !is.null(colnames(ID_re)) &&
         !identical(names(sigma2_re), colnames(ID_re))) {
-      stop("Names of 'sigma2_re' must match the columns of 'ID_re'.")
+      riskmap_bug("The names of {.arg sigma2_re} must match the columns of {.arg ID_re}.")
     }
     n_dim_re <- vapply(seq_len(n_re), function(i) length(unique(ID_re[, i])), integer(1))
     for (i in seq_len(n_re)) {
       if (!identical(sort(unique(ID_re[, i])), seq_len(n_dim_re[i]))) {
-        stop("Each column of 'ID_re' must use consecutive indices starting at 1.")
+        riskmap_bug("Each column of {.arg ID_re} must use consecutive indices starting at 1.")
       }
     }
-    ind_re <- vector("list", n_re)
-    add_i <- 0L
-    for (i in seq_len(n_re)) {
-      ind_re[[i]] <- (add_i + n_loc + 1):(add_i + n_loc + n_dim_re[i])
-      if (i < n_re) add_i <- sum(n_dim_re[1:i])
-    }
   }
-  n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
-  coordinate_aggregation <- Matrix::sparseMatrix(
-    i = ID_coords, j = seq_len(n), x = 1,
-    dims = c(n_loc, n)
+  if (!is.null(start) && (!is.numeric(start) ||
+      length(start) != n_loc + sum(n_dim_re) || any(!is.finite(start)))) {
+    riskmap_bug("{.arg start} must contain one finite value for each latent effect.")
+  }
+
+  # The records the engine samples from, the negative binomial family's as
+  # binomial ones, whose offset goes into the linear predictors.
+  records <- engine_records(family, y, units_m, mu, family_parameters,
+                            invlink)
+  family <- records$family
+  units_m <- records$units_m
+  mu <- records$offset
+  linkf <- make_inverse_link_functions(family, invlink, n)
+  model <- make_family(family, linkf)
+  structure <- sampler_latent_structure(Sigma, ID_coords, ID_re, sigma2_re)
+  found <- tryCatch(
+    find_sampler_mode(
+      structure, y, units_m, mu, family, linkf,
+      start = if (!is.null(start)) start[order(structure$position)]
+    ),
+    error = function(error) NULL
   )
-  re_aggregation <- if (n_re > 0) {
-    lapply(seq_len(n_re), function(i) {
-      Matrix::sparseMatrix(
-        i = ID_re[, i], j = seq_len(n), x = 1,
-        dims = c(n_dim_re[i], n)
+  if (is.null(found)) {
+    # The search of maxim_integrand() is slower but differs from Newton's
+    # method, so a survey where Newton's method fails still gets a centre.
+    found <- fallback_sampler_mode(structure, y, units_m, mu, Sigma,
+                                   ID_coords, ID_re, sigma2_re, family,
+                                   invlink, linkf)
+  }
+  link_terms <- if (!model$canonical) {
+    # One call of the link per iteration, on all the linear predictors. A
+    # point where the link fails or is not finite is rejected by the chain.
+    function(eta) {
+      terms <- tryCatch(
+        compute_custom_link_terms(eta, y, units_m, family, linkf,
+                                  with_curvature = FALSE),
+        error = function(error) NULL
       )
-    })
-  } else {
-    list()
-  }
-
-  # ---------- inverse link handling (inv, d1) ----------
-  linkf <- make_inverse_link_functions(
-    family, invlink, n, second_derivative = FALSE
-  )
-  inv_link <- linkf$inv
-  inv1     <- linkf$d1
-
-  # ---------- default Laplace proposal if missing ----------
-  if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim_integrand(y = y, denominator = units_m, Sigma = Sigma, mu = mu,
-                                 ID_coords = ID_coords, ID_re = ID_re,
-                                 sigma2_re = sigma2_re,
-                                 family = family, invlink = invlink,
-                                 hessian = FALSE, gradient = TRUE)
-    if (is.null(Sigma_pd)) Sigma_pd <- out_maxim$Sigma.tilde
-    if (is.null(mean_pd))  mean_pd  <- out_maxim$mode
-  }
-  if (!is.numeric(Sigma_pd) || length(dim(Sigma_pd)) != 2L ||
-      any(dim(Sigma_pd) != n_tot) || any(!is.finite(Sigma_pd))) {
-    stop("'Sigma_pd' must be a finite covariance matrix for all latent effects.")
-  }
-  if (!is.numeric(mean_pd) || length(mean_pd) != n_tot ||
-      any(!is.finite(mean_pd))) {
-    stop("'mean_pd' must contain one finite value for each latent effect.")
-  }
-
-  # ---------- affine reparameterisation ----------
-  n_sim   <- control_mcmc$n_sim
-  Sigma_pd_root <- factor_covariance(
-    Sigma_pd, context = "Laplace-approximation covariance matrix"
-  )
-  Sigma_pd_sroot <- t(Sigma_pd_root)
-  A <- forwardsolve(Sigma_pd_sroot, diag(n_tot))
-
-  if (n_re == 0) {
-    Sigma_tot <- Sigma
-  } else {
-    Sigma_tot <- matrix(0, n_tot, n_tot)
-    Sigma_tot[1:n_loc, 1:n_loc] <- Sigma
-    for (i in seq_len(n_re)) diag(Sigma_tot)[ind_re[[i]]] <- sigma2_re[i]
-  }
-  Sigma_w_root <- factor_covariance(
-    A %*% Sigma_tot %*% t(A),
-    context = "transformed latent covariance matrix"
-  )
-  Sigma_w_sroot <- t(Sigma_w_root)
-  solve_w_covariance <- function(right_hand_side) {
-    backsolve(
-      Sigma_w_root,
-      forwardsolve(Sigma_w_sroot, right_hand_side)
-    )
-  }
-  mu_w <- -as.numeric(A %*% mean_pd)
-
-  # Canonical binomial and Poisson models use the compiled transition kernel.
-  # Custom inverse links retain the general R implementation below.
-  if (linkf$name == "canonical") {
-    compiled <- cpp_canonical_mala(
-      y_r = y,
-      units_r = units_m,
-      mu_r = mu,
-      proposal_lower_r = Sigma_pd_sroot,
-      proposal_upper_r = Sigma_pd_root,
-      prior_lower_r = Sigma_w_sroot,
-      prior_upper_r = Sigma_w_root,
-      transformed_prior_mean_r = mu_w,
-      proposal_mean_r = mean_pd,
-      location_id_r = as.integer(ID_coords),
-      n_locations = n_loc,
-      random_effect_id_r = if (n_re > 0) {
-        matrix(as.integer(ID_re), nrow = nrow(ID_re),
-               dimnames = dimnames(ID_re))
-      } else {
-        matrix(integer(), nrow = n, ncol = 0L)
-      },
-      family = family,
-      n_sim = control_mcmc$n_sim,
-      burnin = control_mcmc$burnin,
-      thin = control_mcmc$thin,
-      step_size = control_mcmc$h %||% (1.65 / n_tot^(1 / 6)),
-      adaptation_scale = control_mcmc$c1.h,
-      adaptation_exponent = control_mcmc$c2.h
-    )
-    out_sim <- list(samples = list(
-      S = compiled$samples[, seq_len(n_loc), drop = FALSE]
-    ))
-    if (n_re > 0) {
-      re_names <- colnames(ID_re) %||% paste0("re", seq_len(n_re))
-      for (i in seq_len(n_re)) {
-        out_sim$samples[[re_names[i]]] <-
-          compiled$samples[, ind_re[[i]], drop = FALSE]
-      }
-    }
-    out_sim$tuning_par <- compiled$tuning
-    out_sim$acceptance_prob <- compiled$cumulative_acceptance
-    out_sim$acceptance <- as.logical(compiled$acceptance)
-    out_sim$acceptance_rate <- c(
-      burnin = if (control_mcmc$burnin > 0L) {
-        mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
-      } else NA_real_,
-      sampling = mean(out_sim$acceptance[seq.int(
-        control_mcmc$burnin + 1L, control_mcmc$n_sim
-      )])
-    )
-    out_sim$invlink_used <- linkf$name
-    class(out_sim) <- "RiskMap_mcmc"
-    return(out_sim)
-  }
-
-  target_state <- function(W, S_tot) {
-    S <- S_tot[1:n_loc]
-    S_re_list <- if (n_re > 0) lapply(seq_len(n_re), function(i) S_tot[ind_re[[i]]]) else NULL
-
-    eta <- mu + S[ID_coords]
-    if (n_re > 0) for (i in seq_len(n_re)) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-    if (family == "poisson") {
-      mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) return(NULL)
-      llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
-      mu1 <- inv1(eta)
-      g_eta <- (y - units_m * mu_vec) * (mu1 / mu_vec)
-    } else {
-      p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) return(NULL)
-      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
-                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
-      p1 <- inv1(eta)
-      g_eta <- (y - units_m * p) * (p1 / (p * (1 - p)))
-    }
-    diff_w <- W - mu_w
-    prior_solution <- solve_w_covariance(diff_w)
-
-    grad_S_tot <- numeric(n_tot)
-    grad_S_tot[1:n_loc] <- as.numeric(coordinate_aggregation %*% g_eta)
-    if (n_re > 0) {
-      for (j in seq_len(n_re)) {
-        grad_S_tot[ind_re[[j]]] <- as.numeric(
-          re_aggregation[[j]] %*% g_eta
-        )
-      }
-    }
-
-    list(
-      log_density = as.numeric(
-        -0.5 * crossprod(diff_w, prior_solution) + llik
-      ),
-      gradient = as.numeric(
-        -prior_solution + Sigma_pd_root %*% grad_S_tot
-      )
-    )
-  }
-
-  # ---------- MALA tuning ----------
-  h      <- control_mcmc$h; if (is.null(h)) h <- 1.65/(n_tot^(1/6))
-  burnin <- control_mcmc$burnin
-  thin   <- control_mcmc$thin
-  c1.h   <- control_mcmc$c1.h
-  c2.h   <- control_mcmc$c2.h
-
-  W_curr <- rep(0, n_tot)
-  S_tot_curr <- as.numeric(Sigma_pd_sroot %*% W_curr + mean_pd)
-  state_curr <- target_state(W_curr, S_tot_curr)
-  if (is.null(state_curr)) {
-    stop("The initial state has a non-finite target density or gradient.")
-  }
-  mean_curr <- as.numeric(W_curr + (h^2 / 2) * state_curr$gradient)
-  lp_curr <- state_curr$log_density
-  acc <- 0L
-  n_samples <- floor((n_sim - burnin) / thin)   # was: (n_sim - burnin) / thin
-  sim <- matrix(NA_real_, nrow = n_samples, ncol = n_tot)
-
-  # ---- safe progress output (no stderr, no flush.console) ----
-  if (messages) message("\n - Conditional simulation (burnin=", burnin, ", thin=", thin, "):")
-  pb <- NULL
-  if (messages && interactive()) {
-    pb <- utils::txtProgressBar(min = 0, max = n_sim, style = 3)
-    on.exit(try(close(pb), silent = TRUE), add = TRUE)
-  }
-
-  h.vec <- rep(NA_real_, n_sim)
-  acc_prob <- rep(NA_real_, n_sim)
-  accepted <- rep(FALSE, n_sim)
-
-  for (i in seq_len(n_sim)) {
-    W_prop <- mean_curr + h * rnorm(n_tot)
-    S_tot_prop <- as.numeric(Sigma_pd_sroot %*% W_prop + mean_pd)
-    proposal <- tryCatch({
-      state_prop <- target_state(W_prop, S_tot_prop)
-      if (is.null(state_prop)) {
-        NULL
-      } else {
-        mean_prop <- as.numeric(
-          W_prop + (h^2 / 2) * state_prop$gradient
-        )
-        lp_prop <- state_prop$log_density
-        if (any(!is.finite(mean_prop)) || !is.finite(lp_prop)) {
-          NULL
-        } else {
-          dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
-          dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
-          list(mean = mean_prop,
-               log_prob = lp_prop + dprop_prop - lp_curr - dprop_curr,
-               state = state_prop)
-        }
-      }
-    }, error = function(e) NULL)
-
-    if (!is.null(proposal) && is.finite(proposal$log_prob) &&
-        log(runif(1)) < proposal$log_prob) {
-      acc <- acc + 1L
-      accepted[i] <- TRUE
-      W_curr <- W_prop
-      S_tot_curr <- S_tot_prop
-      state_curr <- proposal$state
-      lp_curr <- state_curr$log_density
-      mean_curr <- proposal$mean
-    }
-
-    if (i > burnin && (i - burnin) %% thin == 0) {
-      cnt <- (i - burnin) %/% thin
-      sim[cnt, ] <- S_tot_curr
-    }
-
-    acc_prob[i] <- acc / i
-    # Adapt only during burn-in so retained draws use a fixed Markov kernel.
-    # Updating log(h) keeps the step size positive; the diminishing gain is a
-    # Robbins-Monro update targeting the standard MALA acceptance rate.
-    if (i <= burnin) {
-      log_h <- log(h) + c1.h * i^(-c2.h) * (accepted[i] - 0.574)
-      h <- exp(log_h)
-      # The Langevin mean depends on h. Recompute it for the next iteration
-      # after every warm-up update, including when the proposal was rejected.
-      mean_curr <- as.numeric(
-        W_curr + (h^2 / 2) * state_curr$gradient
-      )
-    }
-    h.vec[i] <- h
-
-    if (messages) {
-      if (!is.null(pb)) {
-        utils::setTxtProgressBar(pb, i)
-      } else if (i %% max(1, floor(n_sim/20)) == 0) {
-        # non-interactive fallback: update every ~5%
-        message(sprintf("   %3d%%", round(100 * i / n_sim)))
-      }
+      if (is.null(terms) || !is.finite(terms$log_likelihood)) return(NULL)
+      list(terms$log_likelihood, terms$score)
     }
   }
+  # The compiled chain stops with base errors, which are raised again with
+  # the fit class. RiskMap's own errors, from a custom link, pass as they are.
+  chain <- tryCatch(cpp_latent_mala(
+    y_r = as.numeric(y), units_r = as.numeric(units_m), mu_r = as.numeric(mu),
+    columns_r = structure$columns, n_u = structure$n_u, n_d = structure$n_d,
+    prior_u_r = structure$prior_u, prior_d_r = structure$prior_d,
+    weights_r = found$weights, mode_r = found$mode, family = family,
+    link_terms = link_terms, n_sim = mcmc_iterations(control_mcmc),
+    burnin = control_mcmc$burnin, thin = control_mcmc$thin,
+    step_size = control_mcmc$h %||% (1.65 / structure$dimension^(1 / 6)),
+    adaptation_scale = if (adapt_step) control_mcmc$c1_h else 0,
+    adaptation_exponent = control_mcmc$c2_h,
+    average_step = average_step, start_from_draw = start_from_draw
+  ), error = function(error) {
+    if (inherits(error, "riskmap_error")) riskmap_rethrow(error)
+    riskmap_abort("The Langevin sampler of the latent effects failed.", class = "riskmap_error_fit", parent = error)
+  })
 
-  if (!is.null(pb)) close(pb)
-  if (messages) message(" done.\n")
-
-  out_sim <- list()
-  out_sim$samples <- list()
-  out_sim$samples$S <- sim[, 1:n_loc, drop = FALSE]
+  samples <- chain$samples[, structure$position, drop = FALSE]
+  out_sim <- list(samples = list(S = samples[, seq_len(n_loc), drop = FALSE]))
   if (n_re > 0) {
-    re_names <- if (!is.null(colnames(ID_re))) colnames(ID_re) else paste0("re", seq_len(n_re))
+    re_names <- colnames(ID_re) %||% paste0("re", seq_len(n_re))
+    first <- n_loc + c(0L, cumsum(n_dim_re))
     for (i in seq_len(n_re)) {
-      out_sim$samples[[re_names[i]]] <- sim[, ind_re[[i]], drop = FALSE]
+      out_sim$samples[[re_names[i]]] <-
+        samples[, first[i] + seq_len(n_dim_re[i]), drop = FALSE]
     }
   }
-  out_sim$tuning_par <- h.vec
-  out_sim$acceptance_prob <- acc_prob
-  out_sim$acceptance <- accepted
+  out_sim$tuning_par <- chain$tuning
+  out_sim$acceptance_prob <- chain$cumulative_acceptance
+  out_sim$acceptance <- as.logical(chain$acceptance)
   out_sim$acceptance_rate <- c(
-    burnin = if (burnin > 0L) mean(accepted[seq_len(burnin)]) else NA_real_,
-    sampling = mean(accepted[seq.int(burnin + 1L, n_sim)])
+    burnin = if (control_mcmc$burnin > 0L) {
+      mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
+    } else NA_real_,
+    sampling = mean(out_sim$acceptance[seq.int(
+      control_mcmc$burnin + 1L, mcmc_iterations(control_mcmc)
+    )])
   )
+  out_sim$mode <- found$mode[structure$position]
   out_sim$invlink_used <- linkf$name
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
-##' Set control parameters for adaptive MCML estimation
+
+##' Latent effects of the prediction sampler in the order of its factor
 ##'
-##' Non-Gaussian models use independent fitting and validation importance
-##' samples. Sampling stops automatically only when the importance samples are
-##' regular enough to estimate Monte Carlo uncertainty, that uncertainty is
-##' small relative to the model's statistical uncertainty, and both samples
-##' give compatible score vectors.
+##' The sampler orders the latent effects as the locations, then the levels of
+##' every `re()` term but the one with most levels, then the levels of that
+##' term, whose block of the Laplace precision is diagonal (`n_d` of them). The
+##' first `n_u` have the dense prior precision `prior_u` (the inverse of
+##' `Sigma` for the locations, `1 / sigma2_re` on the diagonal for the levels),
+##' and the last `n_d` the prior precision `prior_d`. `columns` holds, for each
+##' record, the 0-based positions of the latent effects in its linear
+##' predictor, with the diagonal term last, and `position` maps the usual
+##' order (locations, then each term's levels in turn) to this one.
+##' @noRd
+sampler_latent_structure <- function(Sigma, ID_coords, ID_re, sigma2_re) {
+  n_loc <- nrow(Sigma)
+  precision <- chol2inv(factor_covariance(Sigma, "spatial covariance matrix"))
+  n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
+  levels <- if (n_re > 0) as.integer(apply(ID_re, 2L, max)) else integer(0)
+  diagonal_term <- if (n_re > 0) which.max(levels) else 0L
+  dense_terms <- setdiff(seq_len(n_re), diagonal_term)
+  n_u <- n_loc + sum(levels[dense_terms])
+  n_d <- if (n_re > 0) levels[diagonal_term] else 0L
+  # First position (0-based) of each term, in the usual and in this order.
+  usual_first <- n_loc + c(0L, cumsum(levels))[seq_len(n_re)]
+  sampler_first <- integer(n_re)
+  sampler_first[dense_terms] <- n_loc + c(0L, cumsum(levels[dense_terms]))[
+    seq_along(dense_terms)]
+  if (n_re > 0) sampler_first[diagonal_term] <- n_u
+  position <- seq_len(n_loc)
+  for (j in seq_len(n_re)) {
+    position[usual_first[j] + seq_len(levels[j])] <-
+      sampler_first[j] + seq_len(levels[j])
+  }
+  columns <- matrix(as.integer(ID_coords) - 1L, ncol = 1L)
+  for (j in c(dense_terms, if (n_re > 0) diagonal_term)) {
+    columns <- cbind(columns, sampler_first[j] + as.integer(ID_re[, j]) - 1L)
+  }
+  storage.mode(columns) <- "integer"
+  dimnames(columns) <- NULL
+  prior_u <- matrix(0, n_u, n_u)
+  prior_u[seq_len(n_loc), seq_len(n_loc)] <- precision
+  for (j in dense_terms) {
+    index <- sampler_first[j] + seq_len(levels[j])
+    prior_u[cbind(index, index)] <- 1 / sigma2_re[[j]]
+  }
+  prior_d <- if (n_re > 0) rep(1 / sigma2_re[[diagonal_term]], n_d) else
+    numeric(0)
+  list(columns = columns, n_u = n_u, n_d = n_d, n_loc = n_loc,
+       dimension = n_u + n_d, prior_u = prior_u, prior_d = prior_d,
+       position = position)
+}
+
+##' Conditional mode of the latent effects for the prediction sampler
 ##'
-##' @param initial_samples Positive integer giving the number of draws in each
-##' fitting and validation bank at the first stage. Defaults to 1,000.
-##' @param max_samples Positive integer giving the largest permitted bank.
-##' Defaults to 20,000.
-##' @param max_stages Positive integer giving the maximum number of adaptive
-##' stages. Defaults to 5.
-##' @param min_effective_samples Positive integer giving the minimum effective
-##' number of importance draws required in both banks before Monte Carlo
-##' uncertainty is interpreted. Defaults to 100.
-##' @param max_pareto_k Positive upper limit for the Pareto tail-shape
-##' diagnostic. Defaults to 0.7.
-##' @param max_mcse_ratio Number between zero and one giving the largest allowed
-##' ratio of Monte Carlo standard error to ordinary statistical standard error,
-##' over all linear combinations of fitted parameters. Defaults to 0.1.
-##' @param score_probability Number strictly between zero and one used for the
-##' independent-bank score-agreement limit. Defaults to 0.99.
-##' @param laplace_start Logical. If `TRUE`, the Laplace approximation to the
-##' likelihood is first maximised from several starting values and Monte Carlo
-##' maximum likelihood starts from the best Laplace estimate. Defaults to
-##' `FALSE`: in validation this changed which local maximum was reached about as
-##' often for the worse as for the better, at extra computational cost.
-##' @param hold_short_range Logical. If `TRUE` (the default), a spatial range
-##' estimated below the median distance between neighbouring locations is held
-##' at that distance, because spatial correlation on a shorter scale cannot be
-##' distinguished from unstructured variation; a warning is issued. Set to
-##' `FALSE` to obtain the unconstrained maximum likelihood estimate.
+##' Newton's method with step halving on log f(y | u) - u' P u / 2, in the
+##' order and with the structured factor of `sampler_latent_structure()`, so
+##' that each step costs a factorisation of the size of the locations and
+##' passes over the records, whatever the number of `re()` levels. It follows
+##' the rules of `find_latent_mode()`. For a link that is not
+##' log-concave, curvatures that leave the Hessian without a Cholesky factor
+##' are set to zero, a search from a nonzero `start` that fails is repeated
+##' from zero, and a custom link's search starts off the limits of the link.
+##' Returns the mode and the record weights of the Laplace precision there,
+##' which are positive definite by the same rule.
+##' @noRd
+find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
+                              start = NULL, tolerance = 1e-10,
+                              maximum_iterations = 100L) {
+  latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
+  dense <- seq_len(structure$n_u)
+  diagonal <- structure$n_u + seq_len(structure$n_d)
+  model <- make_family(family, linkf)
+  prior_product <- function(latent) {
+    c(as.numeric(structure$prior_u %*% latent[dense]),
+      structure$prior_d * latent[diagonal])
+  }
+  terms_at <- function(latent) {
+    terms <- model$terms(
+      mu + latent_linear_predictor(latent_map, latent), y, units_m
+    )
+    finite <- !is.null(terms) && is.finite(terms$log_likelihood) &&
+      all(is.finite(terms$score)) && all(is.finite(terms$curvature))
+    if (finite) terms
+  }
+  objective <- function(latent, terms) {
+    terms$log_likelihood - 0.5 * sum(latent * prior_product(latent))
+  }
+  solve_at <- function(weights, right_hand_side) {
+    cpp_structured_solve(structure$columns, structure$n_u, structure$n_d,
+                         structure$prior_u, structure$prior_d, weights,
+                         right_hand_side)
+  }
+  # The record weights of the Newton step: the curvatures, or for a link
+  # that is not log-concave with negative ones set to zero if the Hessian
+  # has no Cholesky factor.
+  usable_weights <- function(curvature) {
+    if (model$assumes_concave ||
+        !is.null(solve_at(curvature, numeric(structure$dimension)))) {
+      return(curvature)
+    }
+    pmax(curvature, 0)
+  }
+  search_from <- function(latent) {
+    if (model$moves_start) {
+      latent <- model$move_start(
+        latent,
+        function(point) mu + latent_linear_predictor(latent_map, point),
+        y, units_m, latent_map$columns[, 1L]
+      )
+    }
+    terms <- terms_at(latent)
+    if (is.null(terms)) return(NULL)
+    current <- objective(latent, terms)
+    if (!is.finite(current)) return(NULL)
+    reached_limit <- TRUE
+    for (iteration in seq_len(maximum_iterations)) {
+      gradient <- latent_gradient(latent_map, terms$score) -
+        prior_product(latent)
+      step <- solve_at(usable_weights(terms$curvature), gradient)
+      if (is.null(step) || !all(is.finite(step))) return(NULL)
+      accepted <- FALSE
+      for (halving in 0:30) {
+        candidate <- latent + step / 2^halving
+        candidate_terms <- terms_at(candidate)
+        if (is.null(candidate_terms)) next
+        value <- objective(candidate, candidate_terms)
+        if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
+          accepted <- TRUE
+          break
+        }
+      }
+      if (!accepted) {
+        # As in find_latent_mode(), a point where the promised increase
+        # is within rounding is a mode that rounding keeps from confirming.
+        if (sum(gradient * step) / 2 > 1e-12 * abs(current)) return(NULL)
+        reached_limit <- FALSE
+        break
+      }
+      change <- max(abs(candidate - latent))
+      latent <- candidate
+      terms <- candidate_terms
+      current <- value
+      if (change <= tolerance * max(1, max(abs(latent)))) {
+        reached_limit <- FALSE
+        break
+      }
+    }
+    list(mode = latent, weights = usable_weights(terms$curvature),
+         iterations = iteration, reached_limit = reached_limit)
+  }
+  found <- NULL
+  restarted <- FALSE
+  if (!is.null(start) && !all(start == 0)) {
+    found <- tryCatch(search_from(start), error = function(error) NULL)
+    restarted <- is.null(found)
+  }
+  if (is.null(found)) found <- search_from(numeric(structure$dimension))
+  if (is.null(found)) {
+    riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")
+  }
+  found$restarted <- restarted
+  found
+}
+
+##' Centre of the prediction sampler from maxim_integrand()
+##'
+##' Used when `find_sampler_mode()` fails. Returns the mode found by
+##' `nlminb()` in the order of the sampler, with the record weights of the
+##' Laplace precision there and negative curvatures set to zero, which keeps
+##' that precision positive definite.
+##' @noRd
+fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
+                                  ID_re, sigma2_re, family, invlink, linkf) {
+  maximum <- maxim_integrand(
+    y = y, denominator = units_m, mu = mu, Sigma = Sigma,
+    ID_coords = ID_coords, ID_re = ID_re, sigma2_re = sigma2_re,
+    family = family, invlink = invlink, hessian = TRUE
+  )
+  mode <- maximum$mode[order(structure$position)]
+  latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
+  terms <- make_family(family, linkf)$terms(
+    mu + latent_linear_predictor(latent_map, mode), y, units_m
+  )
+  if (is.null(terms) || !all(is.finite(terms$curvature))) {
+    riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")
+  }
+  list(mode = mode, weights = pmax(terms$curvature, 0), iterations = NA_integer_,
+       reached_limit = NA, restarted = TRUE)
+}
+
+##' Set control parameters for certified MCML estimation
+##'
+##' Non-Gaussian models are fitted by Monte Carlo maximum likelihood with
+##' importance sampling. The estimated log-likelihood is maximised on a
+##' fitting sample of draws, the estimate is corrected by one Newton step with
+##' the score from an independent validation sample, followed by further steps
+##' on that sample when the fitting sample predicts that one step leaves a
+##' residual, and the corrected estimate is certified with a second, fresh
+##' validation sample. The radius of the certificate, its allowance for the
+##' Monte Carlo error of that sample's score, is the larger of the radii of
+##' that sample and of a replicate of the same size drawn at the same
+##' estimate. The radius of one sample is estimated from its own draws, and is
+##' too small when the sample misses the rare draws of very large weight that
+##' dominate its error, which the replicate misses independently. The
+##' certificate is an approximate 95% bound, in statistical standard errors,
+##' on the Monte Carlo error of the estimate, that is its distance from the
+##' maximum of the exact likelihood that the fit has located. It is not an
+##' exact finite-sample guarantee, and it says nothing about whether that
+##' maximum is the highest (see `check_maxima`). If the certificate exceeds
+##' `tolerance`, the samples are enlarged to the size predicted to meet it and
+##' the fit is repeated.
+##'
+##' @param initial_draws Positive integer giving the number of draws in the
+##' fitting sample at the first stage. Defaults to 1,000.
+##' @param validation_draws Positive integer giving the number of draws in
+##' each validation sample, and in the replicate of the second, at the first
+##' stage. Later stages enlarge the
+##' validation samples in the same proportion as the fitting sample. Defaults
+##' to 5,000.
+##' @param max_draws Positive integer giving the largest permitted fitting
+##' sample. Defaults to 16,000.
+##' @param max_stages Positive integer giving the maximum number of stages.
+##' Defaults to 4.
+##' @param tolerance Positive number giving the largest accepted certificate,
+##' in statistical standard errors. Defaults to 0.1.
+##' @param proposal The importance distribution for the latent effects.
+##' `"global"` (the default) fits a Gaussian approximation to the whole
+##' conditional distribution of the latent effects, which keeps far more of
+##' the draws effective in sparse data than the Laplace approximation;
+##' `"laplace"` uses the Laplace approximation at the conditional mode. If the
+##' global approximation cannot be built at some parameter value, the stage is
+##' repeated with the Laplace approximation.
+##' @param defensive_weight Number in \[0, 1) giving the share of importance
+##' draws taken from the prior distribution of the latent effects instead of
+##' the Gaussian approximation. This defensive mixture keeps the variance of
+##' the importance weights finite, which a Gaussian proposal alone does not in
+##' most spatial datasets, so that Monte Carlo errors are valid. Defaults to
+##' 0.05. Set to 0 to use the Gaussian approximation alone.
+##' @param laplace_start Logical or `NULL`. If `TRUE`, the Laplace
+##' approximation to the likelihood is first maximised from the starting
+##' values, and Monte Carlo maximum likelihood starts from that estimate. If
+##' the global importance distribution cannot be built at that estimate, as
+##' can happen in sparse data when it has a very large nugget, the fit starts
+##' from the starting values instead. `NULL` (the default) means `TRUE`, except
+##' where `integrate_noise = TRUE` integrates a term out, where it means
+##' `FALSE`, because there the Laplace approximation's spurious maximum moves
+##' to the spatial effect and the start from it costs more without certifying
+##' more fits. With `integrate_noise = "auto"` and a nugget as the only term
+##' that can be integrated out, the Laplace estimate chooses the form of the
+##' first stage, which with the nugget integrated out starts from the starting
+##' values.
+##' @param integrate_noise Logical, or `"auto"`. If `TRUE`, a binomial or
+##' Poisson model integrates its independent Gaussian terms out of the
+##' likelihood numerically wherever the data allow it, and Monte Carlo maximum
+##' likelihood samples the spatial effect and the terms that stay. The model,
+##' its parameters and its likelihood are the same, so the option changes only
+##' how the same maximum is found. Sparse surveys with a large nugget, or with
+##' household effects, then keep far more effective draws. The terms are the
+##' nugget, whose levels are the locations, and each `re()` term. Records at a
+##' location with the same covariates, offset and random-effect levels are
+##' first combined into one unit. Then four rules apply.
+##' - A level of an `re()` term that holds a single unit, such as a
+##'   household with one record or with records that do not differ, is
+##'   integrated out of that unit's likelihood, and so is the nugget of a
+##'   location with a single unit.
+##' - At a location with several units the nugget is integrated out as
+##'   well, through an integral over the nugget of the units' own integrals,
+##'   when the units share their covariates and offset and differ only in the
+##'   levels of `re()` terms that each hold a single unit, as households of a
+##'   village with covariates measured at the village do.
+##' - At a location with several units whose covariates or offsets
+##'   differ, the units are integrated out in groups when every term but one
+##'   has a single level shared by all of them and the levels of that one lie
+##'   within the location. Its levels are the groups, such as the households
+##'   of a cluster whose children differ in sex or birth order, each
+##'   integrated over its own effect with its units' own covariates, and the
+##'   nugget is integrated over the groups' integrals. Where every term is
+##'   shared, the location is one group under its nugget.
+##' - At any other location the nugget stays sampled.
+##'
+##' Every other level stays sampled. That includes the levels of an `re()`
+##' term that span several locations, such as villages or districts with
+##' several sampled points, and the levels at a location where two `re()`
+##' terms vary, such as households and the individuals within them. A term
+##' can be integrated out at some of its levels and sampled at others.
+##' `check_computation()` reports, for each term, at how many levels it was
+##' integrated out and at how many it stayed sampled. It works with any link,
+##' including a custom `invlink`. Where the nugget variance is close to zero the
+##' likelihood is nearly flat along it, and there the Monte Carlo estimate of
+##' its effect is noisier with the nugget integrated out than sampled, so fewer
+##' such fits are certified. With `"auto"` each stage of the fit integrates out
+##' the nugget if its variance at the start of the stage is at least 0.1 and
+##' samples it otherwise. The first stage takes the variance from the Laplace
+##' estimate, or from the starting values if `laplace_start = FALSE`. Every
+##' validation bank is then drawn with the nugget sampled and integrated out,
+##' and the two estimates of the score are combined with weights inverse to
+##' their Monte Carlo covariances, so the certificate rests on the more precise
+##' form, or on both. A bank whose importance weights have a heavy tail, with a
+##' Pareto k above 0.8, can understate its covariance and is left out of the
+##' combination. A model with an `re()` term that can be integrated out is
+##' fitted with `"auto"` as with `TRUE`, its `re()` terms and its nugget
+##' integrated out at every stage wherever the rules above allow. On simulated
+##' surveys of households that certified every fit, and in a fraction of the
+##' time of sampling, also where the nugget variance was zero, where switching
+##' the nugget alone sometimes failed. Defaults to `"auto"`, which on simulated
+##' surveys with a nugget certified more fits than either form alone. A model
+##' without a nugget or `re()` terms is fitted in the same way whatever the
+##' value.
+##' @param check_maxima Logical. The certificate establishes Monte Carlo
+##' precision at the maximum found, not that no higher maximum exists. In
+##' sparse surveys an optimiser can stop at a maximum with a spatial scale far
+##' below the spacing between locations while a higher one exists at a longer
+##' scale, or the reverse. If `TRUE` (the default), a fitted scale below half
+##' the median distance between neighbouring locations is refitted from four
+##' dispersed starting values on the same Monte Carlo draws. After a fit at a
+##' longer scale the likelihood is evaluated at four shorter scales, with the
+##' coefficients and variance of the model with independent location effects
+##' (the limit of the model as the scale goes to zero, computed exactly by
+##' quadrature), and the fit is repeated from the best of them if it comes
+##' within 0.25 log-likelihood units of the fit. Exact lower bounds on the
+##' likelihood at short scales force a further search if they exceed the
+##' fitted log-likelihood. Separate maxima are compared on independent draws
+##' and the highest is kept, with a warning if it differs. A fit whose spatial
+##' correlation is numerically negligible is reported as numerically
+##' independent, with the scale unresolved and without standard errors or
+##' certificate. The screen of short scales and the exact bounds are
+##' available for the canonical links and models without unstructured random
+##' effects.
+##' @param start_comparison Logical. If `TRUE` (the default), a binomial,
+##' Poisson or negative binomial model with the canonical link and without
+##' `re()` terms compares two automatic starts by the Laplace approximation
+##' of the likelihood, RiskMap's defaults and the estimates of a Gaussian model
+##' fitted to the empirical link of the data, and starts from the better one.
+##' The values given in the `start_pars` of [glgpm()] replace their own in both.
+##' With `FALSE` the fit starts from the defaults and the values given, without
+##' the comparison. There is no comparison when `start_pars` gives every
+##' parameter, nor for a Gaussian model.
+##' @param pc_prior Logical. If `TRUE`, the spatial variance and scale are
+##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
+##' estimate maximises the penalised likelihood on the log scale of the
+##' covariance parameters. This shrinks estimates away from degenerate
+##' solutions in small or sparse datasets. It is recommended for small or
+##' low-prevalence surveys, especially before prediction with
+##' `parameter_uncertainty = TRUE` in [predict.RiskMap()].
+##' When the spatial variance is large and well identified, the penalty shrinks
+##' it somewhat towards zero, so the default is `FALSE`. The penalties and
+##' their four settings are experimental and may change in a minor release.
+##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
+##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
+##' spatial standard deviation on the scale of the linear predictor. Default
+##' 1 and 0.05.
+##' @param pc_scale_threshold,pc_scale_probability The penalty sets
+##' P(phi < `pc_scale_threshold`) = `pc_scale_probability`, where phi is the
+##' spatial scale in the units of the coordinates. By default the threshold is
+##' the median distance between neighbouring locations and the probability is
+##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
-##' control_mcml <- set_control_mcml(max_samples = 10000)
+##' control_mcml <- set_control_mcml(max_draws = 8000)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
-                             max_stages = 5L,
-                             min_effective_samples = 100L,
-                             max_pareto_k = 0.7,
-                             max_mcse_ratio = 0.1,
-                             score_probability = 0.99,
-                             laplace_start = FALSE,
-                             hold_short_range = TRUE) {
-  check_positive_integer(initial_samples, "initial_samples")
-  check_positive_integer(max_samples, "max_samples")
+set_control_mcml <- function(initial_draws = 1000L,
+                             validation_draws = 5000L,
+                             max_draws = 16000L,
+                             max_stages = 4L,
+                             tolerance = 0.1,
+                             proposal = c("global", "laplace"),
+                             defensive_weight = 0.05,
+                             laplace_start = NULL,
+                             integrate_noise = "auto",
+                             check_maxima = TRUE,
+                             start_comparison = TRUE,
+                             pc_prior = FALSE,
+                             pc_sigma_threshold = 1,
+                             pc_sigma_probability = 0.05,
+                             pc_scale_threshold = NULL,
+                             pc_scale_probability = 0.05) {
+  check_positive_integer(initial_draws, "initial_draws")
+  check_positive_integer(validation_draws, "validation_draws")
+  check_positive_integer(max_draws, "max_draws")
   check_positive_integer(max_stages, "max_stages")
-  check_positive_integer(min_effective_samples, "min_effective_samples")
-  check_positive_number(max_pareto_k, "")
-  check_range(max_mcse_ratio, 0, 1, allow_equal = FALSE,
-              name = "max_mcse_ratio")
-  check_range(score_probability, 0, 1, allow_equal = FALSE,
-              name = "score_probability")
-  if (!is.logical(laplace_start) || length(laplace_start) != 1L ||
-      is.na(laplace_start)) {
-    stop("'laplace_start' must be TRUE or FALSE.", call. = FALSE)
+  check_positive_number(tolerance, "")
+  proposal <- match_choice(proposal)
+  if (!is.numeric(defensive_weight) || length(defensive_weight) != 1L ||
+      !is.finite(defensive_weight) || defensive_weight < 0 ||
+      defensive_weight >= 1) {
+    supplied <- describe_value(defensive_weight)
+    abort_input("{.arg defensive_weight} must be a single number from 0 up to but not including 1, not {supplied}.", arg = "defensive_weight")
   }
-  if (!is.logical(hold_short_range) || length(hold_short_range) != 1L ||
-      is.na(hold_short_range)) {
-    stop("'hold_short_range' must be TRUE or FALSE.", call. = FALSE)
+  if (!is.null(laplace_start)) check_logical(laplace_start)
+  if (!isTRUE(integrate_noise) && !isFALSE(integrate_noise) &&
+      !identical(integrate_noise, "auto")) {
+    supplied <- describe_value(integrate_noise)
+    abort_input("{.arg integrate_noise} must be {.code TRUE}, {.code FALSE} or {.val auto}, not {supplied}.", arg = "integrate_noise")
   }
-  if (max_samples < initial_samples) {
-    stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
+  check_logical(check_maxima)
+  check_logical(start_comparison)
+  check_logical(pc_prior)
+  check_positive_number(pc_sigma_threshold, "")
+  check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
+              arg = "pc_sigma_probability")
+  if (!is.null(pc_scale_threshold)) {
+    check_positive_number(pc_scale_threshold, "")
   }
-  if (min_effective_samples > max_samples) {
-    stop("'min_effective_samples' cannot exceed 'max_samples'.",
-         call. = FALSE)
+  check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
+              arg = "pc_scale_probability")
+  if (max_draws < initial_draws) {
+    abort_input("{.arg max_draws} must be at least {.arg initial_draws} ({initial_draws}), not {max_draws}.", arg = "max_draws")
   }
 
   structure(
     list(
-      initial_samples = as.integer(initial_samples),
-      max_samples = as.integer(max_samples),
+      initial_draws = as.integer(initial_draws),
+      validation_draws = as.integer(validation_draws),
+      max_draws = as.integer(max_draws),
       max_stages = as.integer(max_stages),
-      min_effective_samples = as.integer(min_effective_samples),
-      max_pareto_k = max_pareto_k,
-      max_mcse_ratio = max_mcse_ratio,
-      score_probability = score_probability,
+      tolerance = tolerance,
+      proposal = proposal,
+      defensive_weight = defensive_weight,
       laplace_start = laplace_start,
-      hold_short_range = hold_short_range
+      integrate_noise = integrate_noise,
+      check_maxima = check_maxima,
+      start_comparison = start_comparison,
+      pc_prior = pc_prior,
+      pc_sigma_threshold = pc_sigma_threshold,
+      pc_sigma_probability = pc_sigma_probability,
+      pc_scale_threshold = pc_scale_threshold,
+      pc_scale_probability = pc_scale_probability
     ),
     class = "RiskMap_control_mcml"
   )
@@ -3050,35 +3609,12 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
 
 ##' Use a distinct reproducible stream for final conditional sampling
 ##' @noRd
-final_sampling_control <- function(control_mcmc, mcml_stages) {
-  out <- control_mcmc
-  if (!is.null(out$seed)) {
-    integer_max <- .Machine$integer.max
-    # Each adaptive stage consumes two independent streams: fitting and
-    # validation. Final fitted-value sampling starts after both.
-    offset <- 2L * mcml_stages + 1L
-    out$seed <- as.integer(((out$seed - 1 + offset) %% integer_max) + 1)
-  }
-  out
-}
-
-##' Convert a working-scale estimate into the next MCML reference point
-##' @noRd
-estimate_to_mcml_reference <- function(estimate, fix_tau2) {
-  out <- list(
-    beta = unname(estimate$beta),
-    sigma2 = exp(estimate$sigma2),
-    phi = exp(estimate$phi)
-  )
-  if (isTRUE(fix_tau2)) {
-    out$tau2 <- exp(estimate$sigma2 + estimate$nu2)
-  } else {
-    out$tau2 <- fix_tau2
-  }
-  if (!is.null(estimate$sigma2_re)) {
-    out$sigma2_re <- exp(estimate$sigma2_re)
-  }
-  out
+final_sampling_seed <- function(seed, mcml_stages) {
+  # Each certified stage consumes three independent streams: the fitting
+  # bank and two validation banks. Final fitted-value sampling starts after
+  # them.
+  offset <- 3L * mcml_stages + 1L
+  as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
 }
 
 ##' Draw latent effects and fitted values at a non-Gaussian fitted estimate
@@ -3088,13 +3624,22 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' The first block is the location-level Gaussian effect; when a nugget is
 ##' present it is included in that block. Subsequent blocks are unstructured
 ##' random effects, in the same layout historically used by `S_samples`.
+##' The records are the model's, with `family_parameters` for a family that
+##' has them, and the fitted values are their means under `link_function`,
+##' the link of the model's mean. The parameters are those of the model's
+##' table (`parameter_table()`), at their natural values, with the nugget at
+##' its held value when it is not estimated. The estimate, `D` and `coords` are
+##' on the scale of the fitting engines, with standardised covariates and
+##' rescaled distances.
 ##'
 ##' @noRd
-sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
-                                      cov_offset, ID_coords, ID_re,
-                                      fix_tau2, family, inverse_link, kappa,
-                                      control_mcmc, messages) {
-  fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
+sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
+                                      coords, cov_offset, ID_coords, ID_re,
+                                      family, link_function, kappa,
+                                      control_mcmc, seed = NULL, messages,
+                                      family_parameters = NULL) {
+  fitted_pars <- natural_values(parameters, estimate, held = TRUE,
+                                engine_scale = TRUE)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
   distances <- pairwise_distances(coords)
   Sigma <- fitted_pars$sigma2 * matern_correlation(
@@ -3107,8 +3652,17 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     y = y, units_m = units_m, mu = mu, Sigma = Sigma,
     ID_coords = ID_coords, ID_re = ID_re,
     sigma2_re = fitted_pars$sigma2_re,
-    family = family, invlink = inverse_link,
-    control_mcmc = control_mcmc, messages = messages
+    family = family,
+    # Canonical links are evaluated inside the compiled chain. Custom links
+    # pass the inverse link with the derivatives the fit used, so that they
+    # are not derived again.
+    invlink = if (identical(link_function$name, "canonical")) {
+      NULL
+    } else {
+      link_function[c("inv", "d1", "d2")]
+    },
+    control_mcmc = control_mcmc, seed = seed,
+    family_parameters = family_parameters
   )
 
   eta <- sweep(
@@ -3124,206 +3678,102 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 
   sample_blocks <- simulation$samples
   response_mean <- colMeans(
-    matrix(inverse_link(as.numeric(eta)), nrow = nrow(eta))
+    matrix(link_function$inv(as.numeric(eta)), nrow = nrow(eta))
   )
-  if (family == "poisson") response_mean <- units_m * response_mean
+  response_mean <- family_traits(family)$fitted_mean(response_mean, units_m)
 
   list(
     samples = do.call(cbind, sample_blocks),
     linear_predictors = colMeans(eta),
     fitted_values = response_mean,
-    diagnostics = simulation[c(
-      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
-      "invlink_used"
-    )]
+    # The sampling settings let plot_mcmc() show the iteration of each sample.
+    diagnostics = c(
+      simulation[c(
+        "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
+        "invlink_used"
+      )],
+      unclass(control_mcmc)[c("n_draws", "burnin", "thin")]
+    )
   )
 }
 
 ##' Set Control Parameters for Simulation
 ##'
-##' This function sets control parameters for running simulations, supporting MCMC methods
-##' for glgpm models.
+##' The settings of the Langevin sampler that draws the latent effects of a
+##' binomial, Poisson or negative binomial model given the data, in [glgpm()]
+##' and [predict()][predict.RiskMap()].
 ##'
-##' @param n_sim Integer. The total number of simulations to run. Default is 12000.
-##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
-##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
+##' @param n_draws Positive integer. The number of draws kept, after burn-in
+##'   and thinning, on which fitted values and predictions are based. Default
+##'   is 2,000. The chain runs `burnin + n_draws * thin` iterations.
+##' @param burnin Non-negative integer. The number of iterations discarded at
+##'   the start of the chain, during which the step size is adapted. Default
+##'   is 2,000.
+##' @param thin Positive integer. One iteration in `thin` is kept after
+##'   burn-in. Default is 10.
 ##' @param h Numeric. An optional positive step size for Langevin MCMC.
-##' @param c1.h Numeric. Positive scale for the burn-in Robbins-Monro step-size
-##'   adaptation. Default is 1.
-##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
+##' @param c1_h Numeric. Positive scale for the burn-in Robbins-Monro
+##'   step-size adaptation. Default is 1.
+##' @param c2_h Numeric. Exponent controlling the diminishing adaptation gain.
 ##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
-##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
-##' generating chains and make results reproducible. Defaults to `NULL`.
-##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
-##' If \code{linear_model = TRUE}, only \code{n_sim} is required
+##' During burn-in the step size of the Langevin chain is adapted towards an
+##' acceptance rate of 0.574, starting from `h` (by default
+##' \eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
+##' burn-in is the geometric mean of the adapted step over the second half of
+##' burn-in.
 ##'
-##' @return A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
-##' \itemize{
-##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
-##' }
+##' The latent effects of a Gaussian model are drawn independently, so its
+##' predictions take `n_draws` draws without burn-in or thinning.
+##'
+##' Seeds are not part of the control settings. Pass `seed` to [glgpm()],
+##' [predict.RiskMap()], [assess_prediction()] or [assess_simulation()].
+##'
+##' @return A list of class `"RiskMap_control_mcmc"` with `n_draws`, `burnin`,
+##'   `thin`, `h`, `c1_h` and `c2_h`.
 ##'
 ##' @examples
 ##' # Default parameters (MCMC)
 ##' control_mcmc <- set_control_mcmc()
 ##'
-##' # Custom MCMC parameters
-##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
+##' # Custom MCMC parameters: 600 draws from 3,000 + 600 * 20 iterations
+##' control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 ##'
-##' @seealso \code{\link{glgpm}}
+##' @seealso [glgpm()]
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_mcmc <- function(n_sim = 12000,
-                            burnin = 2000,
-                            thin = 10,
-                            h = NULL,
-                            c1.h = 1,
-                            c2.h = 0.6,
-                            seed = NULL,
-                            linear_model = FALSE){
-
-  check_positive_integer(seed, "seed", allow_null = TRUE,
-                         allow_zero = TRUE)
-
-  # =============================================================================
-  # LINEAR MODEL (simple case for both samplers)
-  # =============================================================================
-
-  if (linear_model) {
-    res <- list(
-      n_sim = n_sim,
-      linear_model = linear_model
-    )
-    class(res) <- "RiskMap_control_mcmc"
-    return(res)
-  }
-
-  # =============================================================================
-  # MCMC SAMPLER (Langevin for glgpm)
-  # =============================================================================
-
-  # Validate MCMC parameters
-  check_positive_integer(n_sim, "n_sim")
+set_control_mcmc <- function(n_draws = 2000,
+                             burnin = 2000,
+                             thin = 10,
+                             h = NULL,
+                             c1_h = 1,
+                             c2_h = 0.6) {
+  check_positive_integer(n_draws, "n_draws")
   check_positive_integer(burnin, "burnin", allow_zero = TRUE)
   check_positive_integer(thin, "thin")
-
-  if (n_sim <= burnin) {
-    stop("n_sim must be larger than burnin.")
+  # As doubles, since integer arguments could overflow.
+  iterations <- as.numeric(burnin) + as.numeric(n_draws) * as.numeric(thin)
+  if (iterations > .Machine$integer.max) {
+    abort_input("{.code burnin + n_draws * thin} must be at most {format(.Machine$integer.max, big.mark = ',')} iterations, not {format(iterations, big.mark = ',', scientific = FALSE)}.", arg = "n_draws")
+  }
+  if (!is.null(h)) check_positive_number(h, "")
+  check_positive_number(c1_h, "")
+  check_zero_one(c2_h, "c2_h")
+  if (c2_h <= 0.5) {
+    abort_input("{.arg c2_h} must be larger than 0.5 and at most 1, not {c2_h}.", arg = "c2_h")
   }
 
-  if (thin <= 0) {
-    stop("thin must be positive")
-  }
-
-  if ((n_sim - burnin) %% thin != 0) {
-    stop("thin must be a divisor of (n_sim - burnin)")
-  }
-
-  if (!is.null(h) && (!is.numeric(h) || length(h) != 1L ||
-                      !is.finite(h) || h <= 0)) {
-    stop("h must be a positive finite number.")
-  }
-
-  if (!is.numeric(c1.h) || length(c1.h) != 1L ||
-      !is.finite(c1.h) || c1.h <= 0) {
-    stop("c1.h must be a positive finite number.")
-  }
-
-  check_zero_one(c2.h, "c2.h")
-  if (c2.h <= 0.5) {
-    stop("c2.h must be larger than 0.5 and no larger than 1.")
-  }
-
-  res <- list(
-    n_sim = n_sim,
-    burnin = burnin,
-    thin = thin,
-    h = h,
-    c1.h = c1.h,
-    c2.h = c2.h,
-    seed = seed,
-    linear_model = FALSE
+  structure(
+    list(n_draws = n_draws, burnin = burnin, thin = thin, h = h,
+         c1_h = c1_h, c2_h = c2_h),
+    class = "RiskMap_control_mcmc"
   )
-
-  class(res) <- "RiskMap_control_mcmc"
-  return(res)
 }
 
-##' Check MCMC Convergence for Spatial Random Effects
-##'
-##' This function checks the Markov Chain Monte Carlo (MCMC) convergence of spatial random effects
-##' for a fitted \code{RiskMap} object.
-##' It plots the trace plot and autocorrelation function (ACF) for the MCMC chain
-##' and calculates the effective sample size (ESS).
-##'
-##' @param object A fitted \code{RiskMap} object returned by \code{\link{glgpm}}.
-##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
-##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
-##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
-##'  Must be a positive integer corresponding to a location in the data. Ignored if \code{check_mean = TRUE}.
-##' @param ... Additional arguments passed to the \code{\link[stats]{acf}} function for customizing the ACF plot.
-##'
-##' @details
-##' The function first checks that the input is a fitted \code{RiskMap} object.
-##' Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
-##' across all locations for each iteration or uses the specified component.
-##' It then generates two plots:
-##' - A trace plot of the selected spatial random effect over iterations.
-##' - An autocorrelation plot (ACF) with the effective sample size (ESS) displayed in the title.
-##'
-##' The ESS is computed using the \code{\link[sns]{ess}} function, which provides a measure of the effective number
-##' of independent samples in the MCMC chain.
-##'
-##' If \code{check_mean = TRUE}, the \code{component} argument is ignored, and a warning is issued.
-##' To specify a particular component of the random effects vector, set \code{check_mean = FALSE} and provide
-##' a valid \code{component} value.
-##'
-##' @return
-##' No return value, called for side effects (plots and warnings).
-##' @importFrom sns ess
-##' @importFrom graphics par
-##' @export
-plot_mcmc <- function(object, check_mean = TRUE,
-                       component = NULL, ...) {
-  if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
-         call. = FALSE)
-  }
-
-  if (object$family == "gaussian")
-    stop("'object' is a gaussian model which cannot contain MCMC chains")
-
-  if (is.null(object$S_samples))
-    stop("'object' does not contain any MCMC chains - rerun 'glgpm' with 'return_samples' = TRUE")
-
-  S_samples <- object$S_samples
-
-  if(check_mean & !is.null(component)) {
-    warning("if check_mean = TRUE, the value passed to 'component' is ignored;
-            set check_mean = FALSE when specifying a value for 'component'")
-  }
-  n_samples <- nrow(S_samples)
-  n_loc <- ncol(S_samples)
-  if(check_mean) {
-    S_chain <- apply(S_samples, 1, mean)
-  } else {
-    if(is.null(component)) stop("When 'check_mean' = FALSE a component of the
-                                random effects vector must be specified through 'component'
-                                by providing a positive integer")
-    check_positive_integer(component, "component")
-    if(component > n_loc) stop("'component' must be a single positive integer
-                               between 1 and the number of locations in the data")
-    S_chain <- S_samples[,component]
-  }
-
-  par(mfrow = c(1,2))
-  plot(S_chain, type = "l",
-       ylab = "", xlab = "Iteration",
-       main = "Spatial random effect")
-
-  S_chain_ess <- round(ess(S_chain),3)
-  acf(S_chain, main = paste("Effective sample size:",
-                            S_chain_ess), ...)
-  par(mfrow = c(1,1))
+##' The number of iterations of the chain that `control_mcmc` sets,
+##' `burnin + n_draws * thin`
+##' @noRd
+mcmc_iterations <- function(control_mcmc) {
+  control_mcmc$burnin + control_mcmc$n_draws * control_mcmc$thin
 }

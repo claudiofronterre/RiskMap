@@ -118,7 +118,7 @@ test_that("invalid random-effect variables fail informatively", {
       data.frame(group = c("a", NA)),
       "group"
     ),
-    "contains missing values",
+    "has missing values",
     fixed = TRUE
   )
   expect_error(
@@ -126,7 +126,7 @@ test_that("invalid random-effect variables fail informatively", {
       data.frame(group = c(1, Inf)),
       "group"
     ),
-    "contains non-finite values",
+    "has values that aren't finite",
     fixed = TRUE
   )
   expect_error(
@@ -134,12 +134,12 @@ test_that("invalid random-effect variables fail informatively", {
       data.frame(group = c(TRUE, FALSE)),
       "group"
     ),
-    "must be a factor, character, integer, or numeric vector",
+    "must be a factor, character, integer or numeric vector",
     fixed = TRUE
   )
   expect_error(
     prepare_random_effects(data.frame(value = 1:2), "group"),
-    "not found in `data`",
+    "must have the random-effect column",
     fixed = TRUE
   )
 })

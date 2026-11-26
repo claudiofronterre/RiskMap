@@ -1,216 +1,238 @@
 test_that("glgpm produces errors", {
-  expect_error(
+  skip_on_cran()
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c(0, 1), unknown = 1)),
-    "'unknown' is not a valid starting parameter",
-    fixed = TRUE
+    "start_pars"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm("not formula", data = gaussian_data, family = "gaussian"),
-    "'formula' must be a 'formula'"
+    "formula"
   )
 
   expect_error(
     glgpm(~ cov + gp(), data = gaussian_data, family = "gaussian", messages = FALSE),
-    "The 'formula' must specify a response"
+    "must have a response"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian", messages = FALSE),
-    "When there is only one observation per location"
+    "formula"
   )
 
   expect_error(
     glgpm(y ~ cov + gp() + re(), data = gaussian_data, family = "gaussian", messages = FALSE),
-    "You need to provide at least one variable to re"
+    "needs at least one variable"
   )
 
   saturated_data <- gaussian_data
   saturated_data$row_id <- seq_len(nrow(saturated_data))
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp() + re(row_id), data = saturated_data, family = "gaussian", messages = FALSE),
-    "have one level per observation.*'gaussian'"
+    "formula"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = data, family = "gaussian"),
-    "'data' must be of class 'sf'"
+    "data"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "invalid"),
-    "'family' must be either 'gaussian', 'binomial' or 'poisson'"
+    "family"
   )
 
-  # need to document that invlink can be a list
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", invlink = function(x) x),
-    "'invlink' cannot be provided when 'family' is 'gaussian'"
+    "invlink"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = poisson_data, family = "poisson", invlink = "not func", messages = FALSE),
-    "'invlink' must be NULL, a function, or a list"
+    "invlink"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", denominator = 1),
-    "'denominator' cannot be provided when 'family' is 'gaussian'"
+    "denominator"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", denominator = 1),
-    "'denominator' must be provided as an unquoted column name for a column in 'data'"
+    "denominator"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", denominator = not_present),
-    "the variable provided to 'denominator' is not present in 'data'"
+    "denominator"
   )
 
-  expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", model_crs = 12345),
-    "The 'model_crs' provided is not a valid CRS"
+  # Records that aren't of the family.
+  wrong <- list(
+    binomial = list(y = c(1.5, -1), denominator = c(2.5, 0, NA, Inf, -1)),
+    poisson = list(y = c(1.5, -1), denominator = c(0, NA, Inf, -1))
   )
+  for (family in names(wrong)) {
+    for (column in c("y", "denominator")) {
+      for (value in wrong[[family]][[column]]) {
+        wrong_data <- if (family == "binomial") binomial_data else poisson_data
+        wrong_data$y[1] <- 0
+        wrong_data[[column]][1] <- value
+        expect_input_error(
+          glgpm(y ~ cov + gp(), data = wrong_data, family = family, denominator = denominator, messages = FALSE),
+          if (column == "y") "data" else column
+        )
+      }
+    }
+  }
 
   expect_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", distance_crs = 12345),
+    "distance_crs", class = "riskmap_error_input"
+  )
+
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", distance_units = "not valid"),
-    "'distance_units' must be either 'km' or 'm'"
+    "distance_units"
   )
 
-  expect_error(
-    glgpm(y ~ cov + gp(), data = latlon_data, family = "gaussian", model_crs = 4326, messages = FALSE),
-    "'model_crs' must be a projected CRS, not longitude/latitude"
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = latlon_data, family = "gaussian", distance_crs = 4326, messages = FALSE),
+    "distance_crs"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", return_samples = "not logical"),
-    "'return_samples' must be either TRUE or FALSE"
+    "return_samples"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", messages = "not logical"),
-    "'messages' must be either TRUE or FALSE"
+    "messages"
   )
 
-  expect_error(
-    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", fix_var_me = 1),
-    "'fix_var_me' cannot be provided when 'family' is 'binomial'"
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+          denominator = denominator, fixed_pars = list(sigma2_me = 1)),
+    "fixed_pars"
   )
 
-  expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = c(1, 2)),
-    "'fix_var_me' must be NULL or a single positive value or zero"
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2_me = c(1, 2))),
+    "fixed_pars"
   )
 
-  expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = "not number"),
-    "'fix_var_me' must be NULL or a single positive value or zero"
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2_me = "not number")),
+    "fixed_pars"
   )
 
-  expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = -1),
-    "'fix_var_me' must be NULL or a single positive value or zero"
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2_me = -1)),
+    "fixed_pars"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(invalid = 1), messages = FALSE),
-    "'invalid' is not a valid starting parameter"
+    "start_pars", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(invalid = 1, silly = 2), messages = FALSE),
-    "'invalid', 'silly' is not a valid starting parameter"
+    "\"invalid\" and \"silly\" are not among them", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = 1), messages = FALSE),
-    "number of starting values provided for 'beta' do not match"
+    "must have a value for each column of the design matrix, 2, not 1",
+    fixed = TRUE
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           control_mcml = list(max_stages = 2), messages = FALSE),
-    "set_control_mcml"
+    "set_control_mcml", class = "riskmap_error_input"
   )
 
-  expect_error(set_control_mcml(initial_samples = 0), "positive integer")
+  expect_error(set_control_mcml(initial_draws = 0), "positive integer")
   expect_error(set_control_mcml(max_stages = 0), "positive integer")
-  expect_error(set_control_mcml(max_mcse_ratio = 0), "strictly between")
-  expect_error(set_control_mcml(score_probability = 1), "strictly between")
+  expect_error(set_control_mcml(tolerance = -1), "positive number")
   expect_error(
-    set_control_mcml(initial_samples = 1000, max_samples = 500),
-    "at least 'initial_samples'"
+    set_control_mcml(initial_draws = 1000, max_draws = 500),
+    "at least `initial_draws`", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c("a", "b")), messages = FALSE),
-    "The starting values for 'beta' must be numeric"
+    "must be finite numbers", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2 = -1), messages = FALSE),
-    "The starting value for 'sigma2' must be a single positive number"
+    "sigma2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2 = "a"), messages = FALSE),
-    "The starting value for 'sigma2' must be a single positive number"
+    "sigma2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(phi = -1), messages = FALSE),
-    "The starting value for 'phi' must be a single positive number"
+    "phi", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian",
-          fix_var_me = 0, start_pars = list(tau2 = -1), messages = FALSE),
-    "The starting value for 'tau2' must be a single positive number"
+          fixed_pars = list(sigma2_me = 0), start_pars = list(tau2 = -1), messages = FALSE),
+    "tau2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(tau2 = 1), messages = FALSE),
-    "The starting value for 'tau2' cannot be provided when 'nugget'"
+    "tau2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_me = -1), messages = FALSE),
-    "The starting value for 'sigma2_me' must be a single positive number"
+    "sigma2_me", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_re = c(1, 2)), messages = FALSE),
-    "Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model"
+    "\"sigma2_re\" is not among them", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp() + re(i), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_re = c(1, 2)), messages = FALSE),
-    "The starting values for 'sigma2_re' do not match the number"
+    "a value for each `re()` term", fixed = TRUE, class = "riskmap_error_input"
   )
 
 })
 
 expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
-                     "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
-                     "fix_var_me", "formula", "family", "distance_units",
+                     "y", "D", "coords", "ID_coords", "re", "ID_re", "nugget",
+                     "fixed_pars", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
-                     "mcml_converged", "mcml_selected_iteration",
-                     "linear_predictors", "fitted_values")
+                     "mcml_certified", "mcml_selected_iteration",
+                     "linear_predictors", "fitted_values", "seed")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -227,7 +249,7 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_identical(fitted(fit_no_re), fit_no_re$fitted_values)
   expect_identical(fitted(fit_no_re, type = "link"),
                fit_no_re$linear_predictors)
-  expect_null(fit_no_re$mcml_converged)
+  expect_null(fit_no_re$mcml_certified)
   expect_null(fit_no_re$mcml_selected_iteration)
   expect_identical(fit_no_re$family, "gaussian")
   expect_identical(fit_no_re$coords[,1], data$x)
@@ -247,7 +269,7 @@ test_that("glgpm produces expected output for gaussian models", {
   fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
                            data = gaussian_data,
                            family = "gaussian",
-                           fix_var_me = 0.1,
+                           fixed_pars = list(sigma2_me = 0.1),
                            messages = FALSE)
   expect_true(is.finite(coef(fit_re_fixed_me)$sigma2_re[["i"]]))
 
@@ -281,6 +303,7 @@ test_that("glgpm produces expected output for gaussian models", {
 })
 
 test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
+  skip_on_cran()
   # replicating locations gives more than three observations per latent
   # effect, so glgpm_lm should not fall back to glgpm_lm_direct; six copies
   # are needed for re(i, j), which has 20 + 10 + 2 = 32 latent effects
@@ -315,10 +338,20 @@ test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
 
 test_that("glgpm estimates a nugget in replicated gaussian models with the Woodbury path", {
   # replicated locations separate the nugget from the measurement error, and
-  # give enough observations per latent effect to avoid glgpm_lm_direct
-  set.seed(2)
-  replicated_data <- do.call(rbind, replicate(5, gaussian_data, simplify = FALSE))
-  replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
+  # give enough observations per latent effect to avoid glgpm_lm_direct. The
+  # spatial correlation reaches several locations, so that it separates the
+  # nugget from the spatial variance and their covariance is well determined.
+  set.seed(4)
+  sites <- cbind(runif(40, 0, 10000), runif(40, 0, 10000))
+  spatial <- crossprod(chol(2 * exp(-as.matrix(dist(sites)) / 3000)),
+                       rnorm(40))
+  site <- rep(seq_len(40), 4)
+  replicated_data <- data.frame(x = sites[site, 1], z = sites[site, 2],
+                                cov = rnorm(160))
+  replicated_data$y <- 1 + 0.5 * replicated_data$cov + spatial[site] +
+    rnorm(40, sd = 0.7)[site] + rnorm(160, sd = 0.3)
+  replicated_data <- st_as_sf(replicated_data, coords = c("x", "z"),
+                              crs = 32637)
 
   woodbury_fit <- with_mocked_bindings(
     glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
@@ -347,7 +380,7 @@ test_that("glgpm fits gaussian models combining re() with a fixed measurement er
   fit <- glgpm(y ~ cov + gp() + re(i),
               data = gaussian_data,
               family = "gaussian",
-              fix_var_me = 0.1,
+              fixed_pars = list(sigma2_me = 0.1),
               messages = FALSE)
 
   expect_s3_class(fit, "RiskMap")
@@ -357,7 +390,7 @@ test_that("glgpm fits gaussian models combining re() with a fixed measurement er
   fit_nugget <- glgpm(y ~ cov + gp(nugget = TRUE) + re(i),
                       data = gaussian_data,
                       family = "gaussian",
-                      fix_var_me = 0.1,
+                      fixed_pars = list(sigma2_me = 0.1),
                       messages = FALSE)
 
   expect_s3_class(fit_nugget, "RiskMap")
@@ -370,7 +403,7 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
   saturated_data$row_id <- seq_len(nrow(saturated_data))
 
   fit <- glgpm(formula = y ~ cov + gp() + re(row_id), data = saturated_data,
-               family = "gaussian", messages = FALSE, fix_var_me = 0.1)
+               family = "gaussian", messages = FALSE, fixed_pars = list(sigma2_me = 0.1))
 
   expect_s3_class(fit, "RiskMap")
   expect_setequal(names(fit$estimate), c("beta", "sigma2", "phi", "sigma2_re"))
@@ -380,8 +413,8 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
           data = saturated_data,
           family = "gaussian",
           messages = FALSE,
-          fix_var_me = 0.1),
-    "cannot be distinguished from the nugget"
+          fixed_pars = list(sigma2_me = 0.1)),
+    "told apart from the nugget", class = "riskmap_error_input"
   )
 })
 
@@ -500,16 +533,14 @@ test_that("glgpm is invariant to fixed-effect covariate scale", {
 
 test_that("glgpm produces expected output for binomial models", {
 
-  expect_warning(
-    fit_no_re <- glgpm(y ~ cov + gp(),
-                       data = binomial_data,
-                       family = "binomial",
-                       denominator = denominator,
-                       control_mcmc = control_mcmc,
-                       control_mcml = fixture_control_mcml,
-                       messages = FALSE),
-    "spatial correlation cannot be distinguished from unstructured variation"
-  )
+  fit_no_re <- glgpm(y ~ cov + gp(),
+                     data = binomial_data,
+                     family = "binomial",
+                     denominator = denominator,
+                     control_mcmc = control_mcmc,
+                     seed = fixture_seed,
+                     control_mcml = fixture_control_mcml,
+                     messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
@@ -528,7 +559,7 @@ test_that("glgpm produces expected output for binomial models", {
                   data = binomial_data,
                   family = "binomial",
                   denominator = denominator,
-                  control_mcmc = control_mcmc,
+                  control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                   messages = FALSE)
 
@@ -546,32 +577,160 @@ test_that("glgpm produces expected output for binomial models", {
     re_samples[, fit_re$ID_re[[1]], drop = FALSE]
   expect_equal(fitted(fit_re), colMeans(plogis(eta_samples)))
   expect_equal(fit_re$linear_predictors, colMeans(eta_samples))
+  # A model with re() terms keeps the default start without a comparison.
   re_starting_values <- attr(fit_re, "starting_values")
-  expect_true(re_starting_values$selected %in%
-                c("current", "transformed_gaussian"))
-  expect_false(identical(
-    re_starting_values$fallback_reason,
-    "additional random effects are not yet supported by the transformed initializer"
-  ))
-  expect_true(
-    is.finite(re_starting_values$transformed_laplace) ||
-      grepl("invalid starting values|non-finite Laplace",
-            re_starting_values$fallback_reason)
+  expect_identical(re_starting_values$selected, "current")
+  expect_identical(re_starting_values$current_laplace, NA_real_)
+  expect_identical(re_starting_values$transformed_laplace, NA_real_)
+  expect_match(re_starting_values$fallback_reason, "re() terms",
+               fixed = TRUE)
+})
+
+test_that("responses and denominators of counts are whole to floating point", {
+  skip_on_cran()
+  fit <- function(data, family) {
+    glgpm(y ~ cov + gp(), data = data, family = family,
+          denominator = denominator, seed = fixture_seed,
+          fixed_pars = list(beta = c(0.2, 0.3), sigma2 = 0.5, phi = 2),
+          control_mcmc = control_mcmc, messages = FALSE)
+  }
+  # As a number found by a division may be.
+  nearly <- function(x) x * (1 + 1e-12)
+  data <- binomial_data
+  whole <- fit(data, "binomial")
+  data$y <- nearly(data$y)
+  data$denominator <- nearly(data$denominator)
+  rounded <- fit(data, "binomial")
+  expect_identical(rounded$y, whole$y)
+  expect_identical(rounded$units_m, whole$units_m)
+  expect_identical(rounded$S_samples, whole$S_samples)
+  # The simulation takes the denominators of the fit, as whole numbers.
+  expect_identical(simulated_values(simulate_glgpm(rounded, nsim = 2, seed = 1)),
+                   simulated_values(simulate_glgpm(whole, nsim = 2, seed = 1)))
+
+  # The start of a Poisson model regresses the rounded responses, which can be
+  # just below zero, and the exposures aren't rounded.
+  data <- poisson_data
+  data$denominator <- data$denominator + 0.5
+  data$y[1] <- 0
+  whole <- fit(data, "poisson")
+  data$y <- nearly(data$y)
+  data$y[1] <- 0.3 - 0.1 * 3
+  data$y[2] <- data$y[2] + 1.2e-8
+  expect_lt(data$y[1], 0)
+  rounded <- fit(data, "poisson")
+  expect_identical(rounded$y, whole$y)
+  expect_identical(rounded$units_m, data$denominator)
+  expect_identical(rounded$S_samples, whole$S_samples)
+})
+
+test_that("a model with re() terms keeps the default start without fitting a Gaussian model", {
+  skip_on_cran()
+  # The transformed-Gaussian candidate of such a model was fitted with dense
+  # matrices over all the records or all the levels of the terms, and the
+  # comparison could never choose it. The calls are counted, since an error
+  # in either would only be caught as a failed comparison.
+  calls <- 0L
+  local_mocked_bindings(
+    glgpm_lm = function(...) {
+      calls <<- calls + 1L
+      stop("the Gaussian model was fitted")
+    },
+    starting_laplace_log_marginal = function(...) {
+      calls <<- calls + 1L
+      stop("the starting values were compared")
+    }
   )
+  fit_with <- function(family, start_pars = list()) {
+    suppressWarnings(glgpm(
+      y ~ cov + gp() + re(i),
+      data = if (family == "binomial") binomial_data else poisson_data,
+      family = family, denominator = denominator,
+      control_mcmc = control_mcmc, seed = fixture_seed,
+      control_mcml = fixture_control_mcml, start_pars = start_pars,
+      return_samples = FALSE, messages = FALSE
+    ))
+  }
+  for (family in c("binomial", "poisson")) {
+    fit <- fit_with(family)
+    expect_identical(calls, 0L)
+    expect_identical(attr(fit, "starting_values")$selected, "current")
+    expect_identical(attr(fit, "starting_values")$reason, "re_terms")
+    # The default start, as when it is given.
+    given <- fit_with(family, list(sigma2_re = 1))
+    expect_identical(fit$estimate, given$estimate)
+  }
+})
+
+test_that("the transformed-Gaussian start is fitted to the totals of each location", {
+  # One record per location: the records as they are.
+  totals <- location_totals(1:3, c(5, 6, 7), cbind(1, c(0.1, 0.2, 0.3)),
+                            c(0, 0.5, 1), c(2L, 1L, 3L), c(2L, 1L, 3L))
+  expect_identical(totals$y, 1:3)
+  expect_identical(totals$ID_coords, c(2L, 1L, 3L))
+  expect_identical(totals$s_unique, c(2L, 1L, 3L))
+  # Several records at a location: sums of the responses and denominators,
+  # and the design rows and offsets averaged with the denominators as
+  # weights, in the order of the locations.
+  design <- cbind("(Intercept)" = 1, x = c(1, 3, 2, 4))
+  totals <- location_totals(c(1, 2, 0, 1), c(2, 6, 4, 4), design,
+                            c(0, 1, 0, 0), c(2L, 2L, 1L, 1L), c(2L, 1L))
+  expect_identical(totals$y, c(1, 3))
+  expect_identical(totals$units_m, c(8, 8))
+  expect_equal(totals$D, cbind("(Intercept)" = c(1, 1),
+                               x = c((2 * 4 + 4 * 4) / 8, (1 * 2 + 3 * 6) / 8)))
+  expect_equal(totals$offset, c(0, 6 / 8))
+  expect_identical(totals$ID_coords, 1:2)
+  expect_identical(totals$s_unique, 1:2)
+  # A location whose denominators are all zero averages with equal weights.
+  totals <- location_totals(c(1, 0, 0, 0), c(2, 6, 0, 0), design,
+                            c(0, 1, 0, 1), c(2L, 2L, 1L, 1L), c(2L, 1L))
+  expect_identical(totals$units_m, c(0, 8))
+  expect_equal(totals$D[1, ], c("(Intercept)" = 1, x = 3))
+  expect_equal(totals$offset, c(0.5, 6 / 8))
+
+  # In a fit, the Gaussian model has one observation per location.
+  data <- binomial_data[rep(seq_len(nrow(binomial_data)), each = 2), ]
+  observations <- NULL
+  local_mocked_bindings(glgpm_lm = function(y, ...) {
+    observations <<- length(y)
+    stop("recorded")
+  })
+  fit <- glgpm(y ~ cov + gp(), data = data, family = "binomial",
+               denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed, control_mcml = fixture_control_mcml,
+               return_samples = FALSE, messages = FALSE)
+  expect_identical(observations, nrow(binomial_data))
+  expect_match(attr(fit, "starting_values")$fallback_reason, "recorded")
+})
+
+test_that("the comparison of starts reads named Laplace values", {
+  # With re() terms the transformed candidate's value carried the name of the
+  # term, so scores["transformed_gaussian"] was missing and the defaults were
+  # always kept.
+  value <- 0
+  local_mocked_bindings(starting_laplace_log_marginal = function(...) {
+    value <<- value + 1
+    c(hh = -10 + value)
+  })
+  fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+               denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed, control_mcml = fixture_control_mcml,
+               return_samples = FALSE, messages = FALSE)
+  diagnostics <- attr(fit, "starting_values")
+  expect_identical(diagnostics$selected, "transformed_gaussian")
+  expect_identical(diagnostics$current_laplace, -9)
+  expect_identical(diagnostics$transformed_laplace, -8)
+  expect_null(diagnostics$reason)
 })
 
 test_that("transformed starts preserve an estimated nugget", {
-  expect_warning(
-    expect_warning(
-      fit <- glgpm(
-        y ~ cov + gp(nugget = TRUE), data = binomial_data,
-        family = "binomial", denominator = denominator,
-        control_mcmc = control_mcmc,
-        control_mcml = fixture_control_mcml, messages = FALSE
-      ),
-      "nugget variance \\(tau2\\) was estimated as effectively zero"
-    ),
-    "spatial correlation cannot be distinguished from unstructured variation"
+  skip_on_cran()
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_data,
+    family = "binomial", denominator = denominator,
+    control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
   )
 
   diagnostics <- attr(fit, "starting_values")
@@ -583,6 +742,7 @@ test_that("transformed starts preserve an estimated nugget", {
 })
 
 test_that("explicit non-Gaussian starts remain authoritative", {
+  skip_on_cran()
   data_frame <- sf::st_drop_geometry(binomial_data)
   glm_start <- glm(
     cbind(y, denominator - y) ~ cov,
@@ -599,14 +759,14 @@ test_that("explicit non-Gaussian starts remain authoritative", {
   )
 
   explicit_fit_2 <- glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
   explicit_fit <- glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
@@ -617,17 +777,15 @@ test_that("explicit non-Gaussian starts remain authoritative", {
 })
 
 test_that("final fitted samples support a nugget model", {
-  expect_warning(
-    fit <- glgpm(
-      y ~ cov + gp(nugget = 0.1),
-      data = binomial_data,
-      family = "binomial",
-      denominator = denominator,
-      control_mcmc = control_mcmc,
-                       control_mcml = fixture_control_mcml,
-      messages = FALSE
-    ),
-    "spatial correlation cannot be distinguished from unstructured variation"
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE),
+    fixed_pars = list(tau2 = 0.1),
+    data = binomial_data,
+    family = "binomial",
+    denominator = denominator,
+    control_mcmc = control_mcmc, seed = fixture_seed,
+                     control_mcml = fixture_control_mcml,
+    messages = FALSE
   )
 
   expect_identical(ncol(fit$S_samples), nrow(fit$coords))
@@ -636,6 +794,7 @@ test_that("final fitted samples support a nugget model", {
 })
 
 test_that("custom inverse links retain the current automatic start", {
+  skip_on_cran()
   custom_link <- list(
     inv = plogis,
     d1 = function(x) plogis(x) * (1 - plogis(x)),
@@ -645,8 +804,8 @@ test_that("custom inverse links retain the current automatic start", {
     }
   )
   fit <- glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     invlink = custom_link,
     messages = FALSE
@@ -657,17 +816,50 @@ test_that("custom inverse links retain the current automatic start", {
   expect_match(diagnostics$fallback_reason, "custom inverse links")
 })
 
+test_that("a binomial model without an intercept starts from a regression without one", {
+  # The start regression dropped the first column of the design matrix and
+  # added an intercept, so a model without one started from the coefficients
+  # of another model, shifted by one column. With a named link that start
+  # went straight to MCML.
+  regression_start <- function(formula, family) {
+    start <- NULL
+    local_mocked_bindings(select_nongaussian_start = function(current, ...) {
+      start <<- current$beta
+      stop("start recorded")
+    })
+    expect_error(glgpm(formula, data = binomial_data, family = family,
+                       denominator = denominator, messages = FALSE),
+                 "start recorded")
+    start
+  }
+  glm_start <- function(formula, link) {
+    coef(glm(formula, family = binomial(link),
+             data = st_drop_geometry(binomial_data)))
+  }
+  for (link in c("logit", "probit")) {
+    expect_identical(
+      regression_start(y ~ 0 + factor(j) + cov + gp(), binomial(link)),
+      glm_start(cbind(y, denominator - y) ~ 0 + factor(j) + cov, link)
+    )
+    expect_identical(
+      regression_start(y ~ 0 + cov + gp(), binomial(link)),
+      glm_start(cbind(y, denominator - y) ~ 0 + cov, link)
+    )
+    expect_identical(
+      regression_start(y ~ factor(j) + cov + gp(), binomial(link)),
+      glm_start(cbind(y, denominator - y) ~ factor(j) + cov, link)
+    )
+  }
+})
+
 test_that("glgpm produces expected output for poisson models", {
 
-  expect_warning(
-    fit_no_re <- glgpm(y ~ cov + gp(),
-                       data = poisson_data,
-                       family = "poisson",
-                       control_mcmc = control_mcmc,
-                       control_mcml = fixture_control_mcml,
-                       messages = FALSE),
-    "spatial correlation cannot be distinguished from unstructured variation"
-  )
+  fit_no_re <- glgpm(y ~ cov + gp(),
+                     data = poisson_data,
+                     family = "poisson",
+                     control_mcmc = control_mcmc, seed = fixture_seed,
+                     control_mcml = fixture_control_mcml,
+                     messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
@@ -678,7 +870,7 @@ test_that("glgpm produces expected output for poisson models", {
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = poisson_data,
                   family = "poisson",
-                  control_mcmc = control_mcmc,
+                  control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                   messages = FALSE)
 
@@ -690,7 +882,7 @@ test_that("glgpm produces expected output for poisson models", {
                       data = poisson_data,
                       denominator = denominator,
                       family = "poisson",
-                      control_mcmc = control_mcmc,
+                      control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                       messages = FALSE)
 
@@ -700,17 +892,18 @@ test_that("glgpm produces expected output for poisson models", {
   expect_true(all(fitted(fit_re_den) > 0))
 })
 
-test_that("adaptive MCML records independent precision diagnostics", {
+test_that("certified MCML records its certificate and bank diagnostics", {
   set.seed(9917)
   caller_seed <- .Random.seed
   expect_warning(
     fit <- glgpm(
       y ~ cov + gp(), data = binomial_data, family = "binomial",
-      denominator = denominator, control_mcmc = control_mcmc,
+      denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, messages = FALSE
     ),
     "spatial correlation cannot be distinguished from unstructured variation"
   )
+
   stage <- fit$mcml_history[[1L]]
   diagnostics <- attr(fit, "optimizer")
 
@@ -718,26 +911,74 @@ test_that("adaptive MCML records independent precision diagnostics", {
   expect_length(fit$mcml_history, 1L)
   expect_identical(stage$budget, 500L)
   expect_true(all(c(
-    "fit_effective_samples", "validation_effective_samples",
-    "max_parameter_mcse_ratio", "score_agreement_statistic",
-    "score_agreement_limit", "accepted", "timing"
+    "fit_diagnostics", "first_validation", "second_validation",
+    "replicate_validation", "certificate", "certificate_distance",
+    "certificate_radius", "certificate_radii", "radius_from",
+    "correction_size", "certified", "outcome", "timing"
   ) %in% names(stage)))
+  expect_identical(stage$certificate_radius, max(stage$certificate_radii))
+  expect_equal(stage$certificate,
+               stage$certificate_distance + stage$certificate_radius)
+  expect_identical(names(stage$replicate_validation),
+                   names(stage$second_validation))
+  expect_null(stage$information)
   expect_identical(diagnostics$mcml_budget, 500L)
+  expect_identical(diagnostics$mcml_validation_budget, 500L)
   expect_identical(diagnostics$mcml_stages, 1L)
-  expect_identical(diagnostics$mcml_supported, fit$mcml_converged)
+  expect_identical(diagnostics$mcml_certified, fit$mcml_certified)
+  expect_identical(diagnostics$mcml_certificate, stage$certificate)
   expect_identical(.Random.seed, caller_seed)
 })
 
-test_that("MCML control uses the calibrated precision defaults", {
-  control <- set_control_mcml()
+test_that("a fit is reproduced from the seed it stores", {
+  skip_on_cran()
+  fit_binomial <- function(seed = NULL) {
+    suppressWarnings(glgpm(
+      y ~ cov + gp(), data = binomial_data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      control_mcml = fixture_control_mcml, seed = seed, messages = FALSE
+    ))
+  }
+  set.seed(31)
+  first <- fit_binomial()
+  second <- fit_binomial()
+  expect_type(first$seed, "integer")
+  expect_false(identical(first$seed, second$seed))
 
-  expect_identical(control$initial_samples, 1000L)
-  expect_identical(control$max_samples, 20000L)
-  expect_identical(control$max_stages, 5L)
-  expect_identical(control$min_effective_samples, 100L)
-  expect_identical(control$max_pareto_k, 0.7)
-  expect_identical(control$max_mcse_ratio, 0.1)
-  expect_identical(control$score_probability, 0.99)
+  refit <- fit_binomial(first$seed)
+  expect_identical(refit$seed, first$seed)
+  expect_identical(refit$estimate, first$estimate)
+  expect_identical(refit$S_samples, first$S_samples)
+  expect_identical(refit$fitted_values, first$fitted_values)
+
+  # Without a seed, one integer is drawn from the session's stream, which
+  # advances it like any random call, and nothing else is drawn from it.
+  set.seed(32)
+  expected_seed <- sample.int(.Machine$integer.max, 1L)
+  expected_state <- .Random.seed
+  set.seed(32)
+  drawn <- fit_binomial()
+  expect_identical(drawn$seed, expected_seed)
+  expect_identical(.Random.seed, expected_state)
+  # A supplied seed leaves the session's stream unchanged, and is stored.
+  fit_binomial(5L)
+  expect_identical(.Random.seed, expected_state)
+  expect_identical(binomial_model$seed, as.integer(fixture_seed))
+})
+
+test_that("Gaussian fits store no seed and seeds are validated", {
+  expect_true("seed" %in% names(gaussian_model))
+  expect_null(gaussian_model$seed)
+  seeded <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+                  seed = 3, messages = FALSE)
+  expect_null(seeded$seed)
+  expect_identical(seeded$estimate, gaussian_intercept_model$estimate)
+  expect_error(
+    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian", seed = -1,
+          messages = FALSE),
+    "seed", class = "riskmap_error_input"
+  )
+  expect_error(set_control_mcmc(seed = 1), "unused argument")
 })
 
 
@@ -745,7 +986,7 @@ test_that("glgpm correctly reprojects to new CRS", {
 
   latlon <- st_transform(gaussian_data, 4326)
 
-  suggested_crs <- propose_utm(latlon)
+  suggested_crs <- propose_crs(latlon, messages = FALSE)
   sf_reproj <- st_transform(latlon, suggested_crs)
   scaled_coords <- coordinates_in_units(sf_reproj, "km")
 
@@ -755,7 +996,7 @@ test_that("glgpm correctly reprojects to new CRS", {
                  family = "gaussian",
                  distance_units = "km",
                  messages = FALSE),
-    "automatically reprojecting to EPSG"
+    "projected to EPSG"
   )
 
   expect_identical(fit$input_crs, st_crs(latlon))
@@ -763,14 +1004,14 @@ test_that("glgpm correctly reprojects to new CRS", {
   expect_identical(st_crs(fit$data), st_crs(suggested_crs))
 })
 
-test_that("glgpm honours an explicitly supplied projected model_crs", {
+test_that("glgpm honours an explicitly supplied projected distance_crs", {
 
   latlon <- st_transform(gaussian_data, 4326)
 
   fit <- glgpm(y ~ cov + gp(),
                data = latlon,
                family = "gaussian",
-               model_crs = 32637,
+               distance_crs = 32637,
                distance_units = "m",
                messages = FALSE)
 
@@ -789,66 +1030,52 @@ test_that("coordinates_in_units converts projected CRS units", {
                st_coordinates(foot_data) * 0.3048006096012192)
 })
 
-test_that("plot_mcmc produces errors as expected", {
+
+test_that("glgpm fits several re() calls as one call with all their variables", {
+  skip_on_cran()
+  gaussian_start <- list(sigma2_re = c(5, 10), sigma2_me = 0.01)
+  gaussian_one_call <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_data,
+                             family = "gaussian", start_pars = gaussian_start,
+                             messages = FALSE)
+  gaussian_two_calls <- glgpm(y ~ cov + gp() + re(i) + re(j), data = gaussian_data,
+                              family = "gaussian", start_pars = gaussian_start,
+                              messages = FALSE)
+  expect_identical(names(gaussian_two_calls$re), c("i", "j"))
+  expect_identical(coef(gaussian_two_calls), coef(gaussian_one_call))
+  expect_identical(gaussian_two_calls$covariance, gaussian_one_call$covariance)
+  expect_identical(
+    predict(gaussian_two_calls, seed = 1, messages = FALSE)$predictions,
+    predict(gaussian_one_call, seed = 1, messages = FALSE)$predictions
+  )
+
+  fit_binomial <- function(formula) {
+    suppressWarnings(glgpm(
+      formula, data = binomial_data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    ))
+  }
+  binomial_one_call <- fit_binomial(y ~ cov + gp() + re(i, j))
+  binomial_two_calls <- fit_binomial(y ~ cov + gp() + re(i) + re(j))
+  expect_identical(names(binomial_two_calls$re), c("i", "j"))
+  expect_identical(coef(binomial_two_calls), coef(binomial_one_call))
+})
+
+test_that("glgpm reads an offset alongside several re() calls and reports unusable offsets", {
+  fit <- glgpm(y ~ cov + gp() + re(i) + re(j) + offset(offset), data = gaussian_data,
+               family = "gaussian",
+               start_pars = list(sigma2_re = c(5, 10), sigma2_me = 0.01),
+               messages = FALSE)
+  expect_identical(fit$cov_offset, gaussian_data$offset)
 
   expect_error(
-    plot_mcmc("not risk"),
-    "'object' must be a 'RiskMap'")
-
+    glgpm(y ~ cov + gp() + offset(log(denominator)), data = gaussian_data,
+          family = "gaussian", messages = FALSE),
+    "must name a column of `data`"
+  )
   expect_error(
-    plot_mcmc(gaussian_model),
-    "'object' is a gaussian model")
-
-  binomial_without_samples <- glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
-                     control_mcml = fixture_control_mcml,
-    return_samples = FALSE, messages = FALSE
+    glgpm(y ~ gp() + offset(offset) + offset(cov), data = gaussian_data,
+          family = "gaussian", messages = FALSE),
+    "only one `offset\\(\\)` term"
   )
-  expect_null(binomial_without_samples$S_samples)
-  expect_null(binomial_without_samples$linear_predictors)
-  expect_null(fitted(binomial_without_samples))
-  expect_error(
-    plot_mcmc(binomial_without_samples),
-    "'object' does not contain any MCMC chains")
-
-  expect_warning(
-    plot_mcmc(poisson_model, component = 1),
-    "if check_mean = TRUE"
-  )
-
-  expect_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = NULL),
-    "When 'check_mean' = FALSE a component of the"
-  )
-
-  expect_error(
-    plot_mcmc(poisson_model, check_mean = FALSE,
-              component = ncol(poisson_model$S_samples) + 1),
-    "'component' must be a single positive integer"
-  )
-
-  expect_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = 10.5),
-    "'component' must be a single positive integer"
-  )
-
-  expect_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = 0),
-    "'component' must be a single positive integer"
-  )
-
-  expect_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = "no"),
-    "'component' must be a single positive integer"
-  )
-
-  expect_no_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = 1)
-  )
-
-  expect_no_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = 10)
-  )
-
 })

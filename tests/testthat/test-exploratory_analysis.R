@@ -2,30 +2,30 @@ test_that("summarise_distance produces errors", {
 
   test_that("data must be an object of class 'sf'", {
     df <- data.frame(x = 1:5, y = 1:5)
-    expect_error(
+    expect_input_error(
       summarise_distance(df),
-      "'data' must be of class 'sf'"
+      "data"
     )
   })
 
   test_that("distance_crs must be a valid CRS", {
     expect_error(
       summarise_distance(gaussian_data, distance_crs = "a"),
-      "The 'distance_crs' provided is not a valid CRS"
+      "distance_crs", class = "riskmap_error_input"
     )
   })
 
   test_that("distance_crs must be projected", {
-    expect_error(
+    expect_input_error(
       summarise_distance(gaussian_data, distance_crs = 4326),
-      "'distance_crs' must be a projected CRS, not longitude/latitude"
+      "distance_crs"
     )
   })
 
   test_that("distance_units must be 'km' or 'm'", {
-    expect_error(
+    expect_input_error(
       summarise_distance(gaussian_data, distance_units = "a"),
-      "'distance_units' must be either 'km' or 'm'"
+      "distance_units"
     )
   })
 })
@@ -64,14 +64,42 @@ test_that("summarise_distance produces correct output", {
 
 })
 
+test_that("summarise_distance prints rounded values and stores them in full", {
+
+  square <- data.frame(
+    x = c(1, 2, 1, 2),
+    y = c(1, 1, 2, 2)
+  )
+  square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
+
+  result <- summarise_distance(square_sf, distance_units = "m")
+  expect_s3_class(result, "RiskMap_distance_summary")
+  expect_identical(attr(result, "n_locations"), 4)
+  expect_identical(result[["max"]], sqrt(2))
+
+  printed <- capture.output(print(result))
+  expect_match(printed[1], "Distances between locations", fixed = TRUE)
+  expect_identical(printed[2], "4 unique locations, with distances in m.")
+  expect_true(any(grepl("1.41", printed, fixed = TRUE)))
+  expect_false(any(grepl("1.414", printed, fixed = TRUE)))
+  expect_true(any(grepl("1.4142", capture.output(print(result, digits = 5)),
+                        fixed = TRUE)))
+  capture.output(visible <- withVisible(print(result))$visible)
+  expect_false(visible)
+  expect_error(print(result, digits = 0),
+               "digits", class = "riskmap_error_input")
+  # A misspelt argument is not ignored, and is a RiskMap input error
+  expect_input_error(print(result, signif = 5), "signif")
+})
+
 test_that("summarise_distance follows the glgpm() CRS convention", {
 
   latlon <- st_transform(gaussian_data, 4326)
-  suggested_crs <- propose_utm(latlon)
+  suggested_crs <- propose_crs(latlon, messages = FALSE)
 
   expect_message(
     result <- summarise_distance(latlon, distance_units = "m"),
-    "automatically reprojecting to EPSG"
+    "projected to EPSG"
   )
   expect_identical(result, summarise_distance(st_transform(latlon, suggested_crs),
                                           distance_units = "m"))
@@ -89,7 +117,11 @@ test_that("summarise_distance derives distance units from a non-metre CRS", {
   foot_data <- st_transform(gaussian_data, 2263)
   coords <- coordinates_in_units(foot_data, "m")
 
-  result <- summarise_distance(foot_data, distance_units = "m")
+  # New York's state plane is far from the data, so it distorts distances
+  expect_warning(
+    result <- summarise_distance(foot_data, distance_units = "m"),
+    class = "riskmap_warning_crs"
+  )
   expect_identical(result[["max"]], max(dist(unique(coords))))
 })
 
@@ -98,38 +130,38 @@ test_that("variogram produces errors", {
 
   test_that("data must be an object of class 'sf'", {
     df <- data.frame(x = 1:5, y = 1:5)
-    expect_error(
+    expect_input_error(
       variogram(df, variable = "y"),
-      "'data' must be of class 'sf'"
+      "data"
     )
   })
 
   test_that("variable must be a character vector", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = 1),
-      "'variable' must be a single object of class 'character'"
+      "variable"
     )
   })
 
   test_that("variable must have length 1", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = c("y", "y")),
-      "'variable' must be a single object of class 'character'"
+      "variable"
     )
   })
 
   test_that("variable must exist in the columns of data", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "not_a_column"),
-      "'variable' must be one of the columns in 'data'"
+      "variable"
     )
   })
 
   test_that("breaks and n_bins cannot both be explicitly supplied", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y",
                 breaks = c(0, 1, 2), n_bins = 5),
-      "'breaks' and 'n_bins' cannot both be supplied"
+      "breaks"
     )
   })
 
@@ -137,89 +169,90 @@ test_that("variogram produces errors", {
     expect_no_error(
       variogram(gaussian_data,
                 variable = "y",
-                breaks = seq(0, 9000, 1000)),
+                breaks = seq(0, 9000, 1000),
+                distance_units = "m"),
     )
   })
 
   test_that("breaks and max_dist cannot both be explicitly supplied", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y",
                 breaks = c(0, 1, 2), max_dist = 5),
-      "'breaks' and 'max_dist' cannot both be supplied"
+      "breaks"
     )
   })
 
   test_that("n_bins must be numeric", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = "10"),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("n_bins must have length 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = c(5, 10)),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("n_bins must be >= 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = 0),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("n_bins must be a whole number", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = 4.5),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("max_dist must be numeric", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = "100"),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
   })
 
   test_that("max_dist must have length 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = c(10, 20)),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
   })
 
   test_that("max_dist must be strictly positive", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = 0),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = -5),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
   })
 
   test_that("n_permutations must be non-negative", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = -1),
-      "'n_permutations' must be a single non-negative integer"
+      "n_permutations", class = "riskmap_error_input"
     )
   })
 
   test_that("n_permutations must be a whole number", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = 10.5),
-      "'n_permutations' must be a single non-negative integer"
+      "n_permutations", class = "riskmap_error_input"
     )
   })
 
   test_that("too few permutations for the requested level are rejected", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", n_permutations = 2),
-      "'n_permutations' is too small to construct a global envelope"
+      "n_permutations"
     )
   })
 
@@ -231,7 +264,7 @@ test_that("variogram produces errors", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = 50,
                 level = 0.99),
-      "too small to construct a global envelope"
+      "for a global envelope"
     )
   })
 
@@ -248,16 +281,16 @@ test_that("variogram produces errors", {
   })
 
   test_that("an explicit distance_crs that is longitude/latitude produces an error", {
-    expect_error(
+    expect_input_error(
         variogram(latlon_data, variable = "y", n_permutations = 100, distance_crs = 4326),
-      "'distance_crs' must be a projected CRS, not longitude/latitude"
+      "distance_crs"
     )
   })
 
   test_that("longitude/latitude data is automatically reprojected with a message", {
     expect_message(
         variogram(latlon_data, variable = "y", n_permutations = 100),
-      "automatically reprojecting to EPSG"
+      "projected to EPSG"
     )
   })
 
@@ -268,52 +301,79 @@ test_that("variogram produces errors", {
   })
 
   test_that("breaks must be numeric", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c("a", "b", "c")),
-      "'breaks' must be a numeric vector with at least two values"
+      "breaks"
     )
   })
 
   test_that("breaks must have at least two values", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = 5),
-      "'breaks' must be a numeric vector with at least two values"
+      "breaks"
     )
   })
 
   test_that("breaks must be strictly increasing", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c(0, 5, 5, 10)),
-      "'breaks' must be strictly increasing"
+      "breaks"
     )
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c(0, 10, 5)),
-      "'breaks' must be strictly increasing"
+      "breaks"
     )
   })
 
   test_that("breaks must be non-negative", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c(-5, 0, 5)),
-      "'breaks' must be non-negative"
+      "breaks"
     )
   })
 
-  test_that("breaks exceeding the maximum observed distance raise an error", {
+  test_that("classes beyond the maximum observed distance raise a warning", {
+    expect_warning(
+      result <- variogram(gaussian_data, variable = "y", max_dist = 1e9,
+                          n_permutations = 0),
+      "13 distance classes lie beyond the largest distance"
+    )
+    expect_identical(sum(result$variogram$n_pairs > 0L), 1L)
+
+    # A last class that only extends past the largest distance still has pairs
+    largest <- max(dist(sf::st_coordinates(gaussian_data))) / 1000
+    expect_no_warning(
+      variogram(gaussian_data, variable = "y", n_permutations = 0,
+                breaks = c(0, largest / 2, largest + 1))
+    )
+  })
+
+  test_that("distance classes without any pair raise an informative error", {
     expect_error(
-      variogram(gaussian_data, variable = "y", max_dist = 1e9),
-      "the provided lag distances go beyond the maximum observed distance"
+      variogram(gaussian_data, variable = "y", breaks = c(0, 1e-6)),
+      "No pair of locations falls within the distance classes"
+    )
+    expect_error(
+      variogram(gaussian_data[1:2, ], variable = "y"),
+      "Distances between locations range from"
+    )
+  })
+
+  test_that("max_dist = NULL can be passed together with breaks", {
+    expect_no_error(
+      variogram(gaussian_data, variable = "y", breaks = c(0, 5, 10),
+                max_dist = NULL, n_permutations = 0)
     )
   })
 
   test_that("distance_crs must be a valid, projected CRS and distance_units must be 'km' or 'm'", {
     expect_error(
       variogram(gaussian_data, variable = "y", distance_crs = "a"),
-      "The 'distance_crs' provided is not a valid CRS")
+      "distance_crs", class = "riskmap_error_input")
 
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", distance_units = "a"),
-      "'distance_units' must be either 'km' or 'm'")
+      "distance_units")
   })
 
 })
@@ -334,7 +394,7 @@ test_that("variogram produces expected output", {
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
   expect_identical(nrow(result$variogram), 10L)
-  expect_identical(result$distance_units, "m")
+  expect_identical(result$distance_units, "km")
   expect_identical(result$n_permutations, 99)
   expect_length(result$breaks, 10 + 1)
   expect_identical(result$level, 0.95)
@@ -342,7 +402,7 @@ test_that("variogram produces expected output", {
 
   breaks <- seq(0, 9000, 1000)
   result <- variogram(gaussian_data, variable = "y", breaks = breaks,
-                      n_permutations = 99, seed = 123)
+                      n_permutations = 99, seed = 123, distance_units = "m")
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
@@ -356,7 +416,7 @@ test_that("variogram produces expected output", {
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns_zero)
   expect_identical(nrow(result$variogram), 10L)
-  expect_identical(result$distance_units, "m")
+  expect_identical(result$distance_units, "km")
   expect_identical(result$n_permutations, 0)
   expect_length(result$breaks, 10 + 1)
   expect_null(result$envelope_method)
@@ -382,6 +442,7 @@ test_that("variogram values are correct for a simple dataset", {
                       variable = "z",
                       breaks = seq(0.1, 1.5, 0.2),
                       n_permutations = 119,
+                      distance_units = "m",
                       seed = 12)
 
   expect_identical(sum(result$variogram$n_pairs), 6L)
@@ -412,6 +473,45 @@ test_that("compiled binned semivariances agree with a direct calculation", {
   }, numeric(2))
 
   expect_equal(result, direct)
+
+  # More curves than one block of the compiled loop, with a partial last block
+  set.seed(3)
+  values <- rnorm(12)
+  permutations <- cbind(1:12, replicate(69, sample.int(12)))
+  pairs <- which(lower.tri(diag(12)), arr.ind = TRUE)
+  first <- pairs[, 1] - 1L
+  second <- pairs[, 2] - 1L
+  bins <- sample(0:3, nrow(pairs), replace = TRUE)
+  permuted_values <- matrix(values[permutations], nrow = length(values))
+  result <- cpp_binned_semivariances(permuted_values, first, second, bins, 5L)
+  direct <- vapply(seq_len(ncol(permutations)), function(column) {
+    permuted <- values[permutations[, column]]
+    pair_values <- (permuted[first + 1L] - permuted[second + 1L])^2 / 2
+    c(vapply(0:3, function(bin) mean(pair_values[bins == bin]), numeric(1)),
+      NA_real_)
+  }, numeric(5))
+
+  expect_equal(result, direct)
+})
+
+test_that("a global envelope can be built for a single distance class", {
+  curves <- matrix(c(5, 1, 2, 3, 4, 6, 7, 8, 9, 10), nrow = 1L)
+
+  envelope <- global_rank_envelope(curves, level = 0.8)
+
+  expect_identical(envelope$lower, 2)
+  expect_identical(envelope$upper, 9)
+
+  # (1 - 0.9) * 1000 is slightly below 100, but 100 curves are still excluded
+  curves <- matrix(as.numeric(c(1:1000, 1000:1)), nrow = 2L, byrow = TRUE)
+  envelope <- global_rank_envelope(curves, level = 0.9)
+  expect_identical(envelope$lower, c(51, 51))
+  expect_identical(envelope$upper, c(950, 950))
+
+  expect_no_error(
+    variogram(gaussian_data, variable = "y", n_bins = 1, n_permutations = 99,
+              seed = 1)
+  )
 })
 
 test_that("global rank envelope uses the whole curve and handles ties conservatively", {
@@ -436,24 +536,139 @@ test_that("a variogram seed is reproducible without changing the caller RNG", {
   expect_identical(first, second)
 })
 
-test_that("plot_variogram defaults to plotting the envelope when available", {
+test_that("plot.RiskMap_variogram defaults to plotting the envelope when available", {
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 10,
                       n_permutations = 99, seed = 123)
 
-  expect_no_warning(p <- plot_variogram(result))
+  expect_no_warning(p <- plot(result))
   expect_true("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 })
 
-test_that("plot_variogram warns and skips the envelope when n_permutations <= 1", {
+test_that("plot.RiskMap_variogram warns and skips the envelope when n_permutations <= 1", {
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 0)
 
   expect_warning(
-    p <- plot_variogram(result),
-    "'n_permutations' was 0"
+    p <- plot(result),
+    "n_permutations = 0"
   )
   expect_false("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 
-  expect_no_warning(plot_variogram(result, plot_envelope = FALSE))
+  expect_no_warning(plot(result, envelope = FALSE))
+})
+
+test_that("plot.RiskMap_variogram labels points with their numbers of pairs on request", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], character(1))
+
+  expect_false("GeomText" %in% geoms(plot(result)))
+  p <- plot(result, show_pairs = TRUE)
+  expect_true("GeomText" %in% geoms(p))
+  labels <- ggplot2::layer_data(p, which(geoms(p) == "GeomText"))$label
+  nonempty <- result$variogram$n_pairs > 0L
+  expect_identical(labels, format(result$variogram$n_pairs[nonempty],
+                                  big.mark = ",", trim = TRUE))
+  expect_error(plot(result, show_pairs = NA), "show_pairs", class = "riskmap_error_input")
+})
+
+test_that("plot.RiskMap_variogram omits empty classes and highlights points outside the envelope", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  nonempty <- which(result$variogram$n_pairs > 0L)
+  emptied <- nonempty[1]
+  raised <- nonempty[2]
+  result$variogram$n_pairs[emptied] <- 0L
+  result$variogram[emptied, c("distance", "semivariance", "lower_envelope",
+                              "upper_envelope")] <- NA_real_
+  result$variogram$semivariance[raised] <-
+    result$variogram$upper_envelope[raised] + 1
+
+  p <- plot(result, show_pairs = TRUE)
+  geoms <- vapply(p$layers, function(l) class(l$geom)[1], character(1))
+  expect_false("GeomLine" %in% geoms)
+  expect_no_warning(ggplot2::ggplotGrob(p))
+
+  points <- ggplot2::layer_data(p, which(geoms == "GeomPoint"))
+  expect_identical(nrow(points), length(nonempty) - 1L)
+  expect_identical(sum(points$colour == "firebrick"), 1L)
+  expect_identical(points$colour[points$x == result$variogram$distance[raised]],
+                   "firebrick")
+
+  ranges <- ggplot2::layer_scales(p)
+  expect_lte(ranges$x$range$range[1], 0)
+  expect_lte(ranges$y$range$range[1], 0)
+
+  expect_error(plot(result, envelope = "yes"), "envelope", class = "riskmap_error_input")
+})
+
+test_that("plot.RiskMap_variogram takes envelope and colour and rejects other arguments", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], character(1))
+
+  p <- plot(result, colour = "darkorange")
+  ribbon <- ggplot2::layer_data(p, which(geoms(p) == "GeomRibbon"))
+  expect_identical(unique(ribbon$fill), "darkorange")
+  expect_false("GeomRibbon" %in% geoms(plot(result, envelope = FALSE)))
+
+  # The names of 1.0.0 would otherwise be taken by `...` and ignored
+  expect_error(plot(result, plot_envelope = FALSE), "plot_envelope")
+  expect_error(plot(result, color = "red"), "color")
+})
+
+test_that("variogram takes its seed last", {
+  expect_identical(names(formals(variogram)),
+                   c("data", "variable", "breaks", "n_bins", "max_dist",
+                     "n_permutations", "level", "distance_crs",
+                     "distance_units", "seed"))
+})
+
+test_that("print.RiskMap_variogram describes the classes and the envelope", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 4,
+                      n_permutations = 99, seed = 123)
+  output <- capture.output(printed <- print(result))
+
+  expect_identical(printed, result)
+  expect_match(output[1], "Empirical variogram", fixed = TRUE)
+  expect_match(squish(output), paste(
+    "4 distance classes from 0 to [0-9.]+ km. The 95% global envelope for",
+    "spatial independence is from 99 permutations."
+  ))
+  # The first class holds no pairs, so it has no envelope and is left out of
+  # the count, and the other three lie inside the envelope.
+  expect_equal(result$variogram$n_pairs[1L], 0)
+  expect_match(squish(output),
+               paste("The variogram is outside the envelope in 0 of 3",
+                     "distance classes, and 1 class has no envelope."),
+               fixed = TRUE)
+  empty <- result
+  empty$variogram[4L, c("semivariance", "lower_envelope",
+                        "upper_envelope")] <- NA_real_
+  expect_match(squish(capture.output(print(empty))),
+               paste("outside the envelope in 0 of 2 distance classes, and 2",
+                     "classes have no envelope."), fixed = TRUE)
+  # A class above the envelope is counted.
+  above <- result
+  above$variogram$semivariance[2L] <- above$variogram$upper_envelope[2L] + 1
+  expect_match(squish(capture.output(print(above))),
+               "outside the envelope in 1 of 3 distance classes", fixed = TRUE)
+  expect_true(any(grepl("semivariance", output)))
+
+  # Counts stored as doubles are still printed in full
+  result$variogram$n_pairs <- result$variogram$n_pairs + 12345
+  output <- capture.output(print(result, digits = 2))
+  expect_true(any(grepl(as.character(result$variogram$n_pairs[1]), output)))
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 4,
+                      n_permutations = 0)
+  output <- capture.output(print(result))
+  expect_match(squish(output), "There is no envelope, since `n_permutations` is 0.",
+               fixed = TRUE)
+  expect_false(any(grepl("outside the envelope", output)))
 })

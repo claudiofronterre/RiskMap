@@ -29,13 +29,12 @@ gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
-control_mcmc <- set_control_mcmc(n_sim = 1000,
-                                 burnin = 200,
-                                 seed = 12345)
+control_mcmc <- set_control_mcmc(n_draws = 80,
+                                 burnin = 200)
+fixture_seed <- 12345
 fixture_control_mcml <- set_control_mcml(
-  initial_samples = 500, max_samples = 500, max_stages = 1,
-  min_effective_samples = 1, max_pareto_k = 100,
-  max_mcse_ratio = 0.99, score_probability = 0.999999
+  initial_draws = 500, validation_draws = 500, max_draws = 500,
+  max_stages = 1
 )
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),
@@ -46,7 +45,7 @@ gaussian_model <- glgpm(y ~ cov + gp() + re(i),
 gaussian_offset_model <- glgpm(y ~ cov + gp(nugget = TRUE) + offset(offset),
                                data = gaussian_data,
                                family = "gaussian",
-                               fix_var_me = 0,
+                               fixed_pars = list(sigma2_me = 0),
                                messages = FALSE)
 
 gaussian_intercept_model <- glgpm(y ~ gp(),
@@ -61,7 +60,7 @@ binomial_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 binomial_model <- glgpm(
   y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-  denominator = denominator, control_mcmc = control_mcmc,
+  denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, messages = FALSE
 )
 
@@ -71,7 +70,7 @@ poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 poisson_model <- glgpm(
   y ~ cov + gp() + re(i), data = poisson_data, family = "poisson",
-  denominator = denominator, control_mcmc = control_mcmc,
+  denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, return_samples = TRUE,
   messages = FALSE
 )
@@ -89,11 +88,8 @@ prediction_data$i <- rep(gaussian_model$re[[1]],
 prediction_data$population <- seq_len(nrow(prediction_data))
 
 cross_validation <- assess_prediction(
-  list(model_a = gaussian_model,
-       model_b = gaussian_offset_model),
-  method = "cluster",
-  fold = 2,
-  plot_fold = FALSE,
+  list(model_a = gaussian_model, model_b = gaussian_offset_model),
+  list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),
   messages = FALSE
 )
 

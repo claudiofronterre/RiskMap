@@ -4,37 +4,96 @@
 \alias{create_grid}
 \title{Create Grid of Points Within Boundaries}
 \usage{
-create_grid(boundaries, spacing, distance_units = c("km", "m"))
+create_grid(
+  boundaries = NULL,
+  spacing = NULL,
+  distance_crs = NULL,
+  distance_units = c("km", "m"),
+  keep = c("centre", "overlap"),
+  raster = NULL
+)
 }
 \arguments{
-\item{boundaries}{An object of class \code{sf} containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.}
+\item{boundaries}{An object of class \code{sf} containing POLYGONS or
+MULTIPOLYGONS within which the grid of points will be created. Optional
+when \code{raster} is supplied.}
 
-\item{spacing}{A single positive number specifying the distance between grid-point centres.}
+\item{spacing}{A single positive number specifying the distance between
+grid-point centres. Taken from the resolution of \code{raster} when that is
+supplied.}
+
+\item{distance_crs}{\code{NULL} to keep the CRS of projected \code{boundaries}, or
+to project \code{boundaries} in longitude and latitude to the CRS from
+\code{\link[=propose_crs]{propose_crs()}} (with a message naming the CRS and the units of
+distance). Alternatively, a projected CRS to project \code{boundaries} to,
+as in \code{\link[=variogram]{variogram()}} and \code{\link[=summarise_distance]{summarise_distance()}}. A grid built from
+\code{raster} takes the CRS of the raster, so \code{distance_crs} must then be
+\code{NULL} or that CRS.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, giving the units of \code{spacing}. Defaults to \code{"km"}.}
+
+\item{keep}{Which cells to keep. \code{"centre"} (the default) keeps cells
+whose centre lies within \code{boundaries}. \code{"overlap"} keeps every cell that
+overlaps \code{boundaries}, including cells along the edge whose centre lies
+outside. Use \code{"overlap"} when totals over the study area matter, for
+example population counts along a coastline.}
+
+\item{raster}{Optional \code{SpatRaster} from the terra package, in a projected
+coordinate reference system with square cells. When supplied, the grid
+consists of the raster's cells: their centres are the grid points and
+the raster's layers become columns of the grid.}
 }
 \value{
 A \code{RiskMap_grid} and \code{sf} object containing the generated grid points. The
 \code{grid_metadata} attribute records the spacing, units, cell size, cell area,
-cell shape, grid CRS and alignment origin. The \code{grid_id} column provides a
-stable identifier for each retained cell centre.
+cell shape, grid CRS, alignment origin, the cells kept and the study
+boundary. The \code{grid_id} column provides a stable identifier for each
+retained cell centre. A grid built from \code{raster} also has one column for
+each raster layer.
 }
 \description{
-Generates regularly spaced point centres within a polygon boundary and
-retains the information needed to reconstruct their square grid cells.
+Generates regularly spaced point centres within a polygon boundary, or
+takes them from the cells of a raster, and retains the information needed
+to reconstruct their square grid cells.
 }
 \details{
 This function returns point centres rather than polygon cells. The returned
 object has class \code{RiskMap_grid} and carries lightweight metadata describing
 the square cells. This allows other RiskMap functions to reconstruct their
 footprints when exact cell coverage is needed without storing a second copy
-of the grid as polygons.
+of the grid as polygons. The metadata also records the study boundary, so
+that maps can clip edge cells to it.
 
-The CRS is inherited from \code{boundaries}. If \code{boundaries} is in
-longitude/latitude, it is automatically reprojected to an appropriate UTM
-zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used;
-transform \code{boundaries} to a projected CRS yourself first to use a different
-one.
+With \code{keep = "overlap"}, cells along the edge extend beyond \code{boundaries}.
+Areal predictions from \code{\link[=predict.RiskMap]{predict.RiskMap()}} weight each cell by the fraction
+lying within each polygon, so these cells contribute only their covered
+part.
+
+A grid built from \code{raster} is aligned with that raster by construction, so
+its values need no extraction. This suits population counts: aggregate the
+counts to the resolution of the grid with \code{\link[terra:aggregate]{terra::aggregate()}} and
+\code{fun = "sum"}, after projecting them with \code{\link[terra:project]{terra::project()}} and
+\code{method = "sum"} if needed, and use the result as \code{raster}. With
+\code{boundaries}, cells are kept according to \code{keep}; without, the cells with
+at least one non-missing value are kept. Cells kept inside \code{boundaries}
+may have missing values, for example over water.
+
+The CRS of the grid is \code{distance_crs} when it is given, and otherwise that
+of \code{boundaries}, or of \code{raster} when it is supplied. If \code{boundaries} is in
+longitude and latitude and neither \code{distance_crs} nor a raster is given,
+it is projected to the CRS from \code{\link[=propose_crs]{propose_crs()}} and a message names the
+CRS and the units of distance. A warning of class
+\code{riskmap_warning_crs} is raised when the CRS used distorts distances by
+more than 1\% over \code{boundaries}, or over the grid built from \code{raster}.
+
+The grid keeps its cells when rows or columns are selected with \code{[} or
+with dplyr verbs such as \code{select()} and \code{filter()}, unless only the
+geometry column is kept. Functions that build a new \code{sf} object, such as
+\code{cbind()}, \code{merge()} and \code{\link[sf:st_as_sf]{sf::st_as_sf()}}, drop the class \code{RiskMap_grid},
+and \code{\link[=predict.RiskMap]{predict.RiskMap()}} then assigns each point to the polygon that
+contains it. Add columns with \verb{$<-}, \code{dplyr::mutate()} or a dplyr join
+instead. \code{rbind()} keeps the cells of its first grid, so use it only to
+join parts of one grid.
 }
 \examples{
 library(sf)
@@ -46,11 +105,21 @@ nc <- st_transform(nc, crs = 32617)
 # Create grid with 10 km spacing
 grid <- create_grid(nc, spacing = 10)
 
+# Also keep the edge cells whose centre lies outside the boundary
+grid_edges <- create_grid(nc, spacing = 10, keep = "overlap")
+
 # Plot the grid
 plot(st_geometry(nc))
 plot(grid, add = TRUE, col = 'red')
 
+# Use the cells of a 20 km raster, with its values as a column
+cells <- terra::align(terra::ext(nc), 20000)
+counts <- terra::rast(cells, resolution = 20000, crs = "EPSG:32617")
+terra::values(counts) <- seq_len(terra::ncell(counts))
+names(counts) <- "count"
+grid_raster <- create_grid(nc, raster = counts)
+
 }
 \seealso{
-\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
+\code{\link[sf:st_make_grid]{sf::st_make_grid()}}, \code{\link[sf:st_intersection]{sf::st_intersection()}}
 }

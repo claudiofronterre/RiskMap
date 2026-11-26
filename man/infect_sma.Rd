@@ -26,21 +26,24 @@ counties, California, USA). Each row represents a tested pool at a specific
 location and date, with an estimated pool size.
 }
 \details{
-Derived from the \pkg{vectorsurvR} sample datasets by:
+Derived from the \pkg{vectorsurvR} sample datasets in two steps.
 \itemize{
-\item Filtering to female \emph{Culex pipiens} pools with WNV testing within the SMA
-using point-in-polygon against the union of Sacramento, Placer, and El Dorado counties.
-\item Estimating pool size \code{est_pool_n} for each pool by:
+\item Filtering to female \emph{Culex pipiens} pools with WNV testing within the
+SMA, using point-in-polygon against the union of the Sacramento, Placer
+and El Dorado counties.
+\item Estimating the size \code{est_pool_n} of each pool.
 \itemize{
-\item Summing total female counts from nearby collection points within the \emph{same week}
-and within a spatial radius (e.g., 2 km) to obtain \eqn{T_{\mathrm{near}}}.
-\item Counting nearby pools within the same week/radius to obtain \eqn{m_{\mathrm{near}}}.
-\item Setting \code{est_pool_n = round(max(1, T_near / m_near))}; if no nearby collections are found,
-a conservative fallback (default 25) is used.
+\item The total female counts from nearby collection points within the
+\emph{same week} and within a spatial radius (for example 2 km) are summed
+to obtain \eqn{T_{\mathrm{near}}}.
+\item The nearby pools within the same week and radius are counted to
+obtain \eqn{m_{\mathrm{near}}}.
+\item \code{est_pool_n} is \code{round(max(1, T_near / m_near))}, or a conservative
+fallback of 25 if no nearby collections are found.
 }
-\item The coordinate reference system is 4326.
 }
 
-\strong{Important:} \code{est_pool_n} is an estimate for demonstration and pooled-modelling
-examples; it is not the recorded laboratory pool size.
+The coordinate reference system is 4326. \code{est_pool_n} is an estimate for
+demonstration and pooled-modelling examples, not the recorded laboratory
+pool size.
 }
