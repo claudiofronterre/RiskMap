@@ -2197,8 +2197,9 @@ binomial example of `profile()` profiles the scale alone, and the joint profiles
 of `profile()` and `plot_profile()` use a grid of 7 by 7. Each example outside
 `\donttest{}` runs in under three seconds.
 - RiskMap asks for R 4.5.0 or later instead of 3.5.0, because the current
-version of Deriv, which it imports, needs it. When 2.0.0 was prepared, CI checked
-R 4.5.3, which was oldrel-1, on pushes to main and weekly. The full test suite
+version of Deriv, which it imports, needs it. CI checks R 4.5 in a job of its
+own on pushes to main and weekly, so the minimum stays checked once oldrel-1
+moves past it. When 2.0.0 was prepared, oldrel-1 was R 4.5.3. The full test suite
 last passed on R 4.1.3 with Deriv 4.1.6, and nothing below 4.5 is checked any
 longer. Two changes made for older R stay. A fit that holds every parameter
 doesn't fail on R before 4.4.0, where `rcond()` of its empty information raised a
