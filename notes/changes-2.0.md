@@ -2084,9 +2084,14 @@ and their `colour` argument changes it.
   checked the same way, where `log(0)` gave an error about a constant column of
   the design matrix and `log(-1)` R's error about missing values in an object.
   `assess_simulation()` stops when a candidate model has such a term on the
-  prediction grid, as it did for missing values. The simulated surface keeps
-  every location of the grid, so a location is removed by the user rather than
-  returned as `NA`, as `predict()` does.
+  prediction grid, as it did for missing values, and names the locations.
+  Terms that depend on the data, such as `scale(x)`, are checked with the
+  centre and scale of the data the model was fitted to or specified with, as
+  the simulation uses them, and a term such as `ifelse(x > 0, log(x), 0)` is
+  accepted when the term itself is finite. The simulated surface keeps every
+  location of the grid, so a location is removed by the user rather than
+  returned as `NA`, as `predict()` does. The warning of `predict()` and the
+  error for `standardise` give `log(0)` as their example.
 
 ## Other
 

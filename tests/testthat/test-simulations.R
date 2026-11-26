@@ -1060,3 +1060,32 @@ test_that("simulations name the locations whose covariates are missing or not fi
     "data", "1 row of `data` gives the model a covariate"
   )
 })
+
+test_that("finite terms are accepted whatever their parts and constants", {
+  parameters <- list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  data <- gaussian_data
+  data$positive <- pmax(data$cov, 0)
+  grid <- data[1:3, ]
+  grid$cov <- 0.3
+  grid$positive <- c(0, 1, 2)
+  # A term that depends on the data keeps the centre and scale of the model's.
+  scaled <- specify_glgpm(y ~ scale(cov) + gp(), data, "gaussian", parameters)
+  expect_no_error(simulate_glgpm(scaled, what = "surface",
+                                 prediction_grid = grid, seed = 1))
+  expect_no_error(simulate_glgpm(scaled, what = "surface",
+                                 prediction_grid = grid[1, ], seed = 1))
+  # A term that is finite where its parts aren't
+  for (formula in list(y ~ ifelse(positive > 0, log(positive), 0) + gp(),
+                       y ~ pmax(log(positive), -5) + gp())) {
+    guarded <- specify_glgpm(formula, data, "gaussian", parameters)
+    expect_no_error(simulate_glgpm(guarded, what = "surface",
+                                   prediction_grid = grid, seed = 1))
+  }
+  # Constants such as the breaks of cut() aren't values of the rows.
+  classes <- specify_glgpm(y ~ cut(cov, c(-Inf, 0, Inf)) + gp(), data,
+                           "gaussian", parameters)
+  for (rows in list(1, 1:3)) {
+    expect_no_error(simulate_glgpm(classes, what = "surface",
+                                   prediction_grid = grid[rows, ], seed = 1))
+  }
+})

@@ -30,8 +30,8 @@ covariates, grouping variables, offsets and any denominator column.}
 variables and offsets for the requested surface. Required for \code{"surface"}.
 In both, every row needs covariates that are complete and give the model
 finite numbers. A row where a covariate is missing, or where the formula
-gives a value such as the logarithm of zero or of a negative number, stops
-the simulation and is named, so it can be removed first.}
+gives a value such as \code{log(0)}, stops the simulation and is named, so it
+can be removed first.}
 
 \item{seed}{Optional non-negative integer seed. When supplied, the caller's
 random-number state is restored on exit.}

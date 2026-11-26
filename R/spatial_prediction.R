@@ -657,7 +657,7 @@ validate_prediction_standardise <- function(object, standardise) {
   profiles[reference_names] <- standardise[reference_names]
   infinite <- !prediction_design_is_finite(object, profiles)
   if (any(infinite)) {
-    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number.", arg = "standardise")
+    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}.", arg = "standardise")
   }
   list(
     data = standardise,
@@ -753,7 +753,7 @@ validate_prediction_data <- function(object, newdata, include,
       object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
     )
     if (any(!finite)) {
-      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number, so {?its/their} predictions are {.code NA}.")
+      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}, so {?its/their} predictions are {.code NA}.")
       valid_rows[valid_rows] <- finite
     }
   }
@@ -3477,9 +3477,17 @@ assess_simulation <- function(simulation,
     if (n_incomplete > 0) {
       abort_input(c("The model {.val {model_names[i]}} needs complete values of {.val {required}} on the prediction grid, but {n_incomplete} grid location{?s} {?has/have} missing values.", "i" = "Remove them from the prediction grid before simulating."), arg = "models")
     }
-    n_infinite <- sum(!fixed_effects_are_finite(formulas[[i]], grid))
-    if (n_infinite > 0) {
-      abort_input(c("The model {.val {model_names[i]}} has a covariate that isn't a finite number, such as the logarithm of zero or of a negative number, at {n_infinite} location{?s} of the prediction grid.", "i" = "Remove {cli::qty(n_infinite)}{?it/them} from the prediction grid before simulating."), arg = "models")
+    # A fit is checked as predict() checks new data, with its own terms.
+    finite <- if (inherits(template_i, "RiskMap")) {
+      prediction_design_is_finite(template_i, st_drop_geometry(grid))
+    } else {
+      fixed_effects_are_finite(template_i$fixed_terms, grid)
+    }
+    if (!all(finite)) {
+      n_infinite <- sum(!finite)
+      # As text, whose length sets the plurals, not its value.
+      locations <- as.character(which(!finite))
+      abort_input(c("The model {.val {model_names[i]}} has a covariate that isn't a finite number, such as {.code log(0)}, at {n_infinite} location{?s} of the prediction grid.", "i" = "{?It is location/They are locations} {locations}. Remove {?it/them} from the prediction grid before simulating."), arg = "models")
     }
   }
 

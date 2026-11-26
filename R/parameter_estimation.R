@@ -7,8 +7,9 @@
 ##' [gp()] and optionally, random effects specified using [re()]. It can also
 ##' include one `offset()` term that names a column of `data`, e.g. `offset(log_exposure)`.
 ##' @param data An sf object containing the variables in the model. A row with
-##' a missing value, or with a covariate that the formula turns into a value
-##' that isn't a finite number, such as the logarithm of zero, is an error.
+##' a missing value in a variable of the model, or with a covariate that the
+##' formula turns into a value that isn't a finite number, such as `log(0)`, is
+##' an error.
 ##' @param family The distribution of the response given the random effects,
 ##' with its link. Either one of the strings `"gaussian"`, `"binomial"` and
 ##' `"poisson"`, which take the identity, logit and log links, a family

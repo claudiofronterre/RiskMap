@@ -28,8 +28,9 @@ The formula should include fixed effects and spatial effects specified using
 include one \code{offset()} term that names a column of \code{data}, e.g. \code{offset(log_exposure)}.}
 
 \item{data}{An sf object containing the variables in the model. A row with
-a missing value, or with a covariate that the formula turns into a value
-that isn't a finite number, such as the logarithm of zero, is an error.}
+a missing value in a variable of the model, or with a covariate that the
+formula turns into a value that isn't a finite number, such as \code{log(0)}, is
+an error.}
 
 \item{family}{The distribution of the response given the random effects,
 with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} and

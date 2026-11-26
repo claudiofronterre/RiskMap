@@ -593,10 +593,12 @@ test_that("assess_simulation refuses a candidate whose covariates aren't finite 
   grid$positive <- c(1, 0, -1, 2, 3)
   sim <- simulate_glgpm(generating, nsim = 1, what = c("data", "surface"),
                         prediction_grid = grid, seed = 3)
-  expect_input_error(
+  error <- expect_input_error(
     assess_simulation(sim, models = list(candidate = candidate),
                       spatial_scale = "location", objective = "mse",
                       messages = FALSE),
     "models", "at 2 locations of the prediction grid"
   )
+  expect_match(conditionMessage(error), "They are locations 2 and 3.",
+               fixed = TRUE)
 })
