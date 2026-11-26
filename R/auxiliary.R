@@ -47,8 +47,8 @@ elogit <- function(y, m) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to `FALSE`.
 ##' @details The Matern correlation function is defined as
-##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
-##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
+##' \deqn{\rho(u; \phi, \kappa) = \frac{1}{2^{\kappa-1}\Gamma(\kappa)}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
+##' for \eqn{u > 0}, with \eqn{\rho(0; \phi, \kappa) = 1}, where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, \eqn{\Gamma(\cdot)} is the gamma function, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector or matrix of the same shape as `u` with the values of the Matern correlation function for the given distances, if `return_sym_matrix=FALSE`. If `return_sym_matrix=TRUE`, a symmetric correlation matrix is returned.
 ##' @examples
 ##' u <- c(10, 20, 30)
