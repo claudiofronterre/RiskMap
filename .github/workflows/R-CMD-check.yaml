@@ -4,10 +4,11 @@
 # Pull requests run the three current-release jobs, which are the checks
 # that auto-merge requires. They run whatever the base branch, so a stacked
 # pull request already has them when GitHub retargets it to main. Pushes to
-# main, the weekly schedule and manual runs also check R-devel and the
-# previous release (oldrel-1). A new push to a pull request cancels the run
-# for its older commit. Every other run has its own concurrency group, so
-# none is cancelled.
+# main, the weekly schedule and manual runs also check R-devel, the
+# previous release (oldrel-1) and R 4.5, the minimum in DESCRIPTION, which
+# oldrel-1 stops covering once R 4.7.0 is out. A new push to a pull request
+# cancels the run for its older commit. Every other run has its own
+# concurrency group, so none is cancelled.
 on:
   push:
     branches: [main]
@@ -31,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"macos-latest","r":"release"},{"os":"windows-latest","r":"release"},{"os":"ubuntu-latest","r":"release"}]' || '[{"os":"macos-latest","r":"release"},{"os":"windows-latest","r":"release"},{"os":"ubuntu-latest","r":"devel","http-user-agent":"release"},{"os":"ubuntu-latest","r":"release"},{"os":"ubuntu-latest","r":"oldrel-1"}]') }}
+        config: ${{ fromJSON(github.event_name == 'pull_request' && '[{"os":"macos-latest","r":"release"},{"os":"windows-latest","r":"release"},{"os":"ubuntu-latest","r":"release"}]' || '[{"os":"macos-latest","r":"release"},{"os":"windows-latest","r":"release"},{"os":"ubuntu-latest","r":"devel","http-user-agent":"release"},{"os":"ubuntu-latest","r":"release"},{"os":"ubuntu-latest","r":"oldrel-1"},{"os":"ubuntu-latest","r":"4.5"}]') }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
