@@ -193,7 +193,7 @@ test_that("the nugget of the data can't be included at observed locations", {
   residual <- gaussian_offset_model$y - gaussian_offset_model$cov_offset -
     as.numeric(gaussian_offset_model$D %*% parameters$beta)
   spatial <- parameters$sigma2 * correlation %*%
-    solve(parameters$sigma2 * correlation + diag(parameters$tau2, 10), residual)
+    solve(parameters$sigma2 * correlation + diag(parameters$tau2, n), residual)
   prediction <- predict(
     gaussian_offset_model, seed = 1, messages = FALSE,
     control_mcmc = set_control_mcmc(n_draws = 20000, burnin = 0, thin = 1)

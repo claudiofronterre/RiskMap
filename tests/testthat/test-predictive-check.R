@@ -37,7 +37,7 @@ checked <- assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
 test_that("assess_fit() describes the observed and the simulated data", {
   expect_s3_class(checked, "RiskMap_predictive_check")
   expect_identical(names(checked$family), c("a", "b"))
-  expect_identical(checked$n_locations, 10L)
+  expect_identical(checked$n_locations, n)
   expect_identical(checked$observed$statistic,
                    rep(c("mean", "sd", "min", "max"), 2))
   y <- gaussian_data$y
@@ -139,11 +139,11 @@ test_that("a model whose covariates leave no residuals has no variogram", {
 
 test_that("nearly collinear covariates are all taken out of the residuals", {
   data <- gaussian_data
-  data$year <- 2000 + 2 * (1:10)
+  data$year <- 2000 + 2 * seq_len(n)
   raw <- fit <- gaussian_intercept_model
   raw$D <- cbind(1, data$year, data$year^2, data$year^3)
   fit$D <- cbind(1, scale(data$year), scale(data$year)^2, scale(data$year)^3)
-  field <- matrix(rnorm(20), 10)
+  field <- matrix(rnorm(2 * n), n)
   records <- check_records(fit, "response")
   expect_equal(residuals_from_covariates(field, raw, records),
                residuals_from_covariates(field, fit, records), tolerance = 1e-4)

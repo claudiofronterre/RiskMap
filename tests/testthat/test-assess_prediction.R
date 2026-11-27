@@ -115,8 +115,8 @@ test_that("models of different observations can't be compared", {
     expect_input_error(assess(list(a = first, b = other), list(1:2)), "models",
                        ...)
   }
-  refused(fit(gaussian_data[1:9, ]), "is fitted to 9 of them, and \"a\" to 20")
-  refused(fit(gaussian_data[10:1, ]), "same rows in the same order")
+  refused(fit(gaussian_data[1:9, ]), sprintf("is fitted to 9 of them, and \"a\" to %d", n))
+  refused(fit(gaussian_data[n:1, ]), "same rows in the same order")
   moved <- gaussian_data
   st_geometry(moved)[1] <- st_geometry(moved)[1] + c(1, 0)
   refused(fit(st_set_crs(moved, st_crs(gaussian_data))),

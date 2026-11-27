@@ -244,7 +244,7 @@ test_that("print() describes test sets", {
   expect_output(print(create_test_sets(data, "random", n_sets = 2, seed = 1)),
                 "2 test sets of [0-9]+ and [0-9]+ observations")
   user <- read_test_sets(list(1:3, 4:6), gaussian_intercept_model)
-  expect_output(print(user), "2 test sets of 3 observations each from 10")
+  expect_output(print(user), paste("2 test sets of 3 observations each from", n))
   expect_input_error(print(user, digits = 2), "digits")
 })
 
@@ -269,16 +269,16 @@ test_that("the distances of test locations are those to their training data", {
 
 test_that("test sets can be given as rows of the data", {
   read <- function(x) read_test_sets(x, gaussian_intercept_model)
-  sets <- read(list(1:3, c(10, 9)))
+  sets <- read(list(1:3, c(n, n - 1L)))
   expect_s3_class(sets, "RiskMap_test_sets")
   expect_identical(sets$method, "user")
-  expect_identical(sets$sets, list(list(train = 4:10, test = 1:3),
-                                   list(train = 1:8, test = c(10L, 9L))))
+  expect_identical(sets$sets, list(list(train = 4:n, test = 1:3),
+                                   list(train = 1:(n - 2L), test = c(n, n - 1L))))
   # A training set of its own leaves out the other rows, as for a buffer.
-  expect_identical(read(list(list(train = 1:5, test = 9:10)))$sets,
-                   list(list(train = 1:5, test = 9:10)))
-  expect_identical(read(list(list(test = 9:10)))$sets,
-                   list(list(train = 1:8, test = 9:10)))
+  expect_identical(read(list(list(train = 1:5, test = (n - 1L):n)))$sets,
+                   list(list(train = 1:5, test = (n - 1L):n)))
+  expect_identical(read(list(list(test = (n - 1L):n)))$sets,
+                   list(list(train = 1:(n - 2L), test = (n - 1L):n)))
 
   refused <- function(x, ...) expect_input_error(read(x), "test_sets", ...)
   refused("cluster", "create_test_sets(data, method = \"cluster\")")
@@ -290,15 +290,17 @@ test_that("test sets can be given as rows of the data", {
   refused(list(list(in_id = 1:5, out_id = 6:10)), "now called `train` and `test`")
   refused(list(list(train = 1:5)), "test rows")
   refused(list("a"))
-  refused(list(1:10), "at least one observation for training")
+  refused(list(seq_len(n)), "at least one observation for training")
   refused(list(integer(0)), "at least one row number")
-  refused(list(1:3, 0), "test rows of test_sets[[2]] must be row numbers between 1 and 10")
-  refused(list(11), "between 1 and 10")
-  refused(list(1.5), "between 1 and 10")
+  between <- paste("between 1 and", n)
+  refused(list(1:3, 0),
+          paste("test rows of test_sets[[2]] must be row numbers", between))
+  refused(list(n + 1), between)
+  refused(list(1.5), between)
   refused(list(c(1, NA)), "without missing values")
   refused(list(c(2, 2)), "without repeats")
   refused(list(list(train = 1:5, test = 5:6)), "must not overlap")
-  refused(list(list(train = 11, test = 5:6)), "training rows")
+  refused(list(list(train = n + 1, test = 5:6)), "training rows")
   refused(list(list(train = integer(0), test = 5:6)), "training rows")
 })
 
@@ -311,10 +313,10 @@ test_that("test sets must belong to the data of the fits", {
   expect_identical(read(elsewhere), elsewhere)
   expect_input_error(
     read(create_test_sets(gaussian_data[1:9, ], "random", n_sets = 2)),
-    "test_sets", "10 rows, not 9"
+    "test_sets", sprintf("%d rows, not 9", n)
   )
   expect_input_error(
-    read(create_test_sets(gaussian_data[10:1, ], "random", n_sets = 2)),
+    read(create_test_sets(gaussian_data[n:1, ], "random", n_sets = 2)),
     "test_sets", "same rows in the same order"
   )
 })

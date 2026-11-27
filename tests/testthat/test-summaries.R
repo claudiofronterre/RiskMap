@@ -346,7 +346,7 @@ test_that("print.RiskMap is short and gives the certificate", {
   expect_identical(result, binomial_model)
   expect_lt(length(printed), 30L)
   expect_match(printed[1L], "Binomial geostatistical model")
-  expect_true(any(grepl("^10 observations at ", printed)))
+  expect_true(any(grepl(paste0("^", n, " observations at "), printed)))
   expect_true(any(grepl("Regression coefficients", printed, fixed = TRUE)))
   expect_true(any(grepl("certified", printed, ignore.case = TRUE)))
   expect_false(any(grepl("concerns the maximum found", printed)))

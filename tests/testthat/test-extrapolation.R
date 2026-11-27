@@ -281,7 +281,7 @@ test_that("the print of indicators states the classes and the thresholds", {
   extrapolation <- assess_extrapolation(binomial_model, binomial_data)
   printed <- capture.output(print(extrapolation))
   expect_match(printed[1L], "Extrapolation")
-  expect_true("Indicators at 10 locations." %in% printed)
+  expect_true(sprintf("Indicators at %d locations.", n) %in% printed)
   share <- paste0(format(100 * attr(extrapolation, "spatial_threshold"),
                          digits = 3), "%")
   expect_match(squish(printed), paste0(

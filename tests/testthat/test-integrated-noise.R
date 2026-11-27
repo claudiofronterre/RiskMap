@@ -463,10 +463,10 @@ test_that("a fit with integrate_noise reports the integrated locations", {
   ))
   optimizer <- attr(fit, "optimizer")
   expect_true(optimizer$mcml_integrate_noise)
-  expect_identical(optimizer$mcml_integrated_locations, 10L)
+  expect_identical(optimizer$mcml_integrated_locations, n)
   expect_null(optimizer$laplace_start)
   expect_match(check_computation(fit)$draws,
-               "The nugget was integrated out at 10 of 10 locations.")
+               sprintf("The nugget was integrated out at %d of %d locations.", n, n))
   expect_true(is.finite(optimizer$mcml_history[[1]]$refit_change))
 })
 

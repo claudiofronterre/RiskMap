@@ -187,7 +187,7 @@ test_that("print() and summary() name the link", {
   skip_on_cran()
   fit <- named_fits$cloglog
   expect_output(print(fit), "Binomial geostatistical model with cloglog link")
-  expect_output(print(fit), "10 observations at 10 locations")
+  expect_output(print(fit), paste(n, "observations at", n, "locations"))
   fit_summary <- summary(fit)
   expect_identical(fit_summary$link_name, "cloglog")
   expect_identical(fit_summary$invlink_expression,
