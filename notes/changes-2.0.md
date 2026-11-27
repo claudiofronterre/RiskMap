@@ -1935,29 +1935,53 @@ error, since the draws differ. The seeds of the test sets are those of before.
 With 1,000 training locations and 2,000 draws, a test set of 2,000 locations takes
 23 seconds for a binomial model, as before, and 1.6 for a Gaussian one (1.1), and
 4,000 locations 4.8 (2.2), with the same memory.
-- The reference for calibration is simulated from draws of the joint predictive
-distribution of each test set, 999 times, or as many as there are predictive draws.
-`PIT_area_expected` is the mean of the areas of these curves, and the new
-`PIT_area_limit` their order statistic that a correct model is below with a
-probability of 95%. The band is the joint envelope of the curves and of that of the
-data (`global_rank_envelope()`, as in `variogram()`), and so is that of the
-histograms. The observations were simulated independently before, which made the
-reference too small with clusters, where the errors of a test set go together. With
-one test set and the parameters at their true values (100 locations in a square of
-side 100, range 20, 60 for training, 500 or 1,000 datasets, all four families), a
-correct model is above the limit in 4.4 to 6.0% of the datasets, its curve leaves the
-band in 4.5 to 5.8% and its bars in 2.4 to 5.8%. The former band, for each level
-separately, is left somewhere by 15 to 28% of the curves (5% for one binomial trial).
-Test sets are independent of each other in the reference, so it is cautious with
-several of them. With five or ten clusters a correct model is above the limit in 0 to
-2.0% of the datasets and leaves the band in 0 to 3.8%, and with random or leave-one-out
-test sets in none and at most 0.3%. In simulations
-with ranges of 5 and 20, the area of a correct model is 0.76 to 0.98 times the
-expected one with clusters, for Gaussian, binomial, Poisson and negative binomial
-data, 0.80 and 0.90 when the clusters are repeated three times, 0.74 with random test
-sets, 0.67 with leave-one-out and 0.60 with leave-one-out and one binomial trial. An
-observation in several test sets has one uniform, its randomised PIT value in the
-first of them.
+- The reference for calibration comes from 999 datasets simulated from a Gaussian
+working model of the fit, each put through the whole cross-validation
+(`calibration_reference()`). The working model has the linear predictor with the
+spatial term, nugget and `re()` effects of the fit, observed with its measurement
+error, or for counts with the variance 1/w of each record, where w is the
+curvature of its log likelihood at the conditional mode (`conditional_weights()`,
+split out of the sampling variance of `assess_extrapolation()`). In each dataset
+the covariance parameters are estimated again, as the best of 200 candidate
+points around the estimates (a Halton sequence on the logarithmic scale, spread by
+the inverse of their expected information), from all the observations, or from
+each training set when `refit = TRUE`, and the coefficients by generalised least
+squares. The leave-out errors of the test observations are in closed form, and
+their normal PIT values are turned into counts by the predictive distribution of
+the data. `PIT_area_expected` is the mean of the areas, `PIT_area_limit` their
+95% order statistic and the band the joint envelope of the curves and of that of
+the data (`global_rank_envelope()`, as in `variogram()`). The first version of the
+rewrite (#372) simulated instead from the joint predictive distribution of each test
+set with the parameters fixed, which ignored that estimated parameters fit the
+data better than the true ones and treated the test sets as independent. In 2,264
+correct-model datasets of 100 locations, fitted and assessed with RiskMap (nine
+cells of binomial 20, Gaussian and Poisson 5 data with five clusters, random five
+and leave-one-out test sets), that reference rejected 0 to 0.4% at 5% for the area
+and 0 to 1.3% for the band, with an expected area 1.6 to 1.9 times the mean area
+of the data. The new expected area is 0.95 to 1.06 times that of the data and the
+band at 0.5 is 0.55 to 0.63 times as wide. In 90,978 datasets of a larger study,
+with estimated parameters, the area of a correct model is above the limit in 2.4
+to 4.1% of datasets of 100 locations (means over responses, 3.0 to 5.1% without
+Bernoulli data), 7.4% with eight spatial test clusters in clustered locations and
+7.8% with five clusters at 300 locations (10% for Poisson 5 data). The band is
+closer to 5% there (5.5%). With `refit = TRUE` the candidates are chosen in each
+training set, and the area rejects 2.4 to 8.0%. Zero inflation is found in 46 to
+79% of datasets, skewed noise in 14 to 43% and outliers in 9 to 35%, against 0 to
+9% for the former reference. Wrong models that the estimated parameters can
+absorb (no covariate, no nugget, overdispersion, anisotropy) are found in 1.3 to
+7.1%, by any test of calibration. For binary outcomes with one trial the area
+rejects 0% of correct and of wrong models in every design, and full parametric
+bootstrap refits stay near 1%, so the help says that it is not a check of
+calibration there. The CRPS of a binary outcome is the Brier score of the
+predictive probability. With 999 curves on one thread the reference took about
+1, 9 and 33 seconds for 100, 500 and 1,000 locations on Wayland (0.2 to 1.3
+seconds before), and on the laptop, installed and under light load, 8 and 29
+seconds for 500 and 1,000 observations and 52 seconds for 2,001, with clusters
+and with leave-one-out alike. Its time grows about with the cube of the number
+of observations, so above 2,000 it uses 100 candidates, which about halves it,
+and above 1,500 `assess_prediction()` says that it can take a minute or more for
+each model. It shows a step with a spinner while it runs. The
+predictive draws of the test sets are no longer kept for it.
 - The result of `assess_prediction()` is a list with `scores`, a data frame with
 a row for each model and test observation (`model`, `test_set`, `row`, `CRPS`,
 `SCRPS`, `pit_lower`, `pit_upper`), `calibration`, with the areas, the

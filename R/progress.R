@@ -6,7 +6,9 @@
 #'
 #' - [parametric_bootstrap()], [profile.RiskMap()], [assess_fit()],
 #'   [assess_prediction()] and [assess_simulation()] show a progress bar with the
-#'   work done and an estimate of the time left.
+#'   work done and an estimate of the time left. [assess_prediction()] then
+#'   shows a line for the simulation of the calibration of each model, with a
+#'   spinner and the time so far.
 #' - [predict.RiskMap()] shows a bar while it predicts at many locations in
 #'   blocks, and while it propagates parameter uncertainty over its parameter
 #'   draws.

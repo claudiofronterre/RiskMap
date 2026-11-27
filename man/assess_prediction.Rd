@@ -39,7 +39,8 @@ number state is restored on exit. When \code{NULL} (the default), the seeds
 are drawn from the session's random number generator.}
 
 \item{messages}{Logical, whether to report on the assessment, with a
-progress bar as described in \link{riskmap_progress}. Defaults to the option
+progress bar and a step for the simulation of each model's calibration,
+as described in \link{riskmap_progress}. Defaults to the option
 \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
 \item{...}{Not used, and an error if given, so that a misspelt or former
@@ -98,8 +99,7 @@ The observations of a test set are predicted jointly, with the nugget and
 the random effects when the model has them. A random effect has its
 distribution given the training data, and a level that the training data
 don't have is drawn from the distribution of the random effect. The scores
-of an observation are those of its own predictive distribution, and the
-joint draws are for the reference of its calibration (see Calibration). Test
+of an observation are those of its own predictive distribution. Test
 observations with missing values in a variable used by any of the models
 are left out.
 
@@ -157,19 +157,28 @@ calibrated curve to at most 0.5.
 
 \section{How to read the area}{
 The area of a correct model is not zero, because its observations are finite
-in number, and because neighbouring test observations are above or below
-their predictions together. Its distribution is found by simulation.
+in number, because neighbouring test observations are above or below their
+predictions together, and because the parameters are estimated from the
+same data. Its distribution is found by simulation.
 \enumerate{
-\item Test observations are drawn from the model, jointly for each test set from
-its joint predictive distribution, once for each of 999 draws of
-\code{control_mcmc}, evenly spaced, or for every draw if there are fewer. An
-observation in several test sets has the same PIT value in all of them,
-the one drawn in its first test set.
-\item Each draw gives a calibration curve and an area, computed as for the data.
-\item \code{PIT_area_expected} is the mean of these areas, and \code{PIT_area_limit} the
-value that 95\% of them are below, which needs at least 19 draws. The band of \code{\link[=plot_cross_validation]{plot_cross_validation()}} is
-the joint envelope of the curves, computed as in \code{\link[=variogram]{variogram()}}, which the
-whole curve of a correct model is inside with a probability of 95\%.
+\item 999 datasets are simulated from a Gaussian working model of the fit. It
+has the linear predictor of the model, with its spatial correlation,
+nugget and random effects, observed with the measurement error of a
+Gaussian model. For counts each observation has instead a Gaussian error
+whose variance makes it about as informative about the linear predictor
+as the count is.
+\item In each dataset the covariance parameters of the working model are
+estimated again, from all its observations, or from each training set
+when \code{refit = TRUE}, and the test observations are predicted from their
+training sets, as for the data. This gives each test observation a PIT
+value. For counts, it is turned into a count by the predictive
+distribution of the data at that observation.
+\item Each dataset gives a calibration curve and an area, computed as for the
+data. \code{PIT_area_expected} is the mean of these areas, and
+\code{PIT_area_limit} the value that 95\% of them are below. The band of
+\code{\link[=plot_cross_validation]{plot_cross_validation()}} is the joint envelope of the curves, computed
+as in \code{\link[=variogram]{variogram()}}, which the whole curve of a correct model is inside
+with a probability of 95\%.
 }
 
 An area below \code{PIT_area_limit} is one that a correct model would give, and an
@@ -179,17 +188,24 @@ reflects chance, the number of observations and the dependence between them,
 so the areas of models shouldn't be ranked. The CRPS and the SCRPS are for
 comparing models. The area is also not sensitive to every departure. Too many
 observations in both tails change it little, and the curve and the histogram
-of \code{\link[=plot_cross_validation]{plot_cross_validation()}} show them.
+of \code{\link[=plot_cross_validation]{plot_cross_validation()}} show them. Nor does it find a departure that
+the estimated parameters make up for, such as a missing covariate or
+nugget. The scores compare such models.
 
-The simulation draws from the model with its parameters at the values used for
-the prediction, and it treats the test sets as independent, although their
-prediction errors are not. A test observation is predicted from neighbours
-that are predicted in other test sets, so their errors partly cancel. The
-areas of a correct model therefore tend to be smaller than the simulated
-ones, more so with leave-one-out and random test sets and with repeated
-divisions, and most with leave-one-out for binary outcomes. The limit and
-the band are cautious there, so a curve inside the band is not evidence of
-good calibration.
+The simulated datasets go through the same cross-validation as the data, with
+their parameters estimated again, so the area of a correct model is above
+\code{PIT_area_limit} in about one dataset in twenty. When the test sets are a few
+spatial clusters, it is above the limit, or its curve outside the band,
+somewhat more often. The time of the simulation grows with the cube of the
+number of observations, and with a few thousand observations it takes
+minutes for each model.
+
+For binary outcomes, with a single trial in each observation, the area, its
+limit and the band almost never point to miscalibration, even for a wrong
+model and with any kind of test sets. They are not a check of calibration
+there, and a curve inside the band says nothing about it. The CRPS of a
+binary outcome is the Brier score \eqn{(p - y)^2} of the predictive
+probability \eqn{p} that \eqn{y = 1}, so the scores still compare models.
 }
 
 \section{Failures}{

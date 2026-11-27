@@ -49,94 +49,304 @@ assess_calibration <- function(pit_lower, pit_upper, reference) {
 
 ##' Calibration curves of a correct model
 ##'
-##' The curves of observations simulated from the model, which the expected area,
-##' its limit and the bands come from. They are drawn jointly within each test
-##' set, from its joint predictive distribution, and independently between test
-##' sets. An observation in several test sets has the same PIT value in all of
-##' them, the one drawn in its first test set.
+##' The curves of datasets simulated from a Gaussian working model of the fit
+##' (`working_model()`), each put through the whole cross-validation, which the
+##' expected area, its limit and the bands come from. In each simulated dataset
+##' the covariance parameters of the working model are estimated again, as the
+##' best of `n_candidates` points around the estimates (`candidate_points()`),
+##' from all its observations or, with `refit`, from each training set, and the
+##' coefficients by generalised least squares. Each test observation then has
+##' the error of its prediction from the training set, in closed form, and the
+##' normal distribution function at the standardised error is its PIT value
+##' (`candidate_errors()`). For counts it is mapped to a count by the predictive
+##' distribution of the data, which gives the ends of the PIT of that count.
+##'
+##' The data and the simulated datasets thus go through the same cross-validation
+##' with estimated parameters, so the areas of the data and of the simulations
+##' have about the same distribution for a correct model. An observation in
+##' several test sets has a PIT value in each of them, from the same simulated
+##' datasets, as it has for the data.
 ##'
 ##' Nothing else in the assessment depends on how they are simulated.
 ##' @param fit The fit that is assessed.
 ##' @param test_sets A `RiskMap_test_sets` object.
 ##' @param predictive The predictive distributions of each test set, from
 ##'   `score_test_set()`, `NULL` for one that has no scores.
-##' @param n_curves The number of curves. There are fewer when the test sets have
-##'   fewer predictive draws.
-##' @param seeds A seed for each test set.
+##' @param n_curves The number of simulated datasets.
+##' @param seeds The seeds of the test sets, the first of which sets the
+##'   simulated datasets.
+##' @param refit Whether the parameters are estimated again in each training
+##'   set.
+##' @param n_candidates The number of candidate points of the covariance
+##'   parameters, the estimates among them.
 ##' @return A list with the `curves` at `calibration_levels()`, a matrix with a
 ##'   curve in each row, and their `areas`.
 ##' @noRd
-calibration_reference <- function(fit, test_sets, predictive, n_curves, seeds) {
+calibration_reference <- function(fit, test_sets, predictive, n_curves, seeds,
+                                  refit = FALSE, n_candidates = 200L) {
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
-  traits <- family_traits(fit$family)
-  simulate <- if (traits$discrete) simulate_count_pit else simulate_gaussian_pit
-  # The simulated PIT values of each observation, from its first test set.
-  uniforms <- vector("list", length(test_sets$location))
-  ends <- vector("list", length(predictive))
-  for (i in seq_along(predictive)) {
-    if (is.null(predictive[[i]])) next
-    set.seed(seeds[i])
-    rows <- predictive[[i]]$rows
-    simulated <- simulate(predictive[[i]], traits, uniforms[rows])
-    uniforms[rows] <- simulated$uniforms
-    ends[[i]] <- simulated[c("lower", "upper")]
+  set.seed(seeds[1L])
+  working <- working_model(fit)
+  # The rows that each scored test set tests, and those its training set
+  # leaves out, which include rows that it doesn't test.
+  scored <- which(!vapply(predictive, is.null, logical(1)))
+  sets <- lapply(scored, function(i) {
+    list(test = predictive[[i]]$rows,
+         left_out = setdiff(seq_along(fit$y), test_sets$sets[[i]]$train))
+  })
+  # A test observation in each row and a simulated dataset in each column.
+  uniforms <- candidate_errors(working, sets, n_curves, n_candidates, refit)
+  lower <- upper <- uniforms
+  if (family_traits(fit$family)$discrete) {
+    distributions <- unlist(lapply(predictive[scored], `[[`, "distributions"),
+                            recursive = FALSE)
+    for (j in seq_along(distributions)) {
+      counts <- count_quantile(distributions[[j]], uniforms[j, ])
+      lower[j, ] <- count_distribution_at(distributions[[j]], counts - 1)
+      upper[j, ] <- count_distribution_at(distributions[[j]], counts)
+    }
   }
-  bind <- function(name) {
-    values <- do.call(cbind, lapply(ends, `[[`, name))
-    values[seq_len(min(n_curves, nrow(values))), , drop = FALSE]
-  }
-  curves <- pit_curves(bind("lower"), bind("upper"), area_levels())
+  curves <- pit_curves(t(lower), t(upper), area_levels())
   list(curves = curves[, seq(1L, ncol(curves), by = 10L), drop = FALSE],
        areas = pit_area(curves, area_levels()))
 }
 
-##' Simulated PIT values of a Gaussian test set
+##' The number of candidate points of the reference of a calibrated model
 ##'
-##' @param predictive The predictive distributions of a test set.
-##' @param traits The traits of the family.
-##' @param earlier A list with the PIT values that each observation has in an
-##'   earlier test set, `NULL` for one that isn't in any.
-##' @return A list with the `lower` and `upper` ends of the PIT, matrices with a
-##'   simulation in each row and an observation in each column, and the PIT
-##'   values, `uniforms`, a list with a vector for each observation.
+##' Its time grows about with the cube of the number of observations. On one
+##' thread it took 8 seconds at 500 observations and 29 at 1,000 with 200
+##' candidates, and 52 at 2,001 with 100, which about halves it.
 ##' @noRd
-simulate_gaussian_pit <- function(predictive, traits, earlier) {
-  pit <- pnorm((predictive$draws - predictive$mean) / predictive$sd)
-  # A prediction without spread has all the probability at its mean.
-  pit[!predictive$sd > 0, ] <- 1
-  pit <- t(pit)
-  for (j in which(lengths(earlier) > 0L)) pit[, j] <- earlier[[j]]
-  list(lower = pit, upper = pit,
-       uniforms = lapply(seq_len(ncol(pit)), function(j) pit[, j]))
+reference_candidates <- function(n_observations) {
+  if (n_observations > 2000L) 100L else 200L
 }
 
-##' Simulated PIT values of a test set of counts
+##' The Gaussian working model of a fit
 ##'
-##' A count is drawn from the family given the mean, and has a randomised PIT
-##' value. An observation in an earlier test set has instead the count with the
-##' PIT value that it has there.
-##' @inheritParams simulate_gaussian_pit
+##' The linear predictor of the fit, with its spatial term, nugget and random
+##' effects, observed with the measurement error of a Gaussian fit, or else
+##' with the variance 1 / w of each record, where w is the curvature of its log
+##' likelihood at the conditional mode of the linear predictor given the data
+##' (`conditional_weights()`), so that a count is about as informative as it
+##' is in the fit.
+##' @return A list with the `design` matrix, the covariance parameters `theta`,
+##'   the names of those that the fit estimates, `free`, a function that gives
+##'   the `covariance` of the records at any `theta`, and its `derivatives` at
+##'   `theta` with respect to the logarithms of the free parameters.
 ##' @noRd
-simulate_count_pit <- function(predictive, traits, earlier) {
-  draws <- predictive$draws
-  counts <- matrix(traits$simulate(draws, predictive$units_m,
-                                   predictive$parameters),
-                   nrow = ncol(draws), ncol = nrow(draws), byrow = TRUE)
-  mixing <- matrix(stats::runif(length(counts)), nrow(counts))
-  lower <- upper <- counts
-  uniforms <- earlier
-  for (j in seq_along(earlier)) {
-    distribution <- predictive$distributions[[j]]
-    known <- length(earlier[[j]]) > 0L
-    if (known) counts[, j] <- count_quantile(distribution, earlier[[j]])
-    lower[, j] <- count_distribution_at(distribution, counts[, j] - 1)
-    upper[, j] <- count_distribution_at(distribution, counts[, j])
-    if (!known) {
-      uniforms[[j]] <- lower[, j] + mixing[, j] * (upper[, j] - lower[, j])
+working_model <- function(fit) {
+  parameters <- coef(fit)
+  design <- as.matrix(fit$D)
+  location <- fit$ID_coords
+  distances <- pairwise_distances(fit$coords)
+  effects <- lapply(fit$ID_re %||% list(), function(level) {
+    outer(level, level, "==") * 1
+  })
+  effect_names <- sprintf("sigma2_re.%d", seq_along(effects))
+  traits <- family_traits(fit$family)
+  measurement <- if (traits$measurement_error) {
+    parameters$sigma2_me %||% fit_fix_var_me(fit) %||% 0
+  } else {
+    0
+  }
+  nugget <- fitted_nugget_variance(fit, parameters)
+  same_location <- if (nugget > 0) outer(location, location, "==") * 1
+  variances_re <- as.numeric(parameters$sigma2_re)[seq_along(effects)]
+  names(variances_re) <- effect_names
+  theta <- c(sigma2 = parameters$sigma2[[1L]], phi = parameters$phi[[1L]],
+             if (nugget > 0) c(tau2 = nugget),
+             if (measurement > 0) c(sigma2_me = measurement), variances_re)
+  held <- fit_fixed_pars(fit)
+  held_names <- setdiff(names(held), "sigma2_re")
+  if (!is.null(held$sigma2_re)) {
+    terms <- names(held$sigma2_re)
+    held_effects <- if (is.null(terms)) {
+      seq_along(effects)
+    } else {
+      match(terms, names(parameters$sigma2_re))
+    }
+    held_names <- c(held_names, effect_names[held_effects])
+  }
+  free <- setdiff(names(theta), held_names)
+  noise <- if (traits$exact) {
+    numeric(length(location))
+  } else {
+    1 / pmax(conditional_weights(fit, parameters), 1e-4)
+  }
+  covariance <- function(theta) {
+    out <- theta[["sigma2"]] * matern_correlation(
+      distances, phi = theta[["phi"]], kappa = fit$kappa,
+      return_sym_matrix = TRUE
+    )[location, location]
+    if ("tau2" %in% names(theta)) out <- out + theta[["tau2"]] * same_location
+    for (j in seq_along(effects)) {
+      out <- out + theta[[effect_names[j]]] * effects[[j]]
+    }
+    measurement <- if ("sigma2_me" %in% names(theta)) theta[["sigma2_me"]]
+    diag(out) <- diag(out) + noise + (measurement %||% 0)
+    out
+  }
+  # Central differences on the logarithmic scale.
+  derivative <- function(name, step = 1e-4) {
+    up <- down <- theta
+    up[[name]] <- theta[[name]] * exp(step)
+    down[[name]] <- theta[[name]] * exp(-step)
+    (covariance(up) - covariance(down)) / (2 * step)
+  }
+  list(design = design, theta = theta, free = free, covariance = covariance,
+       derivatives = lapply(free, derivative))
+}
+
+##' Candidate points of the covariance parameters of a working model
+##'
+##' The estimates, and `n - 1` points of a Halton sequence mapped to a normal
+##' distribution on the logarithmic scale of the free parameters, whose
+##' covariance is `stretch^2` times the inverse of their expected information,
+##' with 0.1 added to its diagonal so that a parameter the data say little
+##' about doesn't move too far. No parameter moves by more than a factor of
+##' exp(4).
+##' @param working A working model, from `working_model()`.
+##' @param n The number of points.
+##' @return A matrix with a point in each row and a parameter in each column.
+##' @noRd
+candidate_points <- function(working, n, stretch = 1.4) {
+  out <- matrix(working$theta, n, length(working$theta), byrow = TRUE,
+                dimnames = list(NULL, names(working$theta)))
+  n_free <- length(working$free)
+  if (!n_free || n < 2L) return(out[1L, , drop = FALSE])
+  precision <- chol2inv(chol(working$covariance(working$theta)))
+  scaled <- lapply(working$derivatives, function(derivative) {
+    precision %*% derivative
+  })
+  information <- diag(0.1, n_free)
+  for (i in seq_len(n_free)) {
+    for (j in seq_len(n_free)) {
+      information[i, j] <- information[i, j] +
+        sum(scaled[[i]] * t(scaled[[j]])) / 2
     }
   }
-  list(lower = lower, upper = upper, uniforms = uniforms)
+  halton <- vapply(first_primes(n_free), function(base) {
+    radical_inverse(seq_len(n - 1L), base)
+  }, numeric(n - 1L))
+  halton <- matrix(halton, n - 1L, n_free)
+  steps <- stretch * t(chol(chol2inv(chol(information)))) %*% t(qnorm(halton))
+  out[-1L, working$free] <- out[-1L, working$free, drop = FALSE] *
+    exp(pmin(pmax(t(steps), -4), 4))
+  out
+}
+
+##' The first `n` prime numbers
+##' @noRd
+first_primes <- function(n) {
+  primes <- integer(0)
+  candidate <- 2L
+  while (length(primes) < n) {
+    if (all(candidate %% primes[primes <= sqrt(candidate)] != 0L)) {
+      primes <- c(primes, candidate)
+    }
+    candidate <- candidate + 1L
+  }
+  primes
+}
+
+##' The radical inverse of whole numbers in a base, the Halton sequence
+##' @noRd
+radical_inverse <- function(index, base) {
+  vapply(index, function(i) {
+    factor <- 1
+    value <- 0
+    while (i > 0) {
+      factor <- factor / base
+      value <- value + factor * (i %% base)
+      i <- i %/% base
+    }
+    value
+  }, numeric(1))
+}
+
+##' PIT values of the test observations of datasets simulated from a working
+##' model
+##'
+##' Each dataset is simulated with the estimates, and takes the candidate point
+##' with the largest likelihood profiled over the coefficients, of all its
+##' observations or, with `refit`, of each training set. The prediction of the
+##' rows that a training set leaves out, given those it has, is in closed form
+##' with the precision matrix Q of the candidate point. Their covariance is
+##' the inverse of the block of Q at these rows, and the errors of their
+##' prediction are that inverse times the block of Q (y - X beta), with the
+##' coefficients beta estimated from the observations the parameters are.
+##' @param working A working model, from `working_model()`.
+##' @param sets A list with the `test` rows of each test set and the rows its
+##'   training set leaves out, `left_out`.
+##' @param n_simulations The number of simulated datasets.
+##' @param n_candidates The number of candidate points.
+##' @param refit Whether the parameters are estimated in each training set.
+##' @return A matrix with a test observation in each row, in the order of
+##'   `sets`, and a simulated dataset in each column.
+##' @noRd
+candidate_errors <- function(working, sets, n_simulations, n_candidates,
+                             refit) {
+  design <- working$design
+  n <- nrow(design)
+  simulated <- crossprod(chol(working$covariance(working$theta)),
+                         matrix(rnorm(n * n_simulations), n))
+  points <- candidate_points(working, n_candidates)
+  size <- lengths(lapply(sets, `[[`, "test"))
+  first <- c(0L, cumsum(size))
+  uniforms <- matrix(0, sum(size), n_simulations)
+  best <- matrix(-Inf, if (refit) length(sets) else 1L, n_simulations)
+  for (k in seq_len(nrow(points))) {
+    progress_spin()
+    root <- tryCatch(chol(working$covariance(points[k, ])),
+                     error = function(error) NULL)
+    if (is.null(root)) next
+    precision <- chol2inv(root)
+    log_determinant <- 2 * sum(log(diag(root)))
+    QZ <- precision %*% simulated
+    QX <- precision %*% design
+    XQX <- crossprod(design, QX)
+    XQZ <- crossprod(QX, simulated)
+    ZQZ <- colSums(simulated * QZ)
+    if (!refit) {
+      # Q (y - X beta), with beta from all the observations.
+      residual <- QZ - QX %*% solve(XQX, XQZ)
+      log_likelihood <- -(log_determinant + colSums(simulated * residual)) / 2
+      better <- which(log_likelihood > best[1L, ])
+      if (!length(better)) next
+      best[1L, better] <- log_likelihood[better]
+    }
+    for (j in seq_along(sets)) {
+      progress_spin()
+      left_out <- sets[[j]]$left_out
+      test <- match(sets[[j]]$test, left_out)
+      root_left_out <- chol(precision[left_out, left_out, drop = FALSE])
+      conditional <- chol2inv(root_left_out)
+      if (refit) {
+        # The likelihood of the training set, from the blocks of Q.
+        CX <- conditional %*% QX[left_out, , drop = FALSE]
+        CZ <- conditional %*% QZ[left_out, , drop = FALSE]
+        information <- XQX - crossprod(QX[left_out, , drop = FALSE], CX)
+        score <- XQZ - crossprod(QX[left_out, , drop = FALSE], CZ)
+        beta <- solve(information, score)
+        log_likelihood <- -(log_determinant +
+                              2 * sum(log(diag(root_left_out))) + ZQZ -
+                              colSums(QZ[left_out, , drop = FALSE] * CZ) -
+                              colSums(score * beta)) / 2
+        better <- which(log_likelihood > best[j, ])
+        if (!length(better)) next
+        best[j, better] <- log_likelihood[better]
+        errors <- CZ[test, better, drop = FALSE] -
+          CX[test, , drop = FALSE] %*% beta[, better, drop = FALSE]
+      } else {
+        errors <- conditional[test, , drop = FALSE] %*%
+          residual[left_out, better, drop = FALSE]
+      }
+      uniforms[first[j] + seq_along(test), better] <-
+        pnorm(errors / sqrt(diag(conditional)[test]))
+    }
+  }
+  uniforms
 }
 
 ##' The joint band of a curve, from curves simulated from the model
