@@ -151,7 +151,8 @@ in the source repository.
   mean. Every score is a loss, so lower is better,
   [`summary()`](https://rdrr.io/r/base/summary.html) gives the
   differences from a reference model, and `PIT_area` is given with the
-  limit that a correct model is below with a probability of 95%.
+  limit that a correct model is below with a probability of 95%, from
+  datasets simulated with their parameters estimated again.
   [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
   draws the calibration with its 95% joint band, and maps the scores.
 - [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)

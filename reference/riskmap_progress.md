@@ -11,6 +11,9 @@ has left.
   [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
   show a progress bar with the work done and an estimate of the time
   left.
+  [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+  then shows a line for the simulation of the calibration of each model,
+  with a spinner and the time so far.
 
 - [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
   shows a bar while it predicts at many locations in blocks, and while

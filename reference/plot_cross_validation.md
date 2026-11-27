@@ -104,7 +104,7 @@ not a certainty. The area of a correct model is below it with a
 probability of 95%, and above it for one dataset in twenty.
 [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
 says how the band and the limit are computed, how to read the area, and
-why they are cautious.
+where they are not a check of calibration, as for binary outcomes.
 
 ## Scores
 

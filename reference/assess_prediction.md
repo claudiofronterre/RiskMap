@@ -71,8 +71,8 @@ assess_prediction(
 
 - messages:
 
-  Logical, whether to report on the assessment, with a progress bar as
-  described in
+  Logical, whether to report on the assessment, with a progress bar and
+  a step for the simulation of each model's calibration, as described in
   [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 
@@ -137,10 +137,9 @@ The observations of a test set are predicted jointly, with the nugget
 and the random effects when the model has them. A random effect has its
 distribution given the training data, and a level that the training data
 don't have is drawn from the distribution of the random effect. The
-scores of an observation are those of its own predictive distribution,
-and the joint draws are for the reference of its calibration (see
-Calibration). Test observations with missing values in a variable used
-by any of the models are left out.
+scores of an observation are those of its own predictive distribution.
+Test observations with missing values in a variable used by any of the
+models are left out.
 
 The memory of a test set grows with the square of its number of
 locations and the time of its joint draws with the cube, so large
@@ -193,22 +192,27 @@ identity line, from 0 for a perfectly calibrated curve to at most 0.5.
 ## How to read the area
 
 The area of a correct model is not zero, because its observations are
-finite in number, and because neighbouring test observations are above
-or below their predictions together. Its distribution is found by
-simulation.
+finite in number, because neighbouring test observations are above or
+below their predictions together, and because the parameters are
+estimated from the same data. Its distribution is found by simulation.
 
-1.  Test observations are drawn from the model, jointly for each test
-    set from its joint predictive distribution, once for each of 999
-    draws of `control_mcmc`, evenly spaced, or for every draw if there
-    are fewer. An observation in several test sets has the same PIT
-    value in all of them, the one drawn in its first test set.
+1.  999 datasets are simulated from a Gaussian working model of the fit.
+    It has the linear predictor of the model, with its spatial
+    correlation, nugget and random effects, observed with the
+    measurement error of a Gaussian model. For counts each observation
+    has instead a Gaussian error whose variance makes it about as
+    informative about the linear predictor as the count is.
 
-2.  Each draw gives a calibration curve and an area, computed as for the
-    data.
+2.  In each dataset the covariance parameters of the working model are
+    estimated again, from all its observations, or from each training
+    set when `refit = TRUE`, and the test observations are predicted
+    from their training sets, as for the data. This gives each test
+    observation a PIT value. For counts, it is turned into a count by
+    the predictive distribution of the data at that observation.
 
-3.  `PIT_area_expected` is the mean of these areas, and `PIT_area_limit`
-    the value that 95% of them are below, which needs at least 19 draws.
-    The band of
+3.  Each dataset gives a calibration curve and an area, computed as for
+    the data. `PIT_area_expected` is the mean of these areas, and
+    `PIT_area_limit` the value that 95% of them are below. The band of
     [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
     is the joint envelope of the curves, computed as in
     [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md),
@@ -224,17 +228,26 @@ The CRPS and the SCRPS are for comparing models. The area is also not
 sensitive to every departure. Too many observations in both tails change
 it little, and the curve and the histogram of
 [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
-show them.
+show them. Nor does it find a departure that the estimated parameters
+make up for, such as a missing covariate or nugget. The scores compare
+such models.
 
-The simulation draws from the model with its parameters at the values
-used for the prediction, and it treats the test sets as independent,
-although their prediction errors are not. A test observation is
-predicted from neighbours that are predicted in other test sets, so
-their errors partly cancel. The areas of a correct model therefore tend
-to be smaller than the simulated ones, more so with leave-one-out and
-random test sets and with repeated divisions, and most with
-leave-one-out for binary outcomes. The limit and the band are cautious
-there, so a curve inside the band is not evidence of good calibration.
+The simulated datasets go through the same cross-validation as the data,
+with their parameters estimated again, so the area of a correct model is
+above `PIT_area_limit` in about one dataset in twenty. When the test
+sets are a few spatial clusters, it is above the limit, or its curve
+outside the band, somewhat more often. The time of the simulation grows
+about with the cube of the number of observations and its memory with
+the square, so with a few thousand observations it takes minutes for
+each model, and with many thousands much longer.
+
+For binary outcomes, with a single trial in each observation, the area,
+its limit and the band almost never point to miscalibration, even for a
+wrong model and with any kind of test sets. They are not a check of
+calibration there, and a curve inside the band says nothing about it.
+The CRPS of a binary outcome is the Brier score \\(p - y)^2\\ of the
+predictive probability \\p\\ that \\y = 1\\, so the scores still compare
+models.
 
 ## Failures
 
@@ -305,8 +318,8 @@ summary(result, reference = "intercept")
 #> 
 #> Scores over 100 test observations
 #>      Model   CRPS  CRPS difference  SCRPS SCRPS difference PIT area  Limit
-#>  intercept 1.2588                  1.4610                    0.0669 0.2084
-#>  covariate 0.4087 -0.8501 (0.0694) 0.8992 -0.5618 (0.0380)   0.0199 0.1489
+#>  intercept 1.2588                  1.4610                    0.0669 0.0950
+#>  covariate 0.4087 -0.8501 (0.0694) 0.8992 -0.5618 (0.0380)   0.0199 0.0472
 #> ℹ Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
 #>   response.
 #> ℹ The PIT area of a correct model is below the limit with a probability of 95%.
@@ -326,7 +339,7 @@ summary(result)
 #> 
 #> Scores over 100 test observations
 #>    Model   CRPS  SCRPS PIT area  Limit
-#>  Model 1 1.2660 1.4532   0.0511 0.1937
+#>  Model 1 1.2660 1.4532   0.0511 0.0849
 #> ℹ Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
 #>   response.
 #> ℹ The PIT area of a correct model is below the limit with a probability of 95%.
