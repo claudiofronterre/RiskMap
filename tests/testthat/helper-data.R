@@ -97,6 +97,23 @@ cross_validation <- assess_prediction(
   messages = FALSE
 )
 
+# A cross-validation in which `models` are binomial models of binary outcomes.
+# Their scores become those of one trial, a PIT interval from 0 for y = 0 or to
+# 1 for y = 1 with the Brier score as the CRPS, with y the parity of the row.
+# The calibration is left as it is.
+binary_scores <- function(x, models) {
+  for (model in models) {
+    rows <- x$scores$model == model
+    y <- x$scores$row[rows] %% 2
+    p <- seq(0.2, 0.6, length.out = sum(rows))
+    x$scores$pit_lower[rows] <- ifelse(y == 0, 0, 1 - p)
+    x$scores$pit_upper[rows] <- ifelse(y == 0, 1 - p, 1)
+    x$scores$CRPS[rows] <- (p - y)^2
+    x$family[model] <- "binomial"
+  }
+  x
+}
+
 surface <- grid
 surface$cov <- rnorm(nrow(grid))
 surface$i <- rep(1, nrow(grid))

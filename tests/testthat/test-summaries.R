@@ -493,6 +493,35 @@ test_that("the note on the limit of the area needs a limit", {
   expect_no_match(printed, "PIT area of a correct model")
 })
 
+test_that("the summary of a cross-validation gives no limit for binary outcomes", {
+  mixed <- summary(binary_scores(build_cross_validation(), "model_b"))
+  expect_identical(attr(mixed, "binary"), c(model_a = FALSE, model_b = TRUE))
+  # The values are kept.
+  expect_identical(mixed$PIT_area_limit, c(0.06, 0.07))
+  expect_identical(cv_summary_table(mixed, 3L)$Limit,
+                   c("0.060", "none (binary)"))
+  expect_snapshot(print(mixed))
+  printed <- squish(capture.output(print(mixed)))
+  expect_match(printed, "below the limit with a probability of 95%",
+               fixed = TRUE)
+  expect_match(printed, "binary outcomes (model_b)", fixed = TRUE)
+  # Only binary models, so no limit at all.
+  binary <- binary_scores(build_cross_validation(), c("model_a", "model_b"))
+  printed <- squish(capture.output(print(summary(binary))))
+  expect_no_match(printed, "probability of 95%", fixed = TRUE)
+  expect_match(printed, "Brier score", fixed = TRUE)
+  expect_no_match(printed, "(model_", fixed = TRUE)
+  expect_match(squish(capture.output(print(binary))), "none (binary)",
+               fixed = TRUE)
+  expect_match(squish(to_table(binary)), "none (binary)", fixed = TRUE)
+  # A subset of the summary, and a summary without the attribute, as from
+  # before it.
+  expect_identical(cv_summary_table(mixed["model_b", ], 3L)$Limit,
+                   "none (binary)")
+  attr(mixed, "binary") <- NULL
+  expect_identical(cv_summary_table(mixed, 3L)$Limit, c("0.060", "0.070"))
+})
+
 test_that("the summary of a cross-validation by assess_prediction() is finite", {
   scores <- summary(cross_validation, reference = "model_a")
   expect_identical(row.names(scores), c("model_a", "model_b"))

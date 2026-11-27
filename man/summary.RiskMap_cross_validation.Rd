@@ -22,8 +22,9 @@ row for each model, named after it, and the columns \code{CRPS} and \code{SCRPS}
 \code{reference} is given, \code{CRPS_difference}, \code{CRPS_se}, \code{SCRPS_difference} and
 \code{SCRPS_se}. Its
 attributes include \code{reference}, \code{refit}, and for each model
-\code{n_observations}, the number of observations with scores, and \code{n_failed},
-the number of failed test-set assessments.
+\code{n_observations}, the number of observations with scores, \code{n_failed},
+the number of failed test-set assessments, and \code{binary}, whether it is a
+model of binary outcomes.
 }
 \description{
 Gives the average scores of each model over all test
@@ -33,7 +34,10 @@ the calibration curves.
 \details{
 Lower is better for both scores, and a negative difference means a better
 score than that of the reference model. A \code{PIT_area} below \code{PIT_area_limit} is
-one that a correct model would give (see \code{\link[=assess_prediction]{assess_prediction()}}).
+one that a correct model would give (see \code{\link[=assess_prediction]{assess_prediction()}}). For a
+model of binary outcomes the area is not a check of calibration, so the
+print of the summary and \code{\link[=to_table]{to_table()}} give it without its limit, and say
+why.
 
 An observation in several test sets is first given the average of its
 scores, so that it counts once. The scores of a model are then averaged
