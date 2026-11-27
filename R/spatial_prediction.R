@@ -657,7 +657,7 @@ validate_prediction_standardise <- function(object, standardise) {
   profiles[reference_names] <- standardise[reference_names]
   infinite <- !prediction_design_is_finite(object, profiles)
   if (any(infinite)) {
-    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number.", arg = "standardise")
+    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}.", arg = "standardise")
   }
   list(
     data = standardise,
@@ -753,7 +753,7 @@ validate_prediction_data <- function(object, newdata, include,
       object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
     )
     if (any(!finite)) {
-      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number, so {?its/their} predictions are {.code NA}.")
+      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}, so {?its/their} predictions are {.code NA}.")
       valid_rows[valid_rows] <- finite
     }
   }
@@ -1729,28 +1729,9 @@ prediction_design_is_finite <- function(object, predictors) {
 #' such as `log(x)` in `ns(log(x), 2)`, that give a number for each row.
 #' @noRd
 prediction_parts_are_finite <- function(object, predictors) {
-  terms <- stats::terms(update(interpret_formula(fit_formula(object))$pf,
-                               NULL ~ .))
-  finite <- rep(TRUE, nrow(predictors))
-  check_parts <- function(expression) {
-    if (!is.call(expression)) return(invisible(NULL))
-    parts <- as.list(expression)[-1L]
-    # Without empty arguments, as in x[, 1]
-    for (part in parts[!vapply(parts, identical, logical(1), quote(expr = ))]) {
-      values <- tryCatch(
-        suppressWarnings(eval(part, predictors, environment(terms))),
-        error = function(error) NULL
-      )
-      if (is.numeric(values) && length(values) == length(finite)) {
-        finite <<- finite & is.finite(as.numeric(values))
-      }
-      check_parts(part)
-    }
-  }
-  for (variable in as.list(attr(terms, "variables"))[-1L]) {
-    check_parts(variable)
-  }
-  finite
+  formula_parts_are_finite(
+    update(interpret_formula(fit_formula(object))$pf, NULL ~ .), predictors
+  )
 }
 
 #' Build a prediction design matrix using the fitted factor structure
@@ -3495,6 +3476,18 @@ assess_simulation <- function(simulation,
     n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
     if (n_incomplete > 0) {
       abort_input(c("The model {.val {model_names[i]}} needs complete values of {.val {required}} on the prediction grid, but {n_incomplete} grid location{?s} {?has/have} missing values.", "i" = "Remove them from the prediction grid before simulating."), arg = "models")
+    }
+    # A fit is checked as predict() checks new data, with its own terms.
+    finite <- if (inherits(template_i, "RiskMap")) {
+      prediction_design_is_finite(template_i, st_drop_geometry(grid))
+    } else {
+      fixed_effects_are_finite(template_i$fixed_terms, grid)
+    }
+    if (!all(finite)) {
+      n_infinite <- sum(!finite)
+      # As text, whose length sets the plurals, not its value.
+      locations <- as.character(which(!finite))
+      abort_input(c("The model {.val {model_names[i]}} has a covariate that isn't a finite number, such as {.code log(0)}, at {n_infinite} location{?s} of the prediction grid.", "i" = "{?It is location/They are locations} {locations}. Remove {?it/them} from the prediction grid before simulating."), arg = "models")
     }
   }
 

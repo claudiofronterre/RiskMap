@@ -138,6 +138,10 @@ specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
 #'   covariates, grouping variables, offsets and any denominator column.
 #' @param prediction_grid `sf` point data containing the covariates, grouping
 #'   variables and offsets for the requested surface. Required for `"surface"`.
+#'   In both, every row needs covariates that are complete and give the model
+#'   finite numbers. A row where a covariate is missing, or where the formula
+#'   gives a value such as `log(0)`, stops the simulation and is named, so it
+#'   can be removed first.
 #' @param seed Optional non-negative integer seed. When supplied, the caller's
 #'   random-number state is restored on exit.
 #' @return A `RiskMap_simulation` object containing `locations`, the transformed
@@ -818,6 +822,28 @@ check_simulation_variables <- function(formula, data, label) {
   invisible(TRUE)
 }
 
+#' Check that the covariates of the fixed effects are complete and finite
+#'
+#' At the locations of a simulation, where the model can't be evaluated at a
+#' row with a missing covariate, or one that gives a value that isn't a finite
+#' number, such as the logarithm of zero.
+#' @inheritParams simulation_inputs
+#' @noRd
+check_simulation_covariates <- function(model, data, label) {
+  arg <- simulation_location_arg(label)
+  covariates <- all.vars(stats::delete.response(model$fixed_terms))
+  incomplete <- which(!complete.cases(st_drop_geometry(data)[covariates]))
+  if (length(incomplete)) {
+    n <- length(incomplete)
+    # As text, whose length sets the plurals, not its value.
+    incomplete <- as.character(incomplete)
+    abort_input(c("{n} row{?s} of {.arg {arg}} {cli::qty(n)}{?has/have} missing values in the covariates of the model.", "i" = "{?It is row/They are rows} {incomplete}. Remove {?it/them} before simulating."), arg = arg)
+  }
+  finite <- fixed_effects_are_finite(model$fixed_terms, data)
+  if (!all(finite)) abort_non_finite_rows(which(!finite), arg, "simulate")
+  invisible(TRUE)
+}
+
 #' Construct model inputs at one simulation location set
 #'
 #' @param model A `RiskMap_simulation_model`.
@@ -829,6 +855,7 @@ check_simulation_variables <- function(formula, data, label) {
 #' @noRd
 simulation_inputs <- function(model, data, response, label, original = FALSE) {
   check_simulation_variables(model$formula, data, label)
+  check_simulation_covariates(model, data, label)
   mf <- tryCatch(model.frame(model$fixed_terms, data = data, na.action = na.fail,
                              xlev = model$xlevels), error = function(e) {
     arg <- simulation_location_arg(label)
