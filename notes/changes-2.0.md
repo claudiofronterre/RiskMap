@@ -1547,6 +1547,8 @@ acceptance rates and predictions of that fit are unchanged bit for bit, and
 the link made with `Rcpp::cppFunction()` now accepts 57% of proposals, as
 the one written in R does. RiskMap's own links are written in R and were not
 affected, and the chain is the only compiled code of RiskMap that calls R.
+The defect came with the compiled chain in 2.0.0-rc1. The sampler of 1.0.0
+was written in R and did not have it, so `NEWS.md` has no entry.
 - `set_control_mcmc()` keeps 2,000 draws by default instead of 1,000, with
 `n_sim = 22000` and the same burn-in of 2,000 iterations and thinning by 10.
 `glgpm()` stores these draws and `predict()` reuses them, so the Monte Carlo
