@@ -303,10 +303,13 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_match(printed, "leaves out the sampling noise", fixed = TRUE)
   # Locations that share almost no correlation set the threshold at 1, so
   # nothing can be flagged, which assess_extrapolation() warns of and the
-  # print says.
+  # print says. A scale far shorter than the spacing of the fixture's locations
+  # gives that.
+  isolated_model <- gaussian_model
+  isolated_model$estimate$phi <- log(1e-3)
   far <- st_as_sf(data.frame(x = 1e7, z = 1e7, cov = 0), coords = c("x", "z"),
                   crs = 32637)
-  expect_warning(isolated <- assess_extrapolation(gaussian_model, far),
+  expect_warning(isolated <- assess_extrapolation(isolated_model, far),
                  "no location can be classed as spatial extrapolation",
                  class = "riskmap_warning")
   expect_equal(attr(isolated, "spatial_threshold"), 1, tolerance = 1e-12)
@@ -320,7 +323,7 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_no_match(squish(capture.output(print(extrapolation))),
                   "Spatial: none", fixed = TRUE)
   # A threshold that is given, or a percentile below 1, gives no warning.
-  expect_no_warning(assess_extrapolation(gaussian_model, far,
+  expect_no_warning(assess_extrapolation(isolated_model, far,
                                          spatial_threshold = 0.8))
   expect_no_warning(assess_extrapolation(binomial_model, binomial_data))
   # A threshold below 1 never prints as 100%.
