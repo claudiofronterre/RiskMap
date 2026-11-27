@@ -134,7 +134,8 @@ measurement error variance of a Gaussian model.</p></li>
 </ul><p>The table of a cross-validation or its summary has a row for each model,
 with its scores, their differences from a <code>reference</code> model with their
 standard errors in brackets, and its <code>PIT_area</code> with the limit of a correct
-model.</p>
+model. A model of binary outcomes has "none (binary)" as its limit, because
+the area is not a check of calibration there (see <code><a href="assess_prediction.html">assess_prediction()</a></code>).</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

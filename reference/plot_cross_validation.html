@@ -143,8 +143,12 @@ it with a probability of 95%.</p>
 and, after "Below", <code>PIT_area_limit</code>. It is a 95% limit and not a certainty. The
 area of a correct model is below it with a probability of 95%, and above it
 for one dataset in twenty. <code><a href="assess_prediction.html">assess_prediction()</a></code> says how the band and the
-limit are computed, how to read the area, and where they are not a check of
-calibration, as for binary outcomes.</p>
+limit are computed and how to read the area.</p>
+<p>For binary outcomes, with one trial in each test observation, the area, the
+limit and the band are not a check of calibration. The panel of such a model
+shows its curve or histogram and its area, without the band or the limit, and
+says that it is not a check for binary outcomes. Compare these models by
+their scores.</p>
     </div>
     <div class="section level2">
     <h2 id="scores">Scores<a class="anchor" aria-label="anchor" href="#scores"></a></h2>

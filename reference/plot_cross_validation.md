@@ -103,8 +103,13 @@ Each panel gives the area between the curve and the identity line,
 not a certainty. The area of a correct model is below it with a
 probability of 95%, and above it for one dataset in twenty.
 [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
-says how the band and the limit are computed, how to read the area, and
-where they are not a check of calibration, as for binary outcomes.
+says how the band and the limit are computed and how to read the area.
+
+For binary outcomes, with one trial in each test observation, the area,
+the limit and the band are not a check of calibration. The panel of such
+a model shows its curve or histogram and its area, without the band or
+the limit, and says that it is not a check for binary outcomes. Compare
+these models by their scores.
 
 ## Scores
 

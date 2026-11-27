@@ -34,8 +34,9 @@ for each model, named after it, and the columns `CRPS` and `SCRPS`,
 `PIT_area`, `PIT_area_expected` and `PIT_area_limit`, and, when
 `reference` is given, `CRPS_difference`, `CRPS_se`, `SCRPS_difference`
 and `SCRPS_se`. Its attributes include `reference`, `refit`, and for
-each model `n_observations`, the number of observations with scores, and
-`n_failed`, the number of failed test-set assessments.
+each model `n_observations`, the number of observations with scores,
+`n_failed`, the number of failed test-set assessments, and `binary`,
+whether it is a model of binary outcomes.
 
 ## Details
 
@@ -43,6 +44,10 @@ Lower is better for both scores, and a negative difference means a
 better score than that of the reference model. A `PIT_area` below
 `PIT_area_limit` is one that a correct model would give (see
 [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)).
+For a model of binary outcomes the area is not a check of calibration,
+so the print of the summary and
+[`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
+give it without its limit, and say why.
 
 An observation in several test sets is first given the average of its
 scores, so that it counts once. The scores of a model are then averaged

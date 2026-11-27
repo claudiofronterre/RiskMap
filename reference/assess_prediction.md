@@ -124,12 +124,21 @@ A list of class `RiskMap_cross_validation`, containing
 
 ## Fixed and refitted parameters
 
-Fixed parameters are much faster, and with many locations and few
-parameters the scores change little. The test observations still
-contribute to the fixed estimates, however, so the scores are
-optimistic, and more so for models with more parameters. Use
-`refit = TRUE` to compare models with different numbers of parameters.
-It costs one fit for each test set and model.
+Fixed parameters, the default, suit a check of the calibration of a
+model. The reference of a correct model (see "How to read the area")
+repeats the same procedure, with the covariance parameters of its
+working model estimated from all the observations of each simulated
+dataset, so the area of the data is judged against areas found in the
+same way. They are also much faster.
+
+To compare models by their scores, use `refit = TRUE`. With fixed
+parameters the test observations have helped to estimate each model, so
+its scores are optimistic, and more so for a model with more parameters.
+The comparison then favours the model with more parameters, and more so
+when the test sets are spatial clusters. A refit costs one fit for each
+test set and model, and it can fail when a training set is too small for
+a model, which leaves the scores of that test set missing (see
+"Failures").
 
 ## Predictive distributions
 
@@ -241,13 +250,23 @@ about with the cube of the number of observations and its memory with
 the square, so with a few thousand observations it takes minutes for
 each model, and with many thousands much longer.
 
-For binary outcomes, with a single trial in each observation, the area,
-its limit and the band almost never point to miscalibration, even for a
-wrong model and with any kind of test sets. They are not a check of
-calibration there, and a curve inside the band says nothing about it.
+For binary outcomes, with a single trial in each test observation, the
+area, its limit and the band almost never point to miscalibration, even
+for a wrong model and with any kind of test sets. They are not a check
+of calibration there. A binomial model whose scored test observations
+all have one trial, as with individual-level data that have several
+observations at one location, is therefore treated apart.
+`assess_prediction()` says so, and
+[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
+the print of the result and of its
+[`summary()`](https://rdrr.io/r/base/summary.html), and
+[`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
+show its curve and its area without the band or the limit, with a short
+note on why. The result and the summary still have them. In an
+assessment of several models this applies to each such model on its own.
 The CRPS of a binary outcome is the Brier score \\(p - y)^2\\ of the
-predictive probability \\p\\ that \\y = 1\\, so the scores still compare
-models.
+predictive probability \\p\\ that \\y = 1\\, and the scores still
+compare models.
 
 ## Failures
 
