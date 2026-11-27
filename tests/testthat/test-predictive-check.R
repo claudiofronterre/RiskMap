@@ -2,14 +2,14 @@
 
 # Data with two records at each location, and fits with every parameter held at
 # given values, which need no estimation.
-check_data_twice <- gaussian_data[rep(1:10, each = 2), ]
-check_data_twice$cov <- check_data_twice$cov + rep(c(0, 1), 10)
+check_data_twice <- gaussian_data[rep(seq_len(n), each = 2), ]
+check_data_twice$cov <- check_data_twice$cov + rep(c(0, 1), n)
 set.seed(31)
-check_data_twice$y <- 1 + rnorm(20)
-check_data_twice$count <- rpois(20, 2)
-check_data_twice$binary <- rbinom(20, 1, 0.5)
-check_data_twice$z <- rnorm(20)
-check_data_twice$exposure <- rep(c(0.5, 2), 10)
+check_data_twice$y <- 1 + rnorm(2 * n)
+check_data_twice$count <- rpois(2 * n, 2)
+check_data_twice$binary <- rbinom(2 * n, 1, 0.5)
+check_data_twice$z <- rnorm(2 * n)
+check_data_twice$exposure <- rep(c(0.5, 2), n)
 
 held_fit <- function(formula, family, parameters, denominator = NULL) {
   arguments <- list(
@@ -151,7 +151,7 @@ test_that("nearly collinear covariates are all taken out of the residuals", {
 
 test_that("offsets are taken out on the scale of the link", {
   set.seed(8)
-  population <- rep(c(10, 1000), 10)
+  population <- rep(c(10, 1000), n)
   records <- check_records(poisson_twice, "rate")
   total <- as.numeric(rowsum(check_data_twice$count, records$index))
   people <- check_data_twice$exposure * population
@@ -174,9 +174,9 @@ test_that("offsets are taken out on the scale of the link", {
   # is one of the covariates.
   records <- check_records(binary_twice, "prevalence")
   fit <- binary_twice
-  fit$cov_offset <- rnorm(20)
+  fit$cov_offset <- rnorm(2 * n)
   offset <- as.numeric(tapply(fit$cov_offset, records$index, mean))
-  field <- matrix(rnorm(10), 10)
+  field <- matrix(rnorm(n), n)
   expect_equal(residuals_from_covariates(field, fit, records),
                matrix(resid(lm(field[, 1] - offset ~ 1))))
   fit$link_function$name <- "custom"
@@ -185,8 +185,8 @@ test_that("offsets are taken out on the scale of the link", {
 })
 
 test_that("observations at a location are added up, or averaged", {
-  index <- rep(1:10, each = 2)
-  locations <- check_data_twice[2 * (1:10), ]
+  index <- rep(seq_len(n), each = 2)
+  locations <- check_data_twice[2 * seq_len(n), ]
   semivariances <- function(values) {
     locations$values <- values
     variogram(locations, "values", n_permutations = 0)$variogram |>
@@ -205,8 +205,8 @@ test_that("observations at a location are added up, or averaged", {
   expect_equal(check$variogram$observed,
                semivariances(resid(lm(as.numeric(tapply(y, index, mean)) ~
                                         covariate))))
-  expect_identical(check$n_observations, 20L)
-  expect_identical(check$n_locations, 10L)
+  expect_identical(check$n_observations, 2L * n)
+  expect_identical(check$n_locations, n)
 
   # Denominators of 1. The positives at a location are added up.
   check <- assess_fit(binary_twice, nsim = 19, seed = 1)
@@ -242,9 +242,9 @@ test_that("observations at a location are added up, or averaged", {
 
 test_that("binomial observations are added up only if they are individuals", {
   data <- check_data_twice
-  data$tested <- rep(c(5, 1, 20, 8), 5)
+  data$tested <- rep(c(5, 1, 20, 8), length.out = 2 * n)
   set.seed(3)
-  data$positive <- rbinom(20, data$tested, 0.3)
+  data$positive <- rbinom(2 * n, data$tested, 0.3)
   fit <- suppressWarnings(
     glgpm(positive ~ gp(), data = data, family = "binomial", denominator = tested,
           fixed_pars = list(beta = -1, sigma2 = 0.5, phi = 2),
@@ -259,8 +259,8 @@ test_that("binomial observations are added up only if they are individuals", {
                ecdf(prevalence)(check$distribution$value))
   expect_match(plot(check, type = "distribution")$labels$y, "observations")
   # The variogram has one value for each location.
-  index <- rep(1:10, each = 2)
-  locations <- data[2 * (1:10), ]
+  index <- rep(seq_len(n), each = 2)
+  locations <- data[2 * seq_len(n), ]
   locations$values <- elogit(as.numeric(tapply(data$positive, index, sum)),
                              as.numeric(tapply(data$tested, index, sum)))
   expected <- variogram(locations, "values", n_permutations = 0)$variogram
@@ -706,7 +706,7 @@ test_that("a location without anyone examined is left out of rates", {
   fit$units_m[1:2] <- 0
   fit$y[1:2] <- 0
   check <- assess_fit(fit, nsim = 19, seed = 1)
-  positive <- as.numeric(tapply(fit$y[-(1:2)], rep(1:9, each = 2), sum))
+  positive <- as.numeric(tapply(fit$y[-(1:2)], rep(seq_len(n - 1), each = 2), sum))
   expect_equal(check$observed$value[1], mean(positive / 2))
   expect_true(all(is.finite(check$simulated$value)))
   expect_true(all(is.finite(check$variogram$observed)))

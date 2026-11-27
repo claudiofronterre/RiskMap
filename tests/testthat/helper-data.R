@@ -24,7 +24,7 @@ re_values <- rnorm(n_groups, sd = sqrt(sigma2_re))
 tau2 <- 0.3
 nugget_values <- rnorm(n, sd = sqrt(tau2))
 
-data$y <- 1 + 0.5 * data$cov + S + re_values[data$i] + nugget_values
+data$y <- 3 + 0.5 * data$cov + S + re_values[data$i] + nugget_values
 gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 latlon_data <- st_transform(gaussian_data, crs = 4326)
 
