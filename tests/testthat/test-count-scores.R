@@ -489,7 +489,7 @@ test_that("assess_prediction() says once that the area of binary outcomes is not
                   "binary|Brier")
 })
 
-test_that("the methods of a cross-validation give no limit or band for binary outcomes", {
+test_that("the methods of a cross-validation give no area, limit or band for binary outcomes", {
   local_mocked_bindings(predict_test_set = mock_draws(binary_draws()),
                         calibration_reference = independent_reference)
   models <- list(b = count_fit("binomial", binary_y, rep(1, 12)),
@@ -501,13 +501,16 @@ test_that("the methods of a cross-validation give no limit or band for binary ou
   scores <- summary(out)
   expect_identical(attr(scores, "binary"), c(b = TRUE, p = FALSE))
   expect_identical(scores$PIT_area_limit, out$calibration$area$PIT_area_limit)
-  limits <- cv_summary_table(scores, 3L)$Limit
-  expect_identical(limits[1], "none (binary)")
-  expect_match(limits[2], "^0\\.[0-9]{3}$")
+  table <- cv_summary_table(scores, 3L)
+  expect_identical(table[["PIT area"]][1], "not shown (binary)")
+  expect_identical(table$Limit[1], "")
+  expect_match(table[["PIT area"]][2], "^0\\.[0-9]{3}$")
+  expect_match(table$Limit[2], "^0\\.[0-9]{3}$")
   printed <- squish(capture.output(print(out)))
-  expect_match(printed, "none (binary)", fixed = TRUE)
+  expect_match(printed, "not shown (binary)", fixed = TRUE)
   expect_match(printed, "binary outcomes (b)", fixed = TRUE)
-  expect_match(squish(to_table(out)), "none (binary)", fixed = TRUE)
+  expect_match(squish(to_table(out)), "not shown (binary)", fixed = TRUE)
+  expect_no_match(squish(to_table(out)), "NA", fixed = TRUE)
   geoms <- function(plot) {
     vapply(plot$layers, function(layer) class(layer$geom)[1], character(1))
   }
@@ -515,7 +518,7 @@ test_that("the methods of a cross-validation give no limit or band for binary ou
   band <- ggplot2::layer_data(p, match("GeomRibbon", geoms(p)))
   expect_identical(unique(as.integer(band$PANEL)), 2L)
   label <- ggplot2::layer_data(p, match("GeomText", geoms(p)))$label
-  expect_no_match(label[1], "Below")
+  expect_no_match(label[1], "Area|Below")
   expect_match(label[2], "Below")
   alone <- plot_cross_validation(out, model = "b")
   expect_false("GeomRibbon" %in% geoms(alone))

@@ -195,10 +195,11 @@
 ##' a wrong model and with any kind of test sets. They are not a check of
 ##' calibration there. A binomial model whose scored test observations all have
 ##' one trial, as with individual-level data that have several observations at
-##' one location, is therefore treated apart. `assess_prediction()` says so, and
-##' [plot_cross_validation()], the print of the result and of its `summary()`,
-##' and [to_table()] show its curve and its area without the band or the limit,
-##' with a short note on why. The result and the summary still have them. In an assessment of several models this applies
+##' one location, is therefore treated apart. `assess_prediction()` says so.
+##' [plot_cross_validation()] draws its curve or histogram without the area, the
+##' limit or the band, and the print of the result and of its `summary()`, and
+##' [to_table()], leave out its area and limit. Each says why. The result and
+##' the summary still have them. In an assessment of several models this applies
 ##' to each such model on its own. The CRPS of a binary outcome is the Brier
 ##' score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
 ##' \eqn{y = 1}, and the scores still compare models.
@@ -771,8 +772,8 @@ scaled_crps <- function(crps, expected) {
 ##' score than that of the reference model. A `PIT_area` below `PIT_area_limit` is
 ##' one that a correct model would give (see [assess_prediction()]). For a
 ##' model of binary outcomes the area is not a check of calibration, so the
-##' print of the summary and [to_table()] give it without its limit, and say
-##' why.
+##' print of the summary and [to_table()] show neither its area nor its limit,
+##' and say why. The summary still has them.
 ##'
 ##' An observation in several test sets is first given the average of its
 ##' scores, so that it counts once. The scores of a model are then averaged
@@ -982,7 +983,7 @@ format_cv_averages <- function(x) {
     },
     if (any(binary)) {
       paste0("For binary outcomes", which, " the PIT area is not a check of ",
-             "calibration and has no limit, and the CRPS is the Brier score.")
+             "calibration and is not shown, and the CRPS is the Brier score.")
     },
     if (!is.null(reference)) {
       paste0("Differences are from ", reference, ", and negative ones are in ",
@@ -1004,7 +1005,7 @@ format_cv_averages <- function(x) {
 ##'
 ##' One column for each score, followed by its difference from the reference
 ##' with its standard error in brackets, and the area of the calibration curve
-##' with its limit.
+##' with its limit, which a model of binary outcomes doesn't show.
 ##' @noRd
 cv_summary_table <- function(x, digits) {
   reference <- attr(x, "reference")
@@ -1029,17 +1030,21 @@ cv_summary_table <- function(x, digits) {
     text[row.names(x) == reference] <- ""
     columns[[paste(score, "difference")]] <- text
   }
-  # The area of binary outcomes is not a check of calibration, so it has no
-  # limit.
+  # The area of binary outcomes is not a check of calibration, so neither it
+  # nor its limit is shown, and the columns are left out when every model is
+  # of binary outcomes.
   binary <- summarised_binary(x)
-  limit <- ifelse(binary, NA_real_, values$PIT_area_limit)
-  areas <- cbind(values$PIT_area, limit)
-  formatted <- areas
-  formatted[] <- format_compared_values(areas, digits)
-  formatted[!is.finite(areas)] <- "NA"
-  formatted[binary, 2L] <- "none (binary)"
-  columns[["PIT area"]] <- formatted[, 1L]
-  columns[["Limit"]] <- formatted[, 2L]
+  if (!any(binary) || !all(binary)) {
+    areas <- cbind(values$PIT_area, values$PIT_area_limit)
+    areas[binary, ] <- NA_real_
+    formatted <- areas
+    formatted[] <- format_compared_values(areas, digits)
+    formatted[!is.finite(areas)] <- "NA"
+    formatted[binary, 1L] <- "not shown (binary)"
+    formatted[binary, 2L] <- ""
+    columns[["PIT area"]] <- formatted[, 1L]
+    columns[["Limit"]] <- formatted[, 2L]
+  }
   as.data.frame(columns, check.names = FALSE, optional = TRUE)
 }
 
