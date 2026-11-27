@@ -418,7 +418,7 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
   )
 })
 
-test_that("glgpm warns when the spatial range cannot be distinguished from unstructured variation (#206)", {
+test_that("check_computation() flags a spatial scale shorter than the spacing of the locations (#206)", {
   # true range (phi) is far shorter than the spacing between locations
   set.seed(42)
   n_pts <- 20L
@@ -436,16 +436,16 @@ test_that("glgpm warns when the spatial range cannot be distinguished from unstr
     coords = c("x", "z"), crs = 32637
   )
 
-  expect_warning(
-    fit <- glgpm(y ~ cov + gp(), data = no_spatial_data, family = "binomial",
-                denominator = denominator, control_mcmc = control_mcmc,
-                control_mcml = fixture_control_mcml, messages = FALSE),
-    "spatial correlation cannot be distinguished from unstructured variation"
-  )
-  expect_true(isTRUE(attr(fit, "optimizer")$mcml_range_held))
+  fit <- glgpm(y ~ cov + gp(), data = no_spatial_data, family = "binomial",
+               denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed, control_mcml = fixture_control_mcml,
+               messages = FALSE)
+  expect_true(attr(fit, "optimizer")$mcml_small_scale)
+  checks <- check_computation(fit)$checks
+  expect_identical(checks$status[checks$check == "Spatial scale"], "SUSPICIOUS")
 })
 
-test_that("glgpm warns when a random-effect variance is estimated as effectively zero (#206)", {
+test_that("a random-effect variance is held at zero when the data have no such effect (#206)", {
   # real, well-resolved spatial effect but no random-effect contribution at all
   set.seed(42)
   n_pts <- 20L
@@ -464,35 +464,34 @@ test_that("glgpm warns when a random-effect variance is estimated as effectively
     coords = c("x", "z"), crs = 32637
   )
 
-  expect_warning(
-    fit <- glgpm(y ~ cov + gp() + re(i), data = no_re_data, family = "binomial",
-                denominator = denominator, control_mcmc = control_mcmc,
-                control_mcml = fixture_control_mcml, messages = FALSE),
-    "random-effect variance for 'i' was estimated as effectively zero"
-  )
-  expect_true("random-effect variance for 'i'" %in% attr(fit, "optimizer")$mcml_boundary)
+  fit <- glgpm(y ~ cov + gp() + re(i), data = no_re_data, family = "binomial",
+               denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed, control_mcml = fixture_control_mcml,
+               messages = FALSE)
+  expect_identical(attr(fit, "optimizer")$mcml_boundary,
+                   "random-effect variance for 'i'")
+  variances <- check_computation(fit)$results$Variances$row
+  expect_identical(variances$status, "OK")
+  expect_match(variances$brief, "Zero is the maximum", fixed = TRUE)
 })
 
 test_that("glgpm warns when the observed information matrix is singular (#206)", {
-  # natural singular-information data proved elusive; force the condition on a real fit instead
-  real_fit_adaptive_mcml <- fit_adaptive_mcml
-  singular_fit_adaptive_mcml <- function(...) {
-    fit <- real_fit_adaptive_mcml(...)
-    fit$identifiability_failure <- TRUE
-    fit$boundary_parameters <- integer(0)
-    fit$range_held <- FALSE
-    fit
-  }
-
-  expect_warning(
-    testthat::with_mocked_bindings(
-      glgpm(y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-            denominator = denominator, control_mcmc = control_mcmc,
-            control_mcml = fixture_control_mcml, messages = FALSE),
-      fit_adaptive_mcml = singular_fit_adaptive_mcml
-    ),
-    "observed information matrix is singular"
+  # three locations can't identify both a spatial variance and a nugget
+  three_locations <- st_as_sf(
+    data.frame(x = c(0, 1, 2) * 1e5, z = c(0, 1, 2) * 1e5, y = 0:2,
+               denominator = 4),
+    coords = c("x", "z"), crs = 32637
   )
+
+  expect_warnings(
+    fit <- glgpm(y ~ gp(nugget = TRUE), data = three_locations,
+                 family = "binomial", denominator = denominator,
+                 control_mcmc = control_mcmc, seed = fixture_seed,
+                 control_mcml = fixture_control_mcml, messages = FALSE),
+    c("`sigma2` was estimated as effectively zero",
+      "observed information matrix is singular")
+  )
+  expect_true(attr(fit, "optimizer")$mcml_identifiability_failure)
 })
 
 test_that("glgpm is invariant to fixed-effect covariate scale", {
@@ -895,15 +894,11 @@ test_that("glgpm produces expected output for poisson models", {
 test_that("certified MCML records its certificate and bank diagnostics", {
   set.seed(9917)
   caller_seed <- .Random.seed
-  expect_warning(
-    fit <- glgpm(
-      y ~ cov + gp(), data = binomial_data, family = "binomial",
-      denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
-      control_mcml = fixture_control_mcml, messages = FALSE
-    ),
-    "spatial correlation cannot be distinguished from unstructured variation"
+  fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
   )
-
   stage <- fit$mcml_history[[1L]]
   diagnostics <- attr(fit, "optimizer")
 
