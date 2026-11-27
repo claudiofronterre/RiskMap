@@ -41,7 +41,10 @@ glgpm(
 
 - data:
 
-  An sf object containing the variables in the model.
+  An sf object containing the variables in the model. A row with a
+  missing value in a variable of the model, or with a covariate that the
+  formula turns into a value that isn't a finite number, such as
+  `log(0)`, is an error.
 
 - family:
 
@@ -559,7 +562,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.       2.1220      0.9347      4.8173
-#> Spatial corr. scale (km) 102.1364     34.7202    300.4544
+#> Spatial corr. scale (km) 102.1364     34.7203    300.4540
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Log-likelihood  -2018.33

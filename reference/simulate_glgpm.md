@@ -44,7 +44,11 @@ simulate_glgpm(
 - prediction_grid:
 
   `sf` point data containing the covariates, grouping variables and
-  offsets for the requested surface. Required for `"surface"`.
+  offsets for the requested surface. Required for `"surface"`. In both,
+  every row needs covariates that are complete and give the model finite
+  numbers. A row where a covariate is missing, or where the formula
+  gives a value such as `log(0)`, stops the simulation and is named, so
+  it can be removed first.
 
 - seed:
 

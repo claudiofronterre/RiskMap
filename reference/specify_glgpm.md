@@ -33,7 +33,10 @@ specify_glgpm(
 
 - data:
 
-  An sf object containing the variables in the model.
+  An sf object containing the variables in the model. A row with a
+  missing value in a variable of the model, or with a covariate that the
+  formula turns into a value that isn't a finite number, such as
+  `log(0)`, is an error.
 
 - family:
 

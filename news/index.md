@@ -73,6 +73,16 @@ in the source repository.
 - [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
   stops when a binomial denominator isn’t a positive whole number, or a
   Poisson response isn’t whole or its exposure positive.
+- [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
+  [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+  and
+  [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
+  stop with a message that names the rows whose covariates give the
+  model a term that isn’t finite, such as `log(0)`.
+  [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
+  also names the rows with missing covariates, and
+  [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
+  refuses a candidate model with such a term on the prediction grid.
 - Data are `sf` objects. `distance_crs` and `distance_units` set the
   projection and the units of distances in every function that measures
   them, and
