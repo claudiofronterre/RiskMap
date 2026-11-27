@@ -131,47 +131,286 @@ test_that("the bands and the limit have their coverage for a correct model", {
   expect_true(all(rowMeans(outside) > 0.02 & rowMeans(outside) < 0.08))
 })
 
-test_that("a Gaussian observation has the PIT value of its first test set", {
-  predictive <- function(rows, draws) {
-    list(rows = rows, draws = draws, mean = c(0, 0), sd = c(1, 1))
-  }
-  traits <- family_traits("gaussian")
-  draws <- matrix(c(0.1, 0.2, 0.3, 0.4), 2)
-  first <- simulate_gaussian_pit(predictive(c(2L, 4L), draws), traits,
-                                 vector("list", 2))
-  expect_equal(first$lower, pnorm(t(draws)))
-  expect_identical(first$upper, first$lower)
-  expect_equal(first$uniforms[[2]], pnorm(draws[2, ]))
-  second <- simulate_gaussian_pit(predictive(c(4L, 1L), draws + 1), traits,
-                                  list(first$uniforms[[2]], NULL))
-  expect_equal(second$lower, cbind(pnorm(draws[2, ]), pnorm(draws[2, ] + 1)))
+# The test sets of a fit, with the predictive distributions that the reference
+# takes, from counts drawn from the means of the fit.
+reference_inputs <- function(fit, sets) {
+  test_sets <- read_test_sets(sets, fit)
+  traits <- family_traits(fit$family)
+  units_m <- assessed_denominators(fit)
+  predictive <- lapply(test_sets$sets, function(set) {
+    rows <- set$test
+    if (!traits$discrete) return(list(rows = rows))
+    link <- as.numeric(fit$D[rows, , drop = FALSE] %*% coef(fit)$beta)
+    means <- traits$inverse_link(link + matrix(rnorm(length(rows) * 50, 0, 0.5),
+                                               length(rows)))
+    c(list(rows = rows),
+      score_counts(fit$y[rows], units_m[rows], means, fit_family_values(fit),
+                   traits)$predictive)
+  })
+  list(test_sets = test_sets, predictive = predictive)
+}
+
+test_that("the working model has the covariance of the fit", {
+  fit <- gaussian_model
+  p <- coef(fit)
+  working <- working_model(fit)
+  expect_identical(working$free, c("sigma2", "phi", "sigma2_me", "sigma2_re.1"))
+  spatial <- p$sigma2 * matern_correlation(
+    as.matrix(dist(fit$coords))[fit$ID_coords, fit$ID_coords], phi = p$phi,
+    kappa = fit$kappa
+  )
+  group <- outer(fit$data$i, fit$data$i, "==")
+  covariance <- spatial + p$sigma2_re[[1]] * group + diag(p$sigma2_me, n)
+  expect_equal(working$covariance(working$theta), covariance,
+               ignore_attr = TRUE)
+  # The derivatives are on the logarithmic scale.
+  expect_equal(working$derivative("sigma2"), spatial, ignore_attr = TRUE,
+               tolerance = 1e-6)
+  expect_equal(working$derivative("sigma2_me"), diag(p$sigma2_me, n),
+               ignore_attr = TRUE, tolerance = 1e-6)
+  expect_identical(colnames(working$design), c("(Intercept)", "cov"))
+  # A nugget, a measurement error held at zero, and a held scale.
+  nugget <- working_model(gaussian_offset_model)
+  expect_identical(nugget$free, c("sigma2", "phi", "tau2"))
+  held <- glgpm(y ~ gp(nugget = TRUE), data = gaussian_data,
+                family = "gaussian", fixed_pars = list(phi = 2, tau2 = 0.1),
+                messages = FALSE)
+  expect_identical(working_model(held)$free, c("sigma2", "sigma2_me"))
+  # Held coefficients are known, so they aren't estimated.
+  slope <- glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+                 fixed_pars = list(beta = c(cov = 0.5), phi = 2),
+                 messages = FALSE)
+  expect_identical(colnames(working_model(slope)$design), "(Intercept)")
+  # Counts are observed with the inverse of their curvature.
+  counts <- working_model(binomial_model)
+  p <- coef(binomial_model)
+  expect_equal(diag(counts$covariance(counts$theta)),
+               p$sigma2 + p$sigma2_re[[1]] + 1 / conditional_weights(binomial_model))
 })
 
-test_that("calibration_reference() has the curves and the areas", {
-  set.seed(44)
-  predictive <- lapply(list(1:3, 3:5), function(rows) {
-    list(rows = rows, draws = matrix(rnorm(3 * 50), 3), mean = rep(0, 3),
-         sd = rep(1, 3))
-  })
-  fit <- list(family = "gaussian")
-  test_sets <- list(location = 1:6)
+test_that("candidate points move the free parameters around the estimates", {
+  working <- working_model(gaussian_offset_model)
+  points <- candidate_points(working, 50)
+  expect_identical(dim(points), c(50L, 3L))
+  expect_identical(points[1, ], working$theta)
+  ratio <- log(points[-1, ] / rep(working$theta, each = 49))
+  expect_true(all(abs(ratio) <= 4 + 1e-12))
+  expect_true(all(apply(ratio, 2, stats::sd) > 0.1))
+  # The same points every time, a Halton sequence.
+  expect_identical(candidate_points(working, 50), points)
+  expect_identical(candidate_points(working, 1), points[1, , drop = FALSE])
+  # Without free parameters, only the estimates.
+  held <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+                fixed_pars = list(sigma2 = 1, phi = 2, sigma2_me = 0.1),
+                messages = FALSE)
+  expect_identical(nrow(candidate_points(working_model(held), 50)), 1L)
+  expect_identical(first_primes(5), c(2L, 3L, 5L, 7L, 11L))
+  expect_equal(radical_inverse(1:4, 2), c(0.5, 0.25, 0.75, 0.125))
+})
+
+test_that("the leave-out errors of simulated datasets are those of direct refits", {
+  working <- working_model(gaussian_model)
+  n <- nrow(working$design)
+  # A test set that leaves out a row it doesn't test.
+  sets <- list(list(test = c(2, 5), left_out = c(2, 5, 7)),
+               list(test = 1:3, left_out = 1:3), list(test = 9, left_out = 9))
+  n_simulations <- 4
+  n_candidates <- 6
+  direct <- function(refit) {
+    set.seed(3)
+    simulated <- t(chol(working$covariance(working$theta))) %*%
+      matrix(rnorm(n * n_simulations), n)
+    points <- candidate_points(working, n_candidates)
+    covariances <- lapply(seq_len(n_candidates), function(k) {
+      working$covariance(points[k, ])
+    })
+    # The likelihood profiled over the coefficients, by generalised least
+    # squares.
+    profile <- function(V, z, rows) {
+      X <- working$design[rows, , drop = FALSE]
+      precision <- solve(V[rows, rows])
+      beta <- solve(t(X) %*% precision %*% X, t(X) %*% precision %*% z[rows])
+      residual <- z[rows] - X %*% beta
+      list(beta = beta,
+           value = -(determinant(V[rows, rows])$modulus +
+                       t(residual) %*% precision %*% residual) / 2)
+    }
+    do.call(rbind, lapply(sets, function(set) {
+      train <- setdiff(seq_len(n), set$left_out)
+      vapply(seq_len(n_simulations), function(b) {
+        z <- simulated[, b]
+        rows <- if (refit) train else seq_len(n)
+        values <- vapply(covariances, function(V) {
+          as.numeric(profile(V, z, rows)$value)
+        }, numeric(1))
+        V <- covariances[[which.max(values)]]
+        residual <- z - working$design %*% profile(V, z, rows)$beta
+        weights <- V[set$test, train] %*% solve(V[train, train])
+        error <- residual[set$test] - weights %*% residual[train]
+        variance <- V[set$test, set$test] - weights %*% V[train, set$test]
+        pnorm(as.numeric(error) / sqrt(diag(as.matrix(variance))))
+      }, numeric(length(set$test)))
+    }))
+  }
+  for (refit in c(FALSE, TRUE)) {
+    set.seed(3)
+    out <- candidate_errors(working, sets, n_simulations, n_candidates, refit)
+    expect_equal(out, matrix(direct(refit), ncol = n_simulations),
+                 tolerance = 1e-8)
+  }
+})
+
+test_that("held parameters are known in the simulated datasets", {
+  # Every parameter held, so the errors are those of the prediction with them.
+  fit <- glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+               fixed_pars = list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                                 sigma2_me = 0.1),
+               messages = FALSE)
+  working <- working_model(fit)
+  expect_identical(ncol(working$design), 0L)
+  expect_length(working$free, 0L)
+  sets <- list(list(test = c(2, 5), left_out = c(2, 5, 7)))
+  for (refit in c(FALSE, TRUE)) {
+    set.seed(4)
+    out <- candidate_errors(working, sets, 3L, 20L, refit)
+    set.seed(4)
+    V <- working$covariance(working$theta)
+    z <- t(chol(V)) %*% matrix(rnorm(3 * n), n)
+    train <- setdiff(seq_len(n), c(2, 5, 7))
+    weights <- V[c(2, 5), train] %*% solve(V[train, train])
+    sd <- sqrt(diag(V[c(2, 5), c(2, 5)] - weights %*% V[train, c(2, 5)]))
+    expect_equal(out, pnorm((z[c(2, 5), ] - weights %*% z[train, ]) / sd),
+                 tolerance = 1e-8)
+  }
+})
+
+test_that("a coefficient that a training set can't estimate is left out", {
+  # A column that is zero on the training rows of the first test set.
+  working <- working_model(gaussian_model)
+  sets <- list(list(test = c(2, 5), left_out = c(2, 5, 7)),
+               list(test = 1:3, left_out = 1:3))
+  wider <- working
+  wider$design <- cbind(working$design, as.numeric(seq_len(n) %in% c(2, 5, 7)))
+  set.seed(5)
+  out <- candidate_errors(wider, sets, 4L, 6L, TRUE)
+  set.seed(5)
+  narrower <- candidate_errors(working, sets, 4L, 6L, TRUE)
+  expect_equal(out[1:2, ], narrower[1:2, ], tolerance = 1e-8)
+  expect_false(isTRUE(all.equal(out[3:5, ], narrower[3:5, ])))
+})
+
+test_that("calibration_reference() is reproducible and keeps the session's numbers", {
+  inputs <- reference_inputs(gaussian_model, list(1:4, 5:7))
+  reference <- function(seeds, predictive = inputs$predictive,
+                        test_sets = inputs$test_sets) {
+    calibration_reference(gaussian_model, test_sets, predictive, 50L, seeds,
+                          n_candidates = 10L)
+  }
   set.seed(1)
   state <- .Random.seed
-  out <- calibration_reference(fit, test_sets, predictive, 40L, c(1L, 2L))
+  out <- reference(c(3L, 4L))
   expect_identical(.Random.seed, state)
-  expect_identical(dim(out$curves), c(40L, 101L))
-  # The third observation has the same PIT value in both test sets.
-  pit <- pnorm(rbind(predictive[[1]]$draws,
-                     predictive[[1]]$draws[3, ], predictive[[2]]$draws[2:3, ]))
-  direct <- t(apply(pit[, 1:40], 2, function(x) stats::ecdf(x)(area_levels())))
-  expect_equal(out$curves, direct[, seq(1, 1001, by = 10)])
-  expect_equal(out$areas, pit_area(direct, area_levels()))
-  # A test set without scores isn't in it, and few draws give fewer curves.
-  one <- calibration_reference(fit, test_sets, c(predictive[1], list(NULL)),
-                               999L, c(1L, 2L))
-  expect_identical(dim(one$curves), c(50L, 101L))
-  expect_equal(one$curves[1:40, ],
-               t(apply(pit[1:3, 1:40], 2, function(x) {
-                 stats::ecdf(x)(calibration_levels())
-               })))
+  expect_identical(dim(out$curves), c(50L, 101L))
+  expect_identical(reference(c(3L, 4L)), out)
+  expect_false(identical(reference(c(5L, 4L)), out))
+  # The PIT values of candidate_errors(), as a curve for each dataset.
+  set.seed(3)
+  uniforms <- candidate_errors(
+    working_model(gaussian_model),
+    list(list(test = 1:4, left_out = 1:4), list(test = 5:7, left_out = 5:7)),
+    50L, 10L, FALSE
+  )
+  curves <- pit_curves(t(uniforms), t(uniforms), area_levels())
+  expect_equal(out$curves, curves[, seq(1, 1001, by = 10)])
+  expect_equal(out$areas, pit_area(curves, area_levels()))
+  # A test set without scores isn't in it.
+  one <- reference(c(3L, 4L), list(inputs$predictive[[1]], NULL))
+  curves <- pit_curves(t(uniforms[1:4, ]), t(uniforms[1:4, ]), area_levels())
+  expect_equal(one$curves, curves[, seq(1, 1001, by = 10)])
+  # An observation in two test sets has the same PIT values in both, so twice
+  # the same test set gives the curves of one.
+  twice <- reference_inputs(gaussian_model, list(1:4, 1:4))
+  expect_equal(reference(c(3L, 4L), twice$predictive, twice$test_sets)$curves,
+               one$curves)
+})
+
+test_that("counts have the PIT of counts from their predictive distributions", {
+  skip_on_cran()
+  fit <- function(family, data, ...) {
+    suppressWarnings(glgpm(
+      y ~ gp(), data = data, family = family, control_mcmc = control_mcmc,
+      seed = fixture_seed, control_mcml = fixture_control_mcml,
+      messages = FALSE, ...
+    ))
+  }
+  bernoulli_data <- binomial_data
+  bernoulli_data$y <- as.integer(bernoulli_data$y > median(bernoulli_data$y))
+  bernoulli_data$one <- 1
+  fits <- list(
+    binomial = binomial_model, poisson = poisson_model,
+    negative_binomial = fit(negative_binomial(), poisson_data,
+                            denominator = denominator,
+                            fixed_pars = list(theta = 2)),
+    bernoulli = fit("binomial", bernoulli_data, denominator = one)
+  )
+  for (name in names(fits)) {
+    set.seed(27)
+    inputs <- reference_inputs(fits[[name]], list(c(1, 4, 6), 7:10))
+    out <- calibration_reference(fits[[name]], inputs$test_sets,
+                                 inputs$predictive, 40L, c(2L, 1L),
+                                 n_candidates = 8L)
+    set.seed(2)
+    uniforms <- candidate_errors(
+      working_model(fits[[name]]),
+      lapply(inputs$test_sets$sets, function(set) {
+        list(test = set$test, left_out = set$test)
+      }), 40L, 8L, FALSE
+    )
+    distributions <- c(inputs$predictive[[1]]$distributions,
+                       inputs$predictive[[2]]$distributions)
+    lower <- upper <- uniforms
+    for (j in seq_along(distributions)) {
+      counts <- count_quantile(distributions[[j]], uniforms[j, ])
+      # The count whose PIT contains the uniform.
+      lower[j, ] <- count_distribution_at(distributions[[j]], counts - 1)
+      upper[j, ] <- count_distribution_at(distributions[[j]], counts)
+      expect_true(all(lower[j, ] < uniforms[j, ] + 1e-12 &
+                        uniforms[j, ] <= upper[j, ] + 1e-12), label = name)
+    }
+    if (name == "bernoulli") expect_true(all(upper[lower > 0] == 1))
+    curves <- pit_curves(t(lower), t(upper), area_levels())
+    expect_equal(out$curves, curves[, seq(1, 1001, by = 10)], label = name)
+    expect_true(all(is.finite(out$areas) & out$areas > 0), label = name)
+  }
+})
+
+test_that("counts drawn at known parameters have a calibrated reference", {
+  skip_on_cran()
+  # With every parameter held the simulated PIT values are uniform, so the
+  # counts have their predictive distributions, whose average curve is the
+  # identity line.
+  held <- function(family, data) {
+    suppressWarnings(glgpm(
+      y ~ gp(), data = data, family = family, denominator = denominator,
+      fixed_pars = list(beta = 0.2, sigma2 = 0.5, phi = 2),
+      control_mcmc = control_mcmc, seed = fixture_seed, messages = FALSE
+    ))
+  }
+  for (family in c("binomial", "poisson")) {
+    fit <- held(family, if (family == "binomial") binomial_data else poisson_data)
+    set.seed(29)
+    inputs <- reference_inputs(fit, list(1:5, 6:10))
+    out <- calibration_reference(fit, inputs$test_sets, inputs$predictive,
+                                 999L, c(3L, 1L), n_candidates = 8L)
+    expect_lt(max(abs(colMeans(out$curves) - calibration_levels())), 0.03,
+              label = family)
+  }
+})
+
+test_that("the reference has fewer candidates for many observations", {
+  expect_identical(reference_candidates(2000), 200L)
+  expect_identical(reference_candidates(2001), 100L)
+  expect_no_message(inform_reference_time(1500))
+  expect_message(inform_reference_time(1501),
+                 "With 1501 observations, simulating the calibration of a correct model can take a minute or more")
 })

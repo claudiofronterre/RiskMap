@@ -9,7 +9,9 @@ has left.
 \itemize{
 \item \code{\link[=parametric_bootstrap]{parametric_bootstrap()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}, \code{\link[=assess_fit]{assess_fit()}},
 \code{\link[=assess_prediction]{assess_prediction()}} and \code{\link[=assess_simulation]{assess_simulation()}} show a progress bar with the
-work done and an estimate of the time left.
+work done and an estimate of the time left. \code{\link[=assess_prediction]{assess_prediction()}} then
+shows a line for the simulation of the calibration of each model, with a
+spinner and the time so far.
 \item \code{\link[=predict.RiskMap]{predict.RiskMap()}} shows a bar while it predicts at many locations in
 blocks, and while it propagates parameter uncertainty over its parameter
 draws.

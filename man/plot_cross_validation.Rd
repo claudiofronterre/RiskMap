@@ -80,7 +80,8 @@ Each panel gives the area between the curve and the identity line, \code{PIT_are
 and, after "Below", \code{PIT_area_limit}. It is a 95\% limit and not a certainty. The
 area of a correct model is below it with a probability of 95\%, and above it
 for one dataset in twenty. \code{\link[=assess_prediction]{assess_prediction()}} says how the band and the
-limit are computed, how to read the area, and why they are cautious.
+limit are computed, how to read the area, and where they are not a check of
+calibration, as for binary outcomes.
 }
 
 \section{Scores}{

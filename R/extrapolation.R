@@ -289,12 +289,8 @@ extrapolation_spatial_unexplained <- function(object, model_data,
 #'
 #' For a Gaussian fit, the measurement-error variance divided by the number of
 #' records at the location. Otherwise the inverse of the summed curvature
-#' -d^2 log f(y | eta) / d eta^2 of the records at the location, at the
-#' conditional mode of the location and `re()` effects given the data at the
-#' estimates. The mode is found as `laplace_sampling_mcmc()` finds the centre
-#' of its sampler, on the covariance that prediction conditions on
-#' (`conditioning_covariance()`), with the family's records
-#' (`engine_records()`).
+#' -d^2 log f(y | eta) / d eta^2 of the records at the location
+#' (`conditional_weights()`).
 #' @noRd
 extrapolation_sampling_variance <- function(object, parameters) {
   n_locations <- nrow(object$coords)
@@ -303,6 +299,23 @@ extrapolation_sampling_variance <- function(object, parameters) {
     measurement <- parameters$sigma2_me %||% fit_fix_var_me(object) %||% 0
     return(measurement / tabulate(id_coords, n_locations))
   }
+  information <- numeric(n_locations)
+  sums <- rowsum(conditional_weights(object, parameters), id_coords)
+  information[as.integer(rownames(sums))] <- sums[, 1L]
+  1 / pmax(information, 0)
+}
+
+#' The curvature of the log likelihood of each record at the conditional mode
+#'
+#' The curvature -d^2 log f(y | eta) / d eta^2 of each record of a fit that is
+#' not Gaussian, at the conditional mode of the location and `re()` effects
+#' given the data at the parameters. The mode is found as
+#' `laplace_sampling_mcmc()` finds the centre of its sampler, on the covariance
+#' that prediction conditions on (`conditioning_covariance()`), with the
+#' family's records (`engine_records()`).
+#' @noRd
+conditional_weights <- function(object, parameters = coef(object)) {
+  id_coords <- object$ID_coords
   distance_scale <- attr(object, "distance_scale") %||% 1
   covariance <- conditioning_covariance(
     object, parameters, pairwise_distances(object$coords / distance_scale),
@@ -333,10 +346,7 @@ extrapolation_sampling_variance <- function(object, parameters) {
                                    id_re, sigma2_re, records$family, invlink,
                                    linkf)
   }
-  information <- numeric(n_locations)
-  sums <- rowsum(found$weights, id_coords)
-  information[as.integer(rownames(sums))] <- sums[, 1L]
-  1 / pmax(information, 0)
+  found$weights
 }
 
 ##' @rdname assess_extrapolation

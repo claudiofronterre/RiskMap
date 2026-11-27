@@ -270,7 +270,8 @@ mock_draws <- function(draws) {
 test_that("assess_prediction() scores counts by the average distribution function", {
   set.seed(23)
   draws <- matrix(rnorm(4 * 500, -0.5, 0.7), 4)
-  local_mocked_bindings(predict_test_set = mock_draws(draws))
+  local_mocked_bindings(predict_test_set = mock_draws(draws),
+                        calibration_reference = independent_reference)
   cases <- list(
     binomial = list(units_m = c(10, 1, 1, 30), y = c(3, 1, 0, 30),
                     parameters = NULL, mean = plogis),
@@ -314,11 +315,20 @@ test_that("assess_prediction() scores counts by the average distribution functio
   }
 })
 
+test_that("the CRPS of a binary outcome is the Brier score", {
+  set.seed(28)
+  means <- plogis(matrix(rnorm(5 * 300), 5))
+  y <- c(0, 1, 1, 0, 1)
+  scored <- score_counts(y, rep(1, 5), means, NULL, family_traits("binomial"))
+  expect_equal(scored$scores$CRPS, (rowMeans(means) - y)^2)
+})
+
 test_that("a rare event has a SCRPS", {
   # The prevalence is 10^-6 in every draw, so a count simulated for each draw
   # is 0 in every one of them, a distribution without spread.
   local_mocked_bindings(
-    predict_test_set = mock_draws(matrix(qlogis(1e-6), 2, 100))
+    predict_test_set = mock_draws(matrix(qlogis(1e-6), 2, 100)),
+    calibration_reference = independent_reference
   )
   out <- assess_prediction(count_fit("binomial", c(0, 0), c(10, 10)), list(2),
                            messages = FALSE)
@@ -340,7 +350,8 @@ test_that("a test set with a draw of the mean that isn't finite is a failure", {
                                              rep(1, 3), list(theta = 2)),
                binomial = count_fit("binomial", c(1, 2, 3), rep(5, 3),
                                     inverse = broken))
-  local_mocked_bindings(predict_test_set = mock_draws(draws))
+  local_mocked_bindings(predict_test_set = mock_draws(draws),
+                        calibration_reference = independent_reference)
   for (name in names(fits)) {
     expect_no_warning(expect_warning(
       out <- assess_prediction(fits[name], list(1:2, 3), messages = FALSE),
@@ -400,33 +411,14 @@ test_that("a fit has the same count scores alone and in any position of a list",
   }
 })
 
-test_that("the reference of counts is that of counts drawn from the family", {
-  skip_on_cran()
-  # One draw of the means gives counts with the density of the family, so the
-  # reference agrees with drawing counts and averaging the areas of the curves.
-  set.seed(25)
-  n <- 60
-  lambda <- rexp(n, 1 / 5)
-  fit <- count_fit("poisson", c(rpois(n, lambda), 1), rep(1, n + 1))
-  draws <- matrix(log(lambda), n, 200)
-  local_mocked_bindings(predict_test_set = mock_draws(draws))
-  out <- assess_prediction(fit, list(1:n), seed = 1, messages = FALSE)
-  u <- seq(0, 1, length.out = 1001)
-  brute <- replicate(400, {
-    y <- rpois(n, lambda)
-    pit_area(pit_curves(t(ppois(y - 1, lambda)), t(ppois(y, lambda)), u), u)
-  })
-  expect_equal(out$calibration$area$PIT_area_expected, mean(brute),
-               tolerance = 0.08)
-})
-
 test_that("large counts, scored on a grid, have the PIT of every count", {
   skip_on_cran()
   set.seed(26)
   means <- 400 * exp(matrix(rnorm(40 * 100, 0, 0.5), 40))
   observed <- rpois(40, means[, 1])
   fit <- count_fit("poisson", c(observed, 1), rep(1, 41))
-  local_mocked_bindings(predict_test_set = mock_draws(log(means)))
+  local_mocked_bindings(predict_test_set = mock_draws(log(means)),
+                        calibration_reference = independent_reference)
   out <- assess_prediction(fit, list(1:40), seed = 1, messages = FALSE)
   exact <- function(shift) vapply(1:40, function(i) {
     mean(ppois(observed[i] + shift, means[i, ]))

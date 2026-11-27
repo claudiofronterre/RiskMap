@@ -476,18 +476,19 @@ test_that("a random-effect variance is held at zero when the data have no such e
 })
 
 test_that("glgpm warns when the observed information matrix is singular (#206)", {
-  # three locations can't identify both a spatial variance and a nugget
+  # three locations can't identify both a spatial variance and a nugget, as in
+  # test-nugget.R, whose locations give a singular information on every platform
   three_locations <- st_as_sf(
-    data.frame(x = c(0, 1, 2) * 1e5, z = c(0, 1, 2) * 1e5, y = 0:2,
-               denominator = 4),
-    coords = c("x", "z"), crs = 32637
+    data.frame(x = c(1, 2, 3), z = c(0, 1, 2), y = 0:2, denominator = 4),
+    coords = c("x", "z"), crs = 4326
   )
 
   expect_warnings(
     fit <- glgpm(y ~ gp(nugget = TRUE), data = three_locations,
                  family = "binomial", denominator = denominator,
-                 control_mcmc = control_mcmc, seed = fixture_seed,
-                 control_mcml = fixture_control_mcml, messages = FALSE),
+                 distance_crs = 32631, control_mcmc = control_mcmc,
+                 seed = fixture_seed, control_mcml = fixture_control_mcml,
+                 messages = FALSE),
     c("`sigma2` was estimated as effectively zero",
       "observed information matrix is singular")
   )

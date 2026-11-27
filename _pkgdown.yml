@@ -3,6 +3,9 @@ url: https://claudiofronterre.github.io/RiskMap/
 template:
   bootstrap: 5
   light-switch: true
+  # Help pages need a renderer for their equations. The default, mathml,
+  # converts only the articles.
+  math-rendering: katex
   bslib:
     # Brand colours, from the sticker's two inks (navy and terracotta) on
     # paper. When the sticker changes, update these and the top of
