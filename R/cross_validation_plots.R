@@ -132,9 +132,9 @@ validation_map_theme <- function() {
 ##'
 ##' For binary outcomes, with one trial in each test observation, the area, the
 ##' limit and the band are not a check of calibration. The panel of such a model
-##' shows its curve or histogram and its area, without the band or the limit, and
-##' says that it is not a check for binary outcomes. Compare these models by
-##' their scores.
+##' shows its curve or histogram without the area, the band or the limit, and
+##' says that it is not a check of calibration for binary outcomes. Compare these
+##' models by their scores.
 ##'
 ##' # Scores
 ##'
@@ -247,7 +247,7 @@ plot_calibration <- function(x, models, style, bins, colour) {
   }
   area$label <- paste0("Area ", format_area(area$PIT_area))
   # The area, the limit and the band of binary outcomes are not a check of
-  # calibration, so these panels have no band or limit.
+  # calibration, so these panels show none of them.
   binary <- unname(binary_models(x)[area$model])
   # A limit needs at least 19 simulated curves.
   limited <- is.finite(area$PIT_area_limit) & !binary
@@ -255,8 +255,7 @@ plot_calibration <- function(x, models, style, bins, colour) {
     area$label[limited], "\nBelow ", format_area(area$PIT_area_limit[limited]),
     " if calibrated"
   )
-  area$label[binary] <- paste0(area$label[binary],
-                               "\nNot a check for binary outcomes")
+  area$label[binary] <- "Not a check of calibration\nfor binary outcomes"
   banded <- area$model[!binary]
   area$model <- factor(area$model, levels = models)
   colours <- validation_palette(colour)

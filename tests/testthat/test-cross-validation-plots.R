@@ -75,7 +75,7 @@ test_that("plot_cross_validation() draws PIT histograms", {
   )
 })
 
-test_that("plot_cross_validation() gives no band or limit for binary outcomes", {
+test_that("plot_cross_validation() gives no area, band or limit for binary outcomes", {
   geoms <- function(plot) {
     vapply(plot$layers, function(layer) class(layer$geom)[1], character(1))
   }
@@ -89,10 +89,10 @@ test_that("plot_cross_validation() gives no band or limit for binary outcomes", 
   expect_equal(band$ymax, curves$upper[curves$model == "model_b"])
   text <- layer_data_of(p, "GeomText")$label
   area <- mixed$calibration$area
-  expect_match(text[1], formatC(area$PIT_area[1], format = "f", digits = 3),
+  note <- "Not a check of calibration\nfor binary outcomes"
+  expect_identical(text[1], note)
+  expect_match(text[2], formatC(area$PIT_area[2], format = "f", digits = 3),
                fixed = TRUE)
-  expect_match(text[1], "binary outcomes", fixed = TRUE)
-  expect_no_match(text[1], "Below", fixed = TRUE)
   expect_match(text[2], "Below", fixed = TRUE)
   histogram <- plot_cross_validation(mixed, style = "histogram")
   expect_identical(nrow(layer_data_of(histogram, "GeomRect")), 20L)
@@ -100,13 +100,12 @@ test_that("plot_cross_validation() gives no band or limit for binary outcomes", 
     expect_identical(unique(as.integer(layer_data_of(histogram, geom)$PANEL)),
                      2L, label = geom)
   }
-  expect_match(layer_data_of(histogram, "GeomText")$label[1], "binary",
-               fixed = TRUE)
+  expect_identical(layer_data_of(histogram, "GeomText")$label[1], note)
   # Binary outcomes only, so no band at all.
   binary <- binary_scores(cross_validation, c("model_a", "model_b"))
   curve <- plot_cross_validation(binary)
   expect_false("GeomRibbon" %in% geoms(curve))
-  expect_no_match(layer_data_of(curve, "GeomText")$label, "Below")
+  expect_identical(layer_data_of(curve, "GeomText")$label, rep(note, 2L))
   histogram <- plot_cross_validation(binary, style = "histogram")
   expect_false(any(c("GeomRibbon", "GeomPath") %in% geoms(histogram)))
   expect_equal(layer_data_of(histogram, "GeomRect")$ymax,

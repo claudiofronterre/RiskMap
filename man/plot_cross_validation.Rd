@@ -84,9 +84,9 @@ limit are computed and how to read the area.
 
 For binary outcomes, with one trial in each test observation, the area, the
 limit and the band are not a check of calibration. The panel of such a model
-shows its curve or histogram and its area, without the band or the limit, and
-says that it is not a check for binary outcomes. Compare these models by
-their scores.
+shows its curve or histogram without the area, the band or the limit, and
+says that it is not a check of calibration for binary outcomes. Compare these
+models by their scores.
 }
 
 \section{Scores}{

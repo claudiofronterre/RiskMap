@@ -2017,11 +2017,15 @@ several rows at one location, and in an assessment of several models each model
 is judged on its own. `assess_prediction()` says once, with its other messages,
 that the area, the limit and the band are not a check of calibration there, and
 that the CRPS, which is the Brier score, compares models. The panel of such a
-model in `plot_cross_validation()`, as a curve or a histogram, has the curve and
-the area without the band and without "Below", and the note "Not a check for
-binary outcomes". `print()` and `summary()` give its area with "none (binary)"
-as its limit and a note on why, and `to_table()` gives the same limit. The
-result is unchanged and still holds the limit and the band. It keeps no
+model in `plot_cross_validation()`, as a curve or a histogram, has the curve
+without the area, the band or "Below", and the note "Not a check of calibration
+for binary outcomes". The print of the result and of `summary()`, and
+`to_table()`, give "not shown (binary)" as its area and leave its limit blank,
+and the print adds a note on why. When every model is binary, the two columns
+are left out. The area is not shown because a number next to the scores
+invites a reading as a check, which it is not here. The result and
+the data frame of `summary()` are unchanged and still hold the area, the limit
+and the band. The result keeps no
 denominators, so `binary_models()` recognises a binary model from its scores.
 An observation with one trial has a PIT interval that starts at 0 or ends at 1,
 and its CRPS equals the Brier score exactly, while with more trials the CRPS is

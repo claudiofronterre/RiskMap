@@ -215,10 +215,13 @@ area, its limit and the band almost never point to miscalibration, even for
 a wrong model and with any kind of test sets. They are not a check of
 calibration there. A binomial model whose scored test observations all have
 one trial, as with individual-level data that have several observations at
-one location, is therefore treated apart. \code{assess_prediction()} says so, and
-\code{\link[=plot_cross_validation]{plot_cross_validation()}}, the print of the result and of its \code{summary()},
-and \code{\link[=to_table]{to_table()}} show its curve and its area without the band or the limit,
-with a short note on why. The result and the summary still have them. In an assessment of several models this applies
+one location, is therefore treated apart. \code{assess_prediction()} says so.
+\code{\link[=plot_cross_validation]{plot_cross_validation()}} draws its curve or histogram without the area, the
+limit or the band, and the print of the result and of its \code{summary()}, and
+\code{\link[=to_table]{to_table()}}, leave out its area and limit. The plot and the prints say why,
+and \code{\link[=to_table]{to_table()}} gives "not shown (binary)" as the area, or leaves out the
+two columns when every model is of binary outcomes. The result and the
+summary still have them. In an assessment of several models this applies
 to each such model on its own. The CRPS of a binary outcome is the Brier
 score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
 \eqn{y = 1}, and the scores still compare models.
