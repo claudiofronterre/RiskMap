@@ -83,7 +83,8 @@ measurement error variance of a Gaussian model.
 The table of a cross-validation or its summary has a row for each model,
 with its scores, their differences from a \code{reference} model with their
 standard errors in brackets, and its \code{PIT_area} with the limit of a correct
-model.
+model. A model of binary outcomes has "none (binary)" as its limit, because
+the area is not a check of calibration there (see \code{\link[=assess_prediction]{assess_prediction()}}).
 }
 \examples{
 data(italy_sim)

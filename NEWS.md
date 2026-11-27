@@ -112,8 +112,11 @@ in the source repository.
   of the mean. Every score is a loss, so lower is better, `summary()` gives the
   differences from a reference model, and `PIT_area` is given with the limit that
   a correct model is below with a probability of 95%, from datasets simulated
-  with their parameters estimated again. `plot_cross_validation()` draws the
-  calibration with its 95% joint band, and maps the scores.
+  with their parameters estimated again. For binary outcomes the area is not a
+  check of calibration, which `assess_prediction()` says, so it is shown
+  without the limit and the band.
+  `plot_cross_validation()` draws the calibration with its 95% joint band, and
+  maps the scores.
 - `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses predictions on them.
 - In `assess_simulation()` every value belongs to a class, those beyond the

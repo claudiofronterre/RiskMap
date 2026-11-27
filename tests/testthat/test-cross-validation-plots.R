@@ -75,6 +75,46 @@ test_that("plot_cross_validation() draws PIT histograms", {
   )
 })
 
+test_that("plot_cross_validation() gives no band or limit for binary outcomes", {
+  geoms <- function(plot) {
+    vapply(plot$layers, function(layer) class(layer$geom)[1], character(1))
+  }
+  mixed <- binary_scores(cross_validation, "model_a")
+  curves <- mixed$calibration$curves
+  p <- plot_cross_validation(mixed)
+  # Both curves, and the band of the other model only.
+  expect_equal(layer_data_of(p, "GeomLine")$y, curves$curve)
+  band <- layer_data_of(p, "GeomRibbon")
+  expect_identical(unique(as.integer(band$PANEL)), 2L)
+  expect_equal(band$ymax, curves$upper[curves$model == "model_b"])
+  text <- layer_data_of(p, "GeomText")$label
+  area <- mixed$calibration$area
+  expect_match(text[1], formatC(area$PIT_area[1], format = "f", digits = 3),
+               fixed = TRUE)
+  expect_match(text[1], "binary outcomes", fixed = TRUE)
+  expect_no_match(text[1], "Below", fixed = TRUE)
+  expect_match(text[2], "Below", fixed = TRUE)
+  histogram <- plot_cross_validation(mixed, style = "histogram")
+  expect_identical(nrow(layer_data_of(histogram, "GeomRect")), 20L)
+  for (geom in c("GeomRibbon", "GeomPath")) {
+    expect_identical(unique(as.integer(layer_data_of(histogram, geom)$PANEL)),
+                     2L, label = geom)
+  }
+  expect_match(layer_data_of(histogram, "GeomText")$label[1], "binary",
+               fixed = TRUE)
+  # Binary outcomes only, so no band at all.
+  binary <- binary_scores(cross_validation, c("model_a", "model_b"))
+  curve <- plot_cross_validation(binary)
+  expect_false("GeomRibbon" %in% geoms(curve))
+  expect_no_match(layer_data_of(curve, "GeomText")$label, "Below")
+  histogram <- plot_cross_validation(binary, style = "histogram")
+  expect_false(any(c("GeomRibbon", "GeomPath") %in% geoms(histogram)))
+  expect_equal(layer_data_of(histogram, "GeomRect")$ymax,
+               as.numeric(t(pit_histogram(
+                 matrix(curves$curve, nrow = 2, byrow = TRUE), 10
+               ))))
+})
+
 test_that("plot_cross_validation() maps the scores on one scale", {
   p <- plot_cross_validation(cross_validation, type = "score")
   expect_identical(levels(p$data$model), c("model_a", "model_b"))

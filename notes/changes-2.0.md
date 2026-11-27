@@ -1997,8 +1997,9 @@ training set, and the area rejects 2.4 to 8.0%. Zero inflation is found in 46 to
 absorb (no covariate, no nugget, overdispersion, anisotropy) are found in 1.3 to
 7.1%, by any test of calibration. For binary outcomes with one trial the area
 rejects 0% of correct and of wrong models in every design, and full parametric
-bootstrap refits stay near 1%, so the help says that it is not a check of
-calibration there. The CRPS of a binary outcome is the Brier score of the
+bootstrap refits stay near 1%, because the estimates absorb what makes a binary
+PIT curve deviate, so it is not a check of calibration there (see the next
+bullet). The CRPS of a binary outcome is the Brier score of the
 predictive probability. With 999 curves on one thread the reference took about
 1, 9 and 33 seconds for 100, 500 and 1,000 locations on Wayland (0.2 to 1.3
 seconds before), and on the laptop, installed and under light load, 8 and 29
@@ -2009,6 +2010,34 @@ and above 1,500 `assess_prediction()` says that it can take a minute or more for
 each model. Its memory grows with the square of the number of observations. It
 shows a step with a spinner while it runs. The
 predictive draws of the test sets are no longer kept for it.
+- For binary outcomes the area, its limit and the band are not presented as a
+check of calibration. A model counts as binary when it is binomial and every
+scored test observation has one trial, which covers individual-level data with
+several rows at one location, and in an assessment of several models each model
+is judged on its own. `assess_prediction()` says once, with its other messages,
+that the area, the limit and the band are not a check of calibration there, and
+that the CRPS, which is the Brier score, compares models. The panel of such a
+model in `plot_cross_validation()`, as a curve or a histogram, has the curve and
+the area without the band and without "Below", and the note "Not a check for
+binary outcomes". `print()` and `summary()` give its area with "none (binary)"
+as its limit and a note on why, and `to_table()` gives the same limit. The
+result is unchanged and still holds the limit and the band. It keeps no
+denominators, so `binary_models()` recognises a binary model from its scores.
+An observation with one trial has a PIT interval that starts at 0 or ends at 1,
+and its CRPS equals the Brier score exactly, while with more trials the CRPS is
+larger unless the predictive distribution has no probability beyond one count
+from the observation. The summary has an attribute `binary`.
+- The help on fixed and refitted parameters says that fixed parameters, the
+default, suit a check of calibration, because the reference repeats the same
+procedure, and that models are compared by their scores with `refit = TRUE`. In
+a Gaussian simulation at 100 locations with the true model and one with six
+extra smooth noise covariates (1,000 datasets for each of four designs), fixed
+parameters chose the overfitted model by CRPS in 81 to 94% of datasets, refits
+in 9 to 18%, and it predicted new locations better in 11%. The optimism of fixed
+parameters in the log score was close to the number of parameters in
+leave-one-out and two to three times larger with clusters. Re-estimating only
+the coefficients in each training set did about as well as full refits, and is
+left for 2.1.
 - The result of `assess_prediction()` is a list with `scores`, a data frame with
 a row for each model and test observation (`model`, `test_set`, `row`, `CRPS`,
 `SCRPS`, `pit_lower`, `pit_upper`), `calibration`, with the areas, the
