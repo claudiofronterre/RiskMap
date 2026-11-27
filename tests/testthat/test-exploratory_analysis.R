@@ -630,7 +630,9 @@ test_that("variogram takes its seed last", {
 
 test_that("print.RiskMap_variogram describes the classes and the envelope", {
 
-  result <- variogram(gaussian_data, variable = "y", n_bins = 4,
+  # The locations are at least 0.25 km apart, so the first class holds no pairs.
+  result <- variogram(gaussian_data, variable = "y",
+                      breaks = c(0, 0.25, 1.5, 2.5, 3.5),
                       n_permutations = 99, seed = 123)
   output <- capture.output(printed <- print(result))
 
