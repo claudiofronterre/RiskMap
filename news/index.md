@@ -165,7 +165,7 @@ in the source repository.
   datasets simulated with their parameters estimated again. For binary
   outcomes the area is not a check of calibration, which
   [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
-  says, so it is shown without the limit and the band.
+  says, so it is not shown, nor are the limit and the band.
   [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
   draws the calibration with its 95% joint band, and maps the scores.
 - [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)

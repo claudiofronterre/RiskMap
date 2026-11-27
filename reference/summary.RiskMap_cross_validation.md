@@ -47,7 +47,8 @@ better score than that of the reference model. A `PIT_area` below
 For a model of binary outcomes the area is not a check of calibration,
 so the print of the summary and
 [`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
-give it without its limit, and say why.
+show neither its area nor its limit. The print says why. The summary
+still has them.
 
 An observation in several test sets is first given the average of its
 scores, so that it counts once. The scores of a model are then averaged

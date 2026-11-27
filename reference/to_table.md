@@ -110,9 +110,11 @@ The table of a fit or its summary has
 The table of a cross-validation or its summary has a row for each model,
 with its scores, their differences from a `reference` model with their
 standard errors in brackets, and its `PIT_area` with the limit of a
-correct model. A model of binary outcomes has "none (binary)" as its
-limit, because the area is not a check of calibration there (see
+correct model. For a model of binary outcomes the area reads "not shown
+(binary)" and the limit is blank, because the area is not a check of
+calibration there (see
 [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)).
+When every model is of binary outcomes, these two columns are left out.
 
 ## See also
 

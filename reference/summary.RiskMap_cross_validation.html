@@ -91,8 +91,8 @@ model of binary outcomes.</p>
 score than that of the reference model. A <code>PIT_area</code> below <code>PIT_area_limit</code> is
 one that a correct model would give (see <code><a href="assess_prediction.html">assess_prediction()</a></code>). For a
 model of binary outcomes the area is not a check of calibration, so the
-print of the summary and <code><a href="to_table.html">to_table()</a></code> give it without its limit, and say
-why.</p>
+print of the summary and <code><a href="to_table.html">to_table()</a></code> show neither its area nor its limit.
+The print says why. The summary still has them.</p>
 <p>An observation in several test sets is first given the average of its
 scores, so that it counts once. The scores of a model are then averaged
 over the observations. The differences from the reference are those of

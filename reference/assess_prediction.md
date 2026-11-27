@@ -256,17 +256,20 @@ for a wrong model and with any kind of test sets. They are not a check
 of calibration there. A binomial model whose scored test observations
 all have one trial, as with individual-level data that have several
 observations at one location, is therefore treated apart.
-`assess_prediction()` says so, and
-[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
-the print of the result and of its
+`assess_prediction()` says so.
+[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+draws its curve or histogram without the area, the limit or the band,
+and the print of the result and of its
 [`summary()`](https://rdrr.io/r/base/summary.html), and
+[`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md),
+leave out its area and limit. The plot and the prints say why, and
 [`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
-show its curve and its area without the band or the limit, with a short
-note on why. The result and the summary still have them. In an
-assessment of several models this applies to each such model on its own.
-The CRPS of a binary outcome is the Brier score \\(p - y)^2\\ of the
-predictive probability \\p\\ that \\y = 1\\, and the scores still
-compare models.
+gives "not shown (binary)" as the area, or leaves out the two columns
+when every model is of binary outcomes. The result and the summary still
+have them. In an assessment of several models this applies to each such
+model on its own. The CRPS of a binary outcome is the Brier score \\(p -
+y)^2\\ of the predictive probability \\p\\ that \\y = 1\\, and the
+scores still compare models.
 
 ## Failures
 
