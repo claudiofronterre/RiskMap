@@ -1,4 +1,6 @@
-# A minimal Gaussian fit, whose test sets are predicted by a mock.
+# A minimal Gaussian fit, whose test sets are predicted by a mock. Its
+# parameters are independent observations of variance 1, for the reference of
+# its calibration.
 make_assess_prediction_fit <- function(data, covariate) {
   fit <- list(
     formula = stats::as.formula(paste("y ~", covariate)),
@@ -6,7 +8,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     input_crs = sf::st_crs(data),
     family = "gaussian",
     estimate = list(beta = c(0, 0), sigma2 = 0, phi = 0),
-    D = matrix(1, nrow = nrow(data), ncol = 2),
+    D = cbind(1, seq_len(nrow(data))),
     re = list(),
     cov_offset = NULL,
     nugget = "none",
@@ -17,6 +19,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     ID_coords = seq_len(nrow(data)),
     coords = sf::st_coordinates(data),
     distance_units = "m",
+    kappa = 0.5,
     call = list(denominator = quote(units_m)),
     model_id = covariate
   )
@@ -152,7 +155,8 @@ test_that("models of different denominators can't be compared", {
   poisson$link_function <- list(inv = exp, name = "log")
   without <- poisson
   without$units_m <- NULL
-  local_mocked_bindings(predict_test_set = mock_constant(0))
+  local_mocked_bindings(predict_test_set = mock_constant(0),
+                        calibration_reference = independent_reference)
   out <- assess(list(a = poisson, b = without), list(1:2))
   expect_identical(out$scores$CRPS[1:2], out$scores$CRPS[3:4])
 })
@@ -274,7 +278,8 @@ make_probit_fit <- function() {
 }
 
 test_that("counts are scored with the inverse link of the model", {
-  local_mocked_bindings(predict_test_set = mock_constant(1))
+  local_mocked_bindings(predict_test_set = mock_constant(1),
+                        calibration_reference = independent_reference)
   out <- assess(list(probit = make_probit_fit()), list(2:3), seed = 1)
   exact_crps <- function(y, p) {
     F_k <- pbinom(0:10, 10, p)
@@ -295,7 +300,8 @@ test_that("a failed refit leaves the scores of its test set missing", {
       if (nrow(data) == 1L) stop("refit failed")
       fit
     },
-    predict_test_set = mock_constant(1)
+    predict_test_set = mock_constant(1),
+    calibration_reference = independent_reference
   )
   expect_warning(
     out <- assess(list(probit = fit), list(2:3, 1), refit = TRUE),
@@ -548,67 +554,54 @@ test_that("the scores of counts with re() are those of their closed form", {
   expect_equal(out$scores$pit_upper, exact[2, ], tolerance = 0.04)
 })
 
-test_that("the reference of the calibration has joint draws", {
-  # Draws that are the same for every observation give curves that step from 0
-  # to 1 at a uniform, whose expected area is 1/3, and independent draws about
-  # 0.31 / sqrt(n).
+test_that("the reference of independent observations has their expected area", {
+  # The working model of the mock is independent observations, so the areas
+  # are about those of uniforms, 0.31 / sqrt(n).
   set.seed(52)
-  n <- 50
-  # The last row is for training.
+  n <- 60
   fit <- make_assess_prediction_fit(
-    line_data(y = rep(0, n + 1), x1 = seq_len(n + 1)), "x1"
+    line_data(y = rnorm(n), x1 = seq_len(n)), "x1"
   )
-  expected_with <- function(draws, sets = list(1:n)) {
-    local_mocked_bindings(predict_test_set = mock_draws(draws))
-    assess(fit, sets, seed = 1)$calibration$area$PIT_area_expected
-  }
-  shared <- matrix(rnorm(1000), n, 1000, byrow = TRUE)
-  expect_equal(expected_with(shared), 1 / 3, tolerance = 0.05)
-  independent <- matrix(rnorm(n * 1000), n)
-  expect_equal(expected_with(independent), 0.31 / sqrt(n), tolerance = 0.1)
-  # The test sets are independent of each other. Here they are half the data
-  # each, which move together within each half.
-  halves <- rbind(shared[1:25, ], matrix(rnorm(1000), 25, 1000, byrow = TRUE))
-  two <- expected_with(halves, list(1:25, 26:50))
-  expect_gt(two, 0.2)
-  expect_lt(two, 0.3)
+  local_mocked_bindings(
+    predict_test_set = mock_draws(matrix(rnorm(n * 100), n))
+  )
+  out <- assess(fit, list(1:30, 31:60), seed = 1)$calibration
+  expect_equal(out$area$PIT_area_expected, 0.31 / sqrt(n), tolerance = 0.15)
+  expect_gt(out$area$PIT_area_limit, out$area$PIT_area_expected)
+  expect_identical(dim(out$simulated[[1]]), c(999L, 101L))
 })
 
-test_that("an observation in two test sets counts as one in the reference", {
-  set.seed(53)
-  n <- 12
-  fit <- make_assess_prediction_fit(
-    line_data(y = rnorm(n + 1), x1 = seq_len(n + 1)), "x1"
+test_that("the reference re-estimates the parameters as the assessment does", {
+  arguments <- list()
+  local_mocked_bindings(
+    calibration_reference = function(...) {
+      arguments[[length(arguments) + 1L]] <<- list(...)
+      independent_reference(...)
+    },
+    glgpm = function(...) gaussian_intercept_model,
+    predict_test_set = mock_constant(0),
+    reference_candidates = function(n_observations) n_observations
   )
-  draws <- matrix(rnorm(n * 500, 0.5, 0.8), n)
-  local_mocked_bindings(predict_test_set = mock_draws(draws))
-  once <- assess(fit, list(1:n), seed = 1)$calibration
-  for (sets in list(list(1:n, 1:n), list(1:n, 1:6, 7:n))) {
-    again <- assess(fit, sets, seed = 1)$calibration
-    expect_equal(again$area, once$area)
-    expect_lt(max(abs(again$simulated[[1]] - once$simulated[[1]])), 1e-12)
-  }
+  fit <- gaussian_intercept_model
+  assess(fit, list(1:2, 3))
+  assess(fit, list(1:2, 3), refit = TRUE)
+  expect_identical(vapply(arguments, `[[`, TRUE, "refit"), c(FALSE, TRUE))
+  # The number of observations decides the number of candidates.
+  expect_identical(arguments[[1]]$n_candidates, length(fit$y))
+})
 
-  # Counts with the same means in both test sets are the same counts.
-  traits <- family_traits("poisson")
-  simulate <- function(rows, earlier, shift = 0) {
-    means <- exp(draws[rows, , drop = FALSE] + shift)
-    scored <- score_counts(rep(2, length(rows)), rep(1, length(rows)), means,
-                           NULL, traits)
-    simulate_count_pit(c(list(draws = means[, 1:200, drop = FALSE]),
-                         scored$predictive), traits, earlier)
+test_that("the reference shows a step while it runs", {
+  local_mocked_bindings(predict_test_set = mock_constant(0))
+  withr::local_options(RiskMap.progress = TRUE, cli.dynamic = FALSE)
+  run <- function(messages) {
+    capture_messages(assess_prediction(list(a = gaussian_intercept_model),
+                                       list(1:2), messages = messages))
   }
-  first <- simulate(1:n, vector("list", n))
-  expect_true(all(first$upper > first$lower))
-  second <- simulate(c(7, 3), first$uniforms[c(7, 3)])
-  expect_equal(second$lower, first$lower[, c(7, 3)])
-  expect_equal(second$upper, first$upper[, c(7, 3)])
-  expect_identical(second$uniforms, first$uniforms[c(7, 3)])
-  # With other means they have the same PIT value.
-  moved <- simulate(4L, first$uniforms[4], shift = 1)
-  expect_true(all(moved$lower <= first$uniforms[[4]] &
-                    first$uniforms[[4]] <= moved$upper))
-  expect_false(isTRUE(all.equal(moved$lower, first$lower[, 4, drop = FALSE])))
+  lines <- grep("Simulating the calibration", run(TRUE), value = TRUE)
+  expect_length(lines, 2L)
+  expect_match(lines[1L], "of a correct model for \"a\"")
+  expect_match(lines[2L], "\\[")
+  expect_no_message(run(FALSE))
 })
 
 test_that("assess_prediction() refits the models of every family", {

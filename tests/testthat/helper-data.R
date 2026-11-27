@@ -81,6 +81,16 @@ prediction_data$i <- rep(gaussian_model$re[[1]],
                          length.out = nrow(prediction_data))
 prediction_data$population <- seq_len(nrow(prediction_data))
 
+# A reference of independent uniform PIT values, for tests of the scores of
+# fits that are mocks without a working model (`working_model()`).
+independent_reference <- function(fit, test_sets, predictive, n_curves, ...) {
+  rows <- unlist(lapply(predictive, `[[`, "rows"))
+  pit <- withr::with_seed(1, matrix(runif(n_curves * length(rows)), n_curves))
+  curves <- pit_curves(pit, pit, area_levels())
+  list(curves = curves[, seq(1L, ncol(curves), by = 10L), drop = FALSE],
+       areas = pit_area(curves, area_levels()))
+}
+
 cross_validation <- assess_prediction(
   list(model_a = gaussian_model, model_b = gaussian_offset_model),
   list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),

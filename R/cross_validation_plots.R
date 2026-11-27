@@ -128,7 +128,8 @@ validation_map_theme <- function() {
 ##' and, after "Below", `PIT_area_limit`. It is a 95% limit and not a certainty. The
 ##' area of a correct model is below it with a probability of 95%, and above it
 ##' for one dataset in twenty. [assess_prediction()] says how the band and the
-##' limit are computed, how to read the area, and why they are cautious.
+##' limit are computed, how to read the area, and where they are not a check of
+##' calibration, as for binary outcomes.
 ##'
 ##' # Scores
 ##'
@@ -240,7 +241,7 @@ plot_calibration <- function(x, models, style, bins, colour) {
     abort_input("{.arg x} has no scores to assess the calibration with.", arg = "x")
   }
   area$label <- paste0("Area ", format_area(area$PIT_area))
-  # Few predictive draws give no limit.
+  # A limit needs at least 19 simulated curves.
   limited <- is.finite(area$PIT_area_limit)
   area$label[limited] <- paste0(
     area$label[limited], "\nBelow ", format_area(area$PIT_area_limit[limited]),

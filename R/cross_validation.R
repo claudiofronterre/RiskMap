@@ -36,7 +36,8 @@
 ##'   number state is restored on exit. When `NULL` (the default), the seeds
 ##'   are drawn from the session's random number generator.
 ##' @param messages Logical, whether to report on the assessment, with a
-##'   progress bar as described in [riskmap_progress]. Defaults to the option
+##'   progress bar and a step for the simulation of each model's calibration,
+##'   as described in [riskmap_progress]. Defaults to the option
 ##'   `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Not used, and an error if given, so that a misspelt or former
 ##'   argument such as `method` is not ignored.
@@ -80,8 +81,7 @@
 ##' the random effects when the model has them. A random effect has its
 ##' distribution given the training data, and a level that the training data
 ##' don't have is drawn from the distribution of the random effect. The scores
-##' of an observation are those of its own predictive distribution, and the
-##' joint draws are for the reference of its calibration (see Calibration). Test
+##' of an observation are those of its own predictive distribution. Test
 ##' observations with missing values in a variable used by any of the models
 ##' are left out.
 ##'
@@ -139,18 +139,27 @@
 ##' # How to read the area
 ##'
 ##' The area of a correct model is not zero, because its observations are finite
-##' in number, and because neighbouring test observations are above or below
-##' their predictions together. Its distribution is found by simulation.
-##' 1. Test observations are drawn from the model, jointly for each test set from
-##'    its joint predictive distribution, once for each of 999 draws of
-##'    `control_mcmc`, evenly spaced, or for every draw if there are fewer. An
-##'    observation in several test sets has the same PIT value in all of them,
-##'    the one drawn in its first test set.
-##' 2. Each draw gives a calibration curve and an area, computed as for the data.
-##' 3. `PIT_area_expected` is the mean of these areas, and `PIT_area_limit` the
-##'    value that 95% of them are below, which needs at least 19 draws. The band of [plot_cross_validation()] is
-##'    the joint envelope of the curves, computed as in [variogram()], which the
-##'    whole curve of a correct model is inside with a probability of 95%.
+##' in number, because neighbouring test observations are above or below their
+##' predictions together, and because the parameters are estimated from the
+##' same data. Its distribution is found by simulation.
+##' 1. 999 datasets are simulated from a Gaussian working model of the fit. It
+##'    has the linear predictor of the model, with its spatial correlation,
+##'    nugget and random effects, observed with the measurement error of a
+##'    Gaussian model. For counts each observation has instead a Gaussian error
+##'    whose variance makes it about as informative about the linear predictor
+##'    as the count is.
+##' 2. In each dataset the covariance parameters of the working model are
+##'    estimated again, from all its observations, or from each training set
+##'    when `refit = TRUE`, and the test observations are predicted from their
+##'    training sets, as for the data. This gives each test observation a PIT
+##'    value. For counts, it is turned into a count by the predictive
+##'    distribution of the data at that observation.
+##' 3. Each dataset gives a calibration curve and an area, computed as for the
+##'    data. `PIT_area_expected` is the mean of these areas, and
+##'    `PIT_area_limit` the value that 95% of them are below. The band of
+##'    [plot_cross_validation()] is the joint envelope of the curves, computed
+##'    as in [variogram()], which the whole curve of a correct model is inside
+##'    with a probability of 95%.
 ##'
 ##' An area below `PIT_area_limit` is one that a correct model would give, and an
 ##' area above it points to miscalibration. Below the limit, a smaller area, or
@@ -159,17 +168,25 @@
 ##' so the areas of models shouldn't be ranked. The CRPS and the SCRPS are for
 ##' comparing models. The area is also not sensitive to every departure. Too many
 ##' observations in both tails change it little, and the curve and the histogram
-##' of [plot_cross_validation()] show them.
+##' of [plot_cross_validation()] show them. Nor does it find a departure that
+##' the estimated parameters make up for, such as a missing covariate or
+##' nugget. The scores compare such models.
 ##'
-##' The simulation draws from the model with its parameters at the values used for
-##' the prediction, and it treats the test sets as independent, although their
-##' prediction errors are not. A test observation is predicted from neighbours
-##' that are predicted in other test sets, so their errors partly cancel. The
-##' areas of a correct model therefore tend to be smaller than the simulated
-##' ones, more so with leave-one-out and random test sets and with repeated
-##' divisions, and most with leave-one-out for binary outcomes. The limit and
-##' the band are cautious there, so a curve inside the band is not evidence of
-##' good calibration.
+##' The simulated datasets go through the same cross-validation as the data, with
+##' their parameters estimated again, so the area of a correct model is above
+##' `PIT_area_limit` in about one dataset in twenty. When the test sets are a few
+##' spatial clusters, it is above the limit, or its curve outside the band,
+##' somewhat more often. The time of the simulation grows about with the cube of
+##' the number of observations and its memory with the square, so with a few
+##' thousand observations it takes minutes for each model, and with many
+##' thousands much longer.
+##'
+##' For binary outcomes, with a single trial in each observation, the area, its
+##' limit and the band almost never point to miscalibration, even for a wrong
+##' model and with any kind of test sets. They are not a check of calibration
+##' there, and a curve inside the band says nothing about it. The CRPS of a
+##' binary outcome is the Brier score \eqn{(p - y)^2} of the predictive
+##' probability \eqn{p} that \eqn{y = 1}, so the scores still compare models.
 ##'
 ##' # Failures
 ##'
@@ -241,7 +258,10 @@ assess_prediction <- function(models,
   n_sets <- length(test_sets$sets)
 
   warn_shared_locations(models, test_sets)
-  if (messages) inform_assessment(models, n_sets, refit)
+  if (messages) {
+    inform_assessment(models, n_sets, refit)
+    inform_reference_time(length(models[[1L]]$y))
+  }
   complete_rows <- complete_model_rows(models)
   tested <- unique(unlist(lapply(test_sets$sets, `[[`, "test")))
   if (!any(complete_rows[tested])) {
@@ -274,12 +294,16 @@ assess_prediction <- function(models,
                      seeds, bar)
   }, models, names(models))
   progress_done(bar)
+  calibrations <- Map(function(fit, name, model) {
+    calibrate_one_model(fit, name, model, test_sets, refit, seeds$reference,
+                        messages)
+  }, models, names(models), assessed)
 
   failures <- do.call(rbind, lapply(assessed, `[[`, "failures"))
   warn_failed_assessments(failures, length(models) * n_sets)
   out <- list(
     scores = do.call(rbind, lapply(assessed, `[[`, "scores")),
-    calibration = combine_calibrations(lapply(assessed, `[[`, "calibration")),
+    calibration = combine_calibrations(calibrations),
     test_sets = test_sets, refit = refit,
     family = vapply(models, `[[`, character(1), "family"),
     failures = failures
@@ -400,6 +424,16 @@ inform_assessment <- function(models, n_sets, refit) {
   }
 }
 
+##' Say that the reference of a calibrated model takes a minute or more
+##'
+##' It took about a minute for each model at 1,500 observations on one thread,
+##' and its time grows quickly with their number (`reference_candidates()`).
+##' @noRd
+inform_reference_time <- function(n_observations) {
+  if (n_observations <= 1500L) return(invisible(NULL))
+  riskmap_inform("With {n_observations} observations, simulating the calibration of a correct model can take a minute or more for each model, and its time grows about with the cube of the number of observations.")
+}
+
 ##' Whether each row of the data can be used by every model
 ##' @noRd
 complete_model_rows <- function(models) {
@@ -423,19 +457,19 @@ warn_failed_assessments <- function(failures, n_assessed) {
 ##'
 ##' A failed fit or prediction leaves the scores of its test set missing
 ##' instead of stopping the assessment.
-##' @return A list with `scores`, `failures` and `calibration`.
+##' @return A list with `scores`, `failures` and the `predictive`
+##'   distributions of the test sets, `NULL` for one without scores.
 ##' @noRd
 assess_one_model <- function(fit, name, test_sets, complete_rows, refit,
                              control_mcmc, seeds, bar) {
   failures <- data.frame(model = character(), test_set = integer(),
                          message = character())
-  n_curves <- n_simulated_curves()
   assessed <- lapply(seq_along(test_sets$sets), function(i) {
     rows <- test_sets$sets[[i]]$test
     rows <- rows[complete_rows[rows]]
     result <- if (length(rows)) tryCatch(
       score_test_set(fit, test_sets$sets[[i]]$train, rows, refit, control_mcmc,
-                     seeds[i, ], n_curves),
+                     seeds[i, ]),
       error = function(error) {
         failures[nrow(failures) + 1L, ] <<- list(name, i, condition_text(error))
         NULL
@@ -451,33 +485,49 @@ assess_one_model <- function(fit, name, test_sets, complete_rows, refit,
                                    row = rows), scores),
          predictive = result$predictive)
   })
-  scores <- do.call(rbind, lapply(assessed, `[[`, "scores"))
+  list(scores = do.call(rbind, lapply(assessed, `[[`, "scores")),
+       failures = failures,
+       predictive = lapply(assessed, `[[`, "predictive"))
+}
+
+##' The calibration of one model, with the reference of a correct model
+##'
+##' A step shows while the reference is simulated, which takes minutes with
+##' many observations.
+##' @param assessed The result of `assess_one_model()`.
+##' @param seeds The seeds of the reference, one for each test set, of which
+##'   `calibration_reference()` uses the first.
+##' @return The result of `assess_calibration()`.
+##' @noRd
+calibrate_one_model <- function(fit, name, assessed, test_sets, refit, seeds,
+                                messages) {
+  scores <- assessed$scores
   scored <- !is.na(scores$pit_lower)
-  reference <- if (any(scored)) {
-    calibration_reference(fit, test_sets, lapply(assessed, `[[`, "predictive"),
-                          n_curves, seeds$reference)
+  reference <- NULL
+  if (any(scored)) {
+    progress_step("Simulating the calibration of a correct model for {.val {name}}",
+                  messages)
+    reference <- calibration_reference(
+      fit, test_sets, assessed$predictive, n_simulated_curves(), seeds,
+      refit = refit, n_candidates = reference_candidates(length(fit$y))
+    )
+    progress_step_done(messages)
   }
-  list(
-    scores = scores, failures = failures,
-    calibration = assess_calibration(scores$pit_lower[scored],
-                                     scores$pit_upper[scored], reference)
-  )
+  assess_calibration(scores$pit_lower[scored], scores$pit_upper[scored],
+                     reference)
 }
 
 ##' Predict and score one test set
 ##'
 ##' @param train,rows The training and test rows of the data.
 ##' @param seeds The seeds of the test set.
-##' @param n_curves The number of draws kept for the calibration.
 ##' @return A list with the `scores` of the test observations and their
 ##'   `predictive` distributions, for `calibration_reference()`. These are a list
-##'   with the `rows`, `draws`, joint draws of the outcomes of a Gaussian test set
-##'   or of the means of a test set of counts with an observation in each row,
-##'   and the distribution of each observation, its `mean` and `sd`, or its
-##'   `distributions`, with `units_m` and the `parameters` of the family.
+##'   with the `rows` and the distribution of each observation, its `mean` and
+##'   `sd`, or the `distributions` of counts, with their `units_m` and the
+##'   `parameters` of the family.
 ##' @noRd
-score_test_set <- function(fit, train, rows, refit, control_mcmc, seeds,
-                           n_curves) {
+score_test_set <- function(fit, train, rows, refit, control_mcmc, seeds) {
   conditioned <- if (refit) {
     refit_on_rows(fit, train, control_mcmc, seeds$prediction)
   } else {
@@ -499,10 +549,7 @@ score_test_set <- function(fit, train, rows, refit, control_mcmc, seeds,
   } else {
     score_gaussian(y, means)
   }
-  pick <- unique(round(seq(1, ncol(means), length.out = n_curves)))
-  scored$predictive <- c(
-    list(rows = rows, draws = means[, pick, drop = FALSE]), scored$predictive
-  )
+  scored$predictive <- c(list(rows = rows), scored$predictive)
   scored
 }
 
