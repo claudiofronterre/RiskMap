@@ -36,8 +36,8 @@ Lower is better for both scores, and a negative difference means a better
 score than that of the reference model. A \code{PIT_area} below \code{PIT_area_limit} is
 one that a correct model would give (see \code{\link[=assess_prediction]{assess_prediction()}}). For a
 model of binary outcomes the area is not a check of calibration, so the
-print of the summary and \code{\link[=to_table]{to_table()}} show neither its area nor its limit,
-and say why. The summary still has them.
+print of the summary and \code{\link[=to_table]{to_table()}} show neither its area nor its limit.
+The print says why. The summary still has them.
 
 An observation in several test sets is first given the average of its
 scores, so that it counts once. The scores of a model are then averaged

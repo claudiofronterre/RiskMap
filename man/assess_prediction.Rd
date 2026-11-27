@@ -218,8 +218,10 @@ one trial, as with individual-level data that have several observations at
 one location, is therefore treated apart. \code{assess_prediction()} says so.
 \code{\link[=plot_cross_validation]{plot_cross_validation()}} draws its curve or histogram without the area, the
 limit or the band, and the print of the result and of its \code{summary()}, and
-\code{\link[=to_table]{to_table()}}, leave out its area and limit. Each says why. The result and
-the summary still have them. In an assessment of several models this applies
+\code{\link[=to_table]{to_table()}}, leave out its area and limit. The plot and the prints say why,
+and \code{\link[=to_table]{to_table()}} gives "not shown (binary)" as the area, or leaves out the
+two columns when every model is of binary outcomes. The result and the
+summary still have them. In an assessment of several models this applies
 to each such model on its own. The CRPS of a binary outcome is the Brier
 score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
 \eqn{y = 1}, and the scores still compare models.

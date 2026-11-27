@@ -198,8 +198,10 @@
 ##' one location, is therefore treated apart. `assess_prediction()` says so.
 ##' [plot_cross_validation()] draws its curve or histogram without the area, the
 ##' limit or the band, and the print of the result and of its `summary()`, and
-##' [to_table()], leave out its area and limit. Each says why. The result and
-##' the summary still have them. In an assessment of several models this applies
+##' [to_table()], leave out its area and limit. The plot and the prints say why,
+##' and [to_table()] gives "not shown (binary)" as the area, or leaves out the
+##' two columns when every model is of binary outcomes. The result and the
+##' summary still have them. In an assessment of several models this applies
 ##' to each such model on its own. The CRPS of a binary outcome is the Brier
 ##' score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
 ##' \eqn{y = 1}, and the scores still compare models.
@@ -772,8 +774,8 @@ scaled_crps <- function(crps, expected) {
 ##' score than that of the reference model. A `PIT_area` below `PIT_area_limit` is
 ##' one that a correct model would give (see [assess_prediction()]). For a
 ##' model of binary outcomes the area is not a check of calibration, so the
-##' print of the summary and [to_table()] show neither its area nor its limit,
-##' and say why. The summary still has them.
+##' print of the summary and [to_table()] show neither its area nor its limit.
+##' The print says why. The summary still has them.
 ##'
 ##' An observation in several test sets is first given the average of its
 ##' scores, so that it counts once. The scores of a model are then averaged
@@ -1034,7 +1036,8 @@ cv_summary_table <- function(x, digits) {
   # nor its limit is shown, and the columns are left out when every model is
   # of binary outcomes.
   binary <- summarised_binary(x)
-  if (!any(binary) || !all(binary)) {
+  # An empty summary keeps the columns.
+  if (!length(binary) || !all(binary)) {
     areas <- cbind(values$PIT_area, values$PIT_area_limit)
     areas[binary, ] <- NA_real_
     formatted <- areas
