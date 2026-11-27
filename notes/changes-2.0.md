@@ -1526,6 +1526,27 @@ engine, and each chain keeps the step tuned at the estimate with a burn-in of
 of 80 s for the 200 sites with households. A seed still gives the same
 results every time, but they differ from those the same seed gave before,
 although they follow the same distribution.
+- A custom inverse link that calls compiled code holding R's random number
+state, such as a function made with `Rcpp::cppFunction()` or a function of
+another package built with Rcpp, no longer freezes the Langevin sampler of the
+latent effects. For such links the compiled chain (`cpp_latent_mala()`) calls
+the R function that gives the log-likelihood and score at every iteration,
+while it holds an `Rcpp::RNGScope`. Rcpp's scope calls `GetRNGstate()` on
+every entry and `PutRNGstate()` on every exit without counting nested scopes,
+so the compiled call inside the link reloaded `.Random.seed` as it was at the
+start of the chain. The chain repeated its draws at every iteration and, once
+burn-in ended, accepted nothing. On the Liberia survey with a probit link
+made by `Rcpp::cppFunction()` the acceptance after burn-in was 0 and every
+location's 2,000 draws were equal, with no error or warning. The estimates
+were unaffected, since MCML samples by importance sampling, but the draws that
+`glgpm()` keeps, and predictions from them or from a new chain, had no
+spread. The chain now calls `PutRNGstate()` before the callback and
+`GetRNGstate()` after it. For a probit link written as
+`function(eta) pnorm(eta)` and for the canonical link, the estimates, draws,
+acceptance rates and predictions of that fit are unchanged bit for bit, and
+the link made with `Rcpp::cppFunction()` now accepts 57% of proposals, as
+the one written in R does. RiskMap's own links are written in R and were not
+affected, and the chain is the only compiled code of RiskMap that calls R.
 - `set_control_mcmc()` keeps 2,000 draws by default instead of 1,000, with
 `n_sim = 22000` and the same burn-in of 2,000 iterations and thinning by 10.
 `glgpm()` stores these draws and `predict()` reuses them, so the Monte Carlo

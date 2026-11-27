@@ -85,6 +85,10 @@ in the source repository.
   right covariance between them and the spatial process.
 - Rows of `newdata` with a missing covariate, or with one that gives the model a
   term that isn't finite, such as `log(0)`, get `NA` predictions with a warning.
+- With a custom `invlink` that calls compiled code, such as a function made with
+  `Rcpp::cppFunction()`, the draws of the latent effects that `glgpm()` keeps
+  and `predict()` uses are no longer frozen. The sampler accepted nothing after
+  burn-in and repeated one draw, without a warning.
 - The covariates of the prediction grid `tz_covariates` now match those of
   `tz_malaria`. EVI, temperature, night-time light and precipitation come from
   the same rasters, so temperature is missing at 2 points and precipitation at
