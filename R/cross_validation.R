@@ -70,9 +70,10 @@
 ##'
 ##' Fixed parameters, the default, suit a check of the calibration of a model.
 ##' The reference of a correct model (see "How to read the area") repeats the
-##' same procedure, with the parameters estimated from all the observations of
-##' each simulated dataset, so the area of the data is judged against areas
-##' found in the same way. They are also much faster.
+##' same procedure, with the covariance parameters of its working model
+##' estimated from all the observations of each simulated dataset, so the area
+##' of the data is judged against areas found in the same way. They are also
+##' much faster.
 ##'
 ##' To compare models by their scores, use `refit = TRUE`. With fixed
 ##' parameters the test observations have helped to estimate each model, so
@@ -195,9 +196,9 @@
 ##' calibration there. A binomial model whose scored test observations all have
 ##' one trial, as with individual-level data that have several observations at
 ##' one location, is therefore treated apart. `assess_prediction()` says so, and
-##' [plot_cross_validation()], `print()`, `summary()` and [to_table()] show its
-##' curve and its area without the band or the limit, with a short note on why.
-##' The result still has them. In an assessment of several models this applies
+##' [plot_cross_validation()], the print of the result and of its `summary()`,
+##' and [to_table()] show its curve and its area without the band or the limit,
+##' with a short note on why. The result and the summary still have them. In an assessment of several models this applies
 ##' to each such model on its own. The CRPS of a binary outcome is the Brier
 ##' score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
 ##' \eqn{y = 1}, and the scores still compare models.
@@ -469,9 +470,10 @@ inform_binary_models <- function(binary) {
 ##' (`score_counts()`). An observation with one trial has a PIT interval that
 ##' starts at 0, for y = 0, or ends at 1, for y = 1, and its CRPS is the Brier
 ##' score, the square of 1 minus the end of the interval for y = 0 or of its
-##' start for y = 1, exactly as `count_crps()` computes it. With more trials the
-##' CRPS adds the terms of the other counts, which are zero only when the
-##' predictive distribution has no probability beyond one count from the
+##' start for y = 1, to the last bit, as `count_crps()` computes it from the
+##' same F(0). With more trials the CRPS adds the terms of the other counts,
+##' which leave it unchanged only when they are below half a unit in its last
+##' place, as for predicted probabilities below about 1e-8 at every
 ##' observation.
 ##' @param x The result of `assess_prediction()`.
 ##' @return A logical vector named after the models.
@@ -487,8 +489,7 @@ binary_models <- function(x) {
     if (!nrow(scores)) return(FALSE)
     at_zero <- scores$pit_lower == 0
     brier <- ifelse(at_zero, (1 - scores$pit_upper)^2, scores$pit_lower^2)
-    isTRUE(all((at_zero | scores$pit_upper == 1) &
-                 abs(scores$CRPS - brier) <= 1e-12 * brier))
+    isTRUE(all((at_zero | scores$pit_upper == 1) & scores$CRPS == brier))
   }, logical(1))
   stats::setNames(binary, models)
 }

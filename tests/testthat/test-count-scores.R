@@ -460,6 +460,13 @@ test_that("binary models are told apart by their scores", {
                    c(m = FALSE))
   expect_identical(binary(count_fit("poisson", binary_y, rep(1, 12))),
                    c(m = FALSE))
+  # A rare outcome with two trials, whose CRPS differs from the Brier score by
+  # a tiny relative amount.
+  local_mocked_bindings(
+    predict_test_set = mock_draws(matrix(qlogis(1e-6), 12, 300))
+  )
+  expect_identical(binary(count_fit("binomial", rep(0, 12), rep(2, 12))),
+                   c(m = FALSE))
 })
 
 test_that("assess_prediction() says once that the area of binary outcomes is not a check", {

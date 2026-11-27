@@ -88,9 +88,10 @@ the area between the calibration curve and the identity line
 \section{Fixed and refitted parameters}{
 Fixed parameters, the default, suit a check of the calibration of a model.
 The reference of a correct model (see "How to read the area") repeats the
-same procedure, with the parameters estimated from all the observations of
-each simulated dataset, so the area of the data is judged against areas
-found in the same way. They are also much faster.
+same procedure, with the covariance parameters of its working model
+estimated from all the observations of each simulated dataset, so the area
+of the data is judged against areas found in the same way. They are also
+much faster.
 
 To compare models by their scores, use \code{refit = TRUE}. With fixed
 parameters the test observations have helped to estimate each model, so
@@ -215,9 +216,9 @@ a wrong model and with any kind of test sets. They are not a check of
 calibration there. A binomial model whose scored test observations all have
 one trial, as with individual-level data that have several observations at
 one location, is therefore treated apart. \code{assess_prediction()} says so, and
-\code{\link[=plot_cross_validation]{plot_cross_validation()}}, \code{print()}, \code{summary()} and \code{\link[=to_table]{to_table()}} show its
-curve and its area without the band or the limit, with a short note on why.
-The result still has them. In an assessment of several models this applies
+\code{\link[=plot_cross_validation]{plot_cross_validation()}}, the print of the result and of its \code{summary()},
+and \code{\link[=to_table]{to_table()}} show its curve and its area without the band or the limit,
+with a short note on why. The result and the summary still have them. In an assessment of several models this applies
 to each such model on its own. The CRPS of a binary outcome is the Brier
 score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
 \eqn{y = 1}, and the scores still compare models.
