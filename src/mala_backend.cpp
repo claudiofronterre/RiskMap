@@ -386,7 +386,14 @@ List cpp_latent_mala(const NumericVector y_r, const NumericVector units_r,
         }
       }
     } else {
-      const SEXP terms = (*link_function)(eta_r);
+      // R's random number state is handed back to R around the call. Rcpp's
+      // RNGScope calls GetRNGstate() and PutRNGstate() on every entry and
+      // exit, so a compiled function with that scope called by `link_terms`
+      // would otherwise reload the seed from the start of the chain and repeat
+      // its draws at every iteration.
+      PutRNGstate();
+      const Rcpp::RObject terms = (*link_function)(eta_r);
+      GetRNGstate();
       if (Rf_isNull(terms)) return R_NegInf;
       const List terms_list(terms);
       log_likelihood = Rcpp::as<double>(terms_list[0]);
