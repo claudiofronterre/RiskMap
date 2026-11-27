@@ -7,7 +7,7 @@
 re(...)
 }
 \arguments{
-\item{...}{Variables representing the random effects in the model.}
+\item{...}{Variables representing the random effects in the model. Each variable adds its own independent random effect.}
 }
 \value{
 A list of class \code{RiskMap_re_spec} containing the following elements:
@@ -20,6 +20,7 @@ Specifies the terms for a random effect model.
 }
 \details{
 The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
+Several \code{re()} calls in a formula are combined, so \code{re(region) + re(province)} is the same model as \code{re(region, province)}.
 }
 \note{
 At least one variable must be provided as input.

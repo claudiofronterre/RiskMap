@@ -13,7 +13,7 @@ test_that("location predictions produce an adaptable prediction map", {
                           class = "RiskMap_prediction")
 
   map <- plot(prediction)
-  exceedance_map <- plot(prediction, summary = "exceedance", threshold = 0.2)
+  exceedance_map <- plot(prediction, summaries = "exceedance", thresholds = 0.2)
 
   expect_s3_class(map, "ggplot")
   expect_no_error(ggplot_build(map))
@@ -26,6 +26,24 @@ test_that("location predictions produce an adaptable prediction map", {
     prediction_plot_palette("-Viridis"),
     rev(grDevices::hcl.colors(256L, "Viridis"))
   )
+})
+
+test_that("a map of predictions at points not made by create_grid() draws every point", {
+  points <- st_sf(
+    response_mean = c(0.1, 0.4, 0.8),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(list(predictions = points, boundaries = NULL,
+                               boundary_summary = NULL),
+                          class = "RiskMap_prediction")
+  map <- plot(prediction)
+  # ggplot2 drops points with a missing aesthetic when it draws them, after
+  # ggplot_build(), which keeps every row.
+  expect_no_warning(drawn <- ggplot2::layer_grob(map, 1L)[[1L]])
+  expect_length(drawn$x, 3L)
+  expect_identical(drawn$gp$fill, ggplot2::layer_data(map, 1L)$fill)
 })
 
 test_that("polygon prediction maps select tidy summaries without reordering", {
@@ -66,7 +84,7 @@ test_that("polygon prediction maps select tidy summaries without reordering", {
   expect_equal(map$scales$scales[[1L]]$limits, c(0, 1))
 
   expect_error(plot(prediction, aggregate = "median"),
-               "must be one of: mean, sum")
+               "must be one of \"mean\" or \"sum\"")
 })
 
 test_that("plot arguments reject unavailable or ambiguous requests", {
@@ -80,14 +98,14 @@ test_that("plot arguments reject unavailable or ambiguous requests", {
                                boundary_summary = NULL),
                           class = "RiskMap_prediction")
 
-  expect_error(plot(prediction, quantity = "spatial"), "not available")
+  expect_error(plot(prediction, quantity = "spatial"), "has no prediction column")
   expect_error(plot(prediction, aggregate = "mean"),
-               "does not contain boundary summaries")
-  expect_error(plot(prediction, summary = "exceedance"),
-               "threshold.*must be supplied")
+               "has no summaries over `boundaries`")
+  expect_error(plot(prediction, summaries = "exceedance"),
+               "thresholds.*must be given")
   expect_error(plot(prediction, limits = c(1, 0)), "increasing")
   expect_warning(
-    map <- plot(prediction, summary = "exceedance", threshold = 0.2,
+    map <- plot(prediction, summaries = "exceedance", thresholds = 0.2,
                 limits = c(0.1, 0.9)),
     "always use limits"
   )
@@ -112,15 +130,15 @@ test_that("map defaults depend on what the map shows", {
   )
 
   mean_scale <- plot(prediction)$scales$scales[[1L]]
-  cv_scale <- plot(prediction, summary = "cv")$scales$scales[[1L]]
+  cv_scale <- plot(prediction, summaries = "cv")$scales$scales[[1L]]
   exceedance_scale <- plot(prediction,
-                           summary = "exceedance")$scales$scales[[1L]]
+                           summaries = "exceedance")$scales$scales[[1L]]
   spatial_scale <- plot(prediction, quantity = "spatial")$scales$scales[[1L]]
 
   expect_identical(legend_title(plot(prediction)), "Mean prevalence")
-  expect_identical(legend_title(plot(prediction, summary = "cv")),
+  expect_identical(legend_title(plot(prediction, summaries = "cv")),
                    "CV of prevalence")
-  expect_identical(legend_title(plot(prediction, summary = "exceedance")),
+  expect_identical(legend_title(plot(prediction, summaries = "exceedance")),
                    "Probability prevalence > 20%")
   expect_identical(legend_title(plot(prediction, quantity = "spatial")),
                    "Mean spatial effect")
@@ -135,6 +153,25 @@ test_that("map defaults depend on what the map shows", {
                    "uncertainty")
   expect_false(identical(prediction_role_palette("level"),
                          prediction_role_palette("uncertainty")))
+})
+
+test_that("the two sides of the signed palette differ in red-green colour blindness", {
+  colours <- prediction_role_palette("signed")
+  ends <- t(grDevices::col2rgb(colours[c(1L, length(colours))])) / 255
+  lab <- function(rgb) {
+    grDevices::convertColor(rgb, from = "sRGB", to = "Lab")
+  }
+  expect_lt(abs(diff(lab(ends)[, 1L])), 2)
+  # Deuteranopia, by the matrix of Machado et al. (2009) for linear RGB
+  deuteranopia <- rbind(c(0.367322, 0.860646, -0.227968),
+                        c(0.280085, 0.672501, 0.047413),
+                        c(-0.011820, 0.042940, 0.968881))
+  linear <- ifelse(ends <= 0.04045, ends / 12.92,
+                   ((ends + 0.055) / 1.055)^2.4)
+  seen <- pmin(pmax(linear %*% t(deuteranopia), 0), 1)
+  seen <- ifelse(seen <= 0.0031308, 12.92 * seen,
+                 1.055 * seen^(1 / 2.4) - 0.055)
+  expect_gt(sqrt(sum(diff(lab(seen))^2)), 40)
 })
 
 test_that("legend titles name the response of each family", {
@@ -203,7 +240,7 @@ test_that("both spatial scales share one colour scale", {
   expect_identical(legend_title(plot(prediction, aggregate = "sum")),
                    "Mean prevalence (area sum)")
   expect_error(plot(prediction, spatial_scale = "both", aggregate = "sum"),
-               "same scale as the locations")
+               "when `spatial_scale` is \"both\"")
 })
 
 test_that("breaks give a binned map and several summaries give one row each", {
@@ -228,7 +265,7 @@ test_that("breaks give a binned map and several summaries give one row each", {
   expect_error(plot(prediction, breaks = c(0, 0.3, 0.2)), "increasing")
 
   skip_if_not_installed("patchwork")
-  both <- plot(prediction, summary = c("mean", "cv"))
+  both <- plot(prediction, summaries = c("mean", "cv"))
   expect_s3_class(both, "patchwork")
   expect_length(both$patches$plots, 1L)
 })
@@ -242,7 +279,8 @@ test_that("predictions from a fitted model print and plot at both scales", {
                         seed = 1, messages = FALSE)
 
   expect_identical(prediction$response_name, "y")
-  expect_output(print(prediction), "Map with plot\\(x, summary = \"mean\"\\)")
+  expect_output(print(prediction), "`plot(x, summaries = \"mean\")` maps it",
+                fixed = TRUE)
   expect_identical(legend_title(plot(prediction)), "Mean y")
   expect_no_error(ggplot_build(plot(prediction, spatial_scale = "both")))
 })
@@ -308,7 +346,7 @@ test_that("several summaries at one scale are arranged in a grid", {
          family = "binomial", summaries = c("mean", "cv")),
     class = "RiskMap_prediction"
   )
-  maps <- plot(prediction, summary = c("mean", "cv", "interval_width"))
+  maps <- plot(prediction, summaries = c("mean", "cv", "interval_width"))
   expect_identical(maps$patches$layout$ncol, 2L)
   side_margins <- vapply(c(maps$patches$plots, list(maps)), function(map) {
     as.numeric(map$theme$plot.margin[2L])
@@ -342,8 +380,157 @@ test_that("several quantities are drawn in one call", {
     expect_identical(panel$scales$scales[[1L]]$limits, c(-1, 1))
   }
   expect_error(plot(prediction, quantity = c("fixed", "spatial"),
-                    summary = c("mean", "sd")),
+                    summaries = c("mean", "sd")),
                "several quantities or several summaries")
   expect_error(plot(prediction, quantity = c("spatial", "spatial")),
-               "unique quantity names")
+               "distinct names of predicted quantities")
+})
+
+test_that("the print of a prediction names the model, the places and the draws", {
+  prediction <- function(...) {
+    structure(modifyList(list(predictions = data.frame(id = 1:2),
+                              family = "gaussian", response_name = "y",
+                              joint = FALSE, summaries = "mean"),
+                         list(...)),
+              class = "RiskMap_prediction")
+  }
+  expect_match(squish(capture.output(print(prediction()))),
+               "Linear geostatistical model of y, at 2 locations, with marginal draws.",
+               fixed = TRUE)
+  one <- prediction(joint = TRUE, boundaries = data.frame(area = 1:3))
+  one$predictions <- data.frame(id = 1)
+  expect_match(squish(capture.output(print(one))),
+               "at 1 location and 3 areas, with joint draws.", fixed = TRUE)
+  # A link other than the canonical one is named, as in the print of the fit.
+  probit <- prediction(family = "binomial", link = "probit")
+  expect_match(squish(capture.output(print(probit))),
+               "Binomial geostatistical model with probit link of ",
+               fixed = TRUE)
+  custom <- prediction(family = "binomial", link = "custom")
+  expect_match(squish(capture.output(print(custom))),
+               "with a custom link of ", fixed = TRUE)
+  # A prediction without a family says only where and how.
+  plain <- prediction(family = NULL, type = NULL)
+  expect_match(squish(capture.output(print(plain))), "Prediction -* At 2 locations.")
+})
+
+test_that("predict() records a link other than the canonical one", {
+  data <- gaussian_data
+  expect_null(predict(gaussian_model, newdata = data[1:2, ],
+                      messages = FALSE)$link)
+})
+
+test_that("plot() takes summaries and thresholds as predict() names them", {
+  skip_on_cran()
+  points <- st_sf(
+    response_mean = c(0.1, 0.4, 0.8),
+    response_exceedance_0.2 = c(0.1, 0.55, 0.95),
+    response_exceedance_0.5 = c(0.01, 0.3, 0.9),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(
+    list(predictions = points, boundaries = NULL, boundary_summary = NULL,
+         family = "binomial", summaries = c("mean", "exceedance"),
+         thresholds = c(0.2, 0.5), level = 0.95),
+    class = "RiskMap_prediction"
+  )
+  # Several thresholds give one exceedance map each.
+  maps <- plot(prediction, summaries = c("mean", "exceedance"),
+               thresholds = c(0.2, 0.5))
+  panels <- c(maps$patches$plots, list(maps))
+  expect_identical(
+    vapply(panels, legend_title, character(1)),
+    c("Mean prevalence", "Probability prevalence > 20%",
+      "Probability prevalence > 50%")
+  )
+  expect_identical(maps$patches$layout$ncol, 2L)
+  one <- plot(prediction, summaries = "exceedance", thresholds = 0.5)
+  expect_false(inherits(one, "patchwork"))
+  expect_identical(legend_title(one), "Probability prevalence > 50%")
+
+  expect_input_error(plot(prediction, summaries = "exceedance"), "thresholds")
+  expect_input_error(plot(prediction, summaries = "exceedance",
+                          thresholds = 0.3), "thresholds")
+  expect_input_error(plot(prediction, summaries = "mean", thresholds = 0.2),
+                     "thresholds")
+  expect_input_error(plot(prediction, summaries = "exceedance",
+                          thresholds = c(0.2, 0.2)), "thresholds")
+  expect_input_error(plot(prediction, summaries = "exceedance",
+                          thresholds = "0.2"), "thresholds")
+  expect_input_error(plot(prediction, summaries = c("mean", "mean")),
+                     "summaries")
+  # The old name stops with the new one, and `threshold` partially matches.
+  expect_input_error(plot(prediction, summary = "mean"), "summary",
+                     "`summaries`")
+  expect_identical(
+    legend_title(plot(prediction, summaries = "exceedance", threshold = 0.5)),
+    "Probability prevalence > 50%"
+  )
+})
+
+test_that("a north arrow and a scale bar ask for ggspatial, and only they do", {
+  points <- st_sf(
+    response_mean = c(0.1, 0.4, 0.8),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(list(predictions = points, boundaries = NULL,
+                               boundary_summary = NULL),
+                          class = "RiskMap_prediction")
+  asked <- character()
+  local_mocked_bindings(
+    check_installed = function(pkg, ...) {
+      asked <<- c(asked, pkg)
+      invisible(TRUE)
+    },
+    .package = "rlang"
+  )
+  plain <- plot(prediction)
+  expect_identical(asked, character())
+  skip_if_not_installed("ggspatial")
+  decorated <- plot(prediction, north_arrow = TRUE, scale_bar = TRUE)
+  expect_identical(asked, "ggspatial")
+  expect_length(decorated$layers, length(plain$layers) + 2L)
+})
+
+test_that("a threshold is found whatever the rounding of its last bits", {
+  thresholds <- seq(0.1, 0.5, 0.1)
+  expect_false(0.3 %in% thresholds)
+  prediction <- predict(
+    gaussian_model, prediction_data, boundaries = st_sf(geometry = squares),
+    aggregate = "mean", summaries = c("mean", "exceedance"),
+    thresholds = thresholds, seed = 1, messages = FALSE
+  ) |> suppressWarnings()
+  for (spatial_scale in c("location", "area", "both")) {
+    values <- lapply(list(0.3, thresholds[3]), function(threshold) {
+      map <- plot_prediction(prediction, summaries = "exceedance",
+                             spatial_scale = spatial_scale,
+                             thresholds = threshold)
+      layers <- lapply(ggplot2::ggplot_build(map)$data, `[[`, "fill")
+      unlist(layers)
+    })
+    expect_identical(values[[1]], values[[2]])
+  }
+  expect_identical(
+    prediction_plot_data(prediction, "response", "exceedance", NULL,
+                         0.3)$data$.prediction_value,
+    prediction$predictions$response_exceedance_0.3
+  )
+  area <- prediction_plot_data(prediction, "response", "exceedance", "mean", 0.3)
+  rows <- prediction$boundary_summary
+  expect_identical(
+    area$data$.prediction_value,
+    rows$value[rows$quantity == "response" & rows$threshold %in% thresholds[3]]
+  )
+  expect_input_error(
+    plot_prediction(prediction, summaries = "exceedance", thresholds = 0.31),
+    "thresholds"
+  )
+  # The columns of the locations have thresholds of seven digits.
+  third <- predict(gaussian_model, prediction_data, summaries = "exceedance",
+                   thresholds = c(1 / 3, 2 / 3), seed = 1, messages = FALSE)
+  expect_s3_class(plot(third, thresholds = 1 / 3), "ggplot")
 })

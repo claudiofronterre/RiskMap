@@ -10,12 +10,12 @@ Description: Geostatistical analysis of continuous and count point data.
 Authors@R: 
   c(person(given = "Emanuele",
            family = "Giorgi",
-           role = c("aut", "cre"),
+           role = "aut",
            email = "e.giorgi@bham.ac.uk",
            comment = c(ORCID = "0000-0003-0640-181X")),
     person(given = "Claudio",
            family = "Fronterre",
-           role = "aut",
+           role = c("aut", "cre"),
            email = "c.fronterre@bham.ac.uk",
            comment = c(ORCID = "0000-0001-6723-9727")),
     person(given = "Simon",
@@ -23,24 +23,21 @@ Authors@R:
            role = "aut",
            comment = c(ORCID = "0000-0002-3624-8951")))
 Depends:
-    R (>= 3.5.0)
+    R (>= 4.5.0)
 Imports:
+    cli (>= 3.6.0),
     Deriv,
-    dplyr,
     ggplot2,
-    ggspatial,
-    gridExtra,
     knitr,
     loo,
     Matrix,
     numDeriv,
+    parallel,
+    patchwork,
     Rcpp,
-    rlang,
+    rlang (>= 1.0.0),
     scales,
     sf,
-    sns,
-    spatialEco,
-    spatialsample,
     terra,
     tibble,
     units
@@ -48,12 +45,16 @@ LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
+    dplyr,
     elevatr,
     geobounds,
+    ggspatial,
+    jsonlite,
     progress,
     quarto,
-    patchwork,
-    testthat (>= 3.0.0)
+    RhpcBLASctl,
+    testthat (>= 3.0.0),
+    withr
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true

@@ -1,20 +1,21 @@
-##' Plot a RiskMap prediction
+##' Map a RiskMap prediction
 ##'
 ##' Draws a publication-ready map from the location-level or polygon-level
-##' output returned by [predict.RiskMap()].
+##' output returned by [predict.RiskMap()]. `plot()` of a prediction does the
+##' same.
 ##'
-##' @param x A `RiskMap_prediction` object.
+##' @param x The result of [predict.RiskMap()].
 ##' @param quantity Predictive quantity to display, such as `"response"`,
 ##'   `"spatial"`, `"link"`, `"fixed"` (the fixed-effect contribution), or the
 ##'   name of a target supplied through `transform` in [predict.RiskMap()].
 ##'   Several quantities can be supplied, for example
 ##'   `c("fixed", "spatial")`, and are arranged like several summaries. Supply
-##'   several quantities or several summaries, not both.
-##' @param summary Summary to display, such as `"mean"`, `"median"`, `"lower"`,
-##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
-##'   `NULL` (the default), the first summary requested in
-##'   [predict.RiskMap()] is shown. Several summaries can be supplied; they are
-##'   then arranged in two columns, or one per row when
+##'   several quantities, or several summaries or thresholds, not both.
+##' @param summaries Summaries to display, such as `"mean"`, `"median"`,
+##'   `"lower"`, `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or
+##'   `"exceedance"`, as in [predict.RiskMap()]. When `NULL` (the default), the
+##'   first summary requested in [predict.RiskMap()] is shown. Several
+##'   summaries are arranged in two columns, or one per row when
 ##'   `spatial_scale = "both"`.
 ##'   Ignored for `"fixed"` and `"offset"`, which have a single value.
 ##' @param spatial_scale Spatial scale to display. `"auto"` (the default) shows
@@ -25,8 +26,10 @@
 ##' @param aggregate Within-polygon aggregation to display at the area scale,
 ##'   such as `"mean"` or `"sum"`. When `NULL`, the first aggregation
 ##'   calculated is used.
-##' @param threshold For an exceedance map, the response-scale threshold to
-##'   display. It may be omitted when only one threshold was calculated.
+##' @param thresholds For exceedance maps, the response-scale thresholds to
+##'   display, among those given to [predict.RiskMap()]. They may be omitted
+##'   when only one threshold was calculated. Several thresholds give one map
+##'   each, arranged like several summaries.
 ##' @param palette Colour palette. `NULL` selects a default that depends on
 ##'   what the map shows: a calm-to-alarm sequential palette for predicted
 ##'   levels, a single-hue palette for uncertainty (`"sd"`, `"cv"`,
@@ -42,15 +45,18 @@
 ##' @param breaks Optional increasing numeric vector of class boundaries. When
 ##'   supplied, values are shown in classes, for example programme thresholds
 ##'   such as `c(0, 0.05, 0.1, 0.2, 1)`.
-##' @param north_arrow Logical. Add a north arrow. Defaults to `FALSE`.
-##' @param scale_bar Logical. Add a scale bar. Defaults to `FALSE`.
-##' @param ... Additional arguments passed to the ggplot2 fill scale, for
+##' @param north_arrow Logical. Add a north arrow, which needs the
+##'   ggspatial package. Defaults to `FALSE`.
+##' @param scale_bar Logical. Add a scale bar, which needs the ggspatial
+##'   package. Defaults to `FALSE`.
+##' @param ... For `plot()`, the arguments of `plot_prediction()`. For
+##'   `plot_prediction()`, arguments passed to the ggplot2 fill scale, for
 ##'   example `transform = "sqrt"` for skewed values.
 ##'
 ##' @details
 ##' The legend title names the mapped quantity and is the only title. For
 ##' binomial models the response is labelled as prevalence and for Poisson
-##' models as a rate. Probabilities are labelled as percentages. The title can
+##' and negative binomial models as a rate. Probabilities are labelled as percentages. The title can
 ##' be replaced with `labs(fill = ...)`.
 ##'
 ##' Grid cells created by [create_grid()] are drawn as squares clipped to the
@@ -67,8 +73,9 @@
 ##' Outlines of the `boundaries` supplied to [predict.RiskMap()] are drawn
 ##' automatically on location-level maps.
 ##'
-##' @return A `ggplot` object. When several quantities or summaries are
-##'   requested, a `patchwork` object combining one `ggplot` per map.
+##' @return A `ggplot` object. When several quantities, summaries or
+##'   thresholds are requested, a `patchwork` object combining one `ggplot`
+##'   per map.
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:50, ]
@@ -77,77 +84,99 @@
 ##' areas <- sf::st_sf(geometry = sf::st_make_grid(example_data, n = c(2, 1)))
 ##' prediction <- predict(fit, newdata = example_data, boundaries = areas,
 ##'                       aggregate = "mean", messages = FALSE)
+##' plot_prediction(prediction)
+##' plot_prediction(prediction, spatial_scale = "both")
+##' # The same map
 ##' plot(prediction)
-##' plot(prediction, spatial_scale = "both")
-##' @method plot RiskMap_prediction
 ##' @export
-##' @importFrom ggspatial annotation_north_arrow annotation_scale
-##' @importFrom grid unit
-plot.RiskMap_prediction <- function(
+plot_prediction <- function(
     x,
     quantity = "response",
-    summary = NULL,
+    summaries = NULL,
     spatial_scale = c("auto", "location", "area", "both"),
     aggregate = NULL,
-    threshold = NULL,
+    thresholds = NULL,
     palette = NULL,
     limits = NULL,
     breaks = NULL,
     north_arrow = FALSE,
     scale_bar = FALSE,
     ...) {
-  if (!inherits(x, "RiskMap_prediction")) {
-    stop("'x' must be a RiskMap_prediction object", call. = FALSE)
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_prediction", "plot_prediction", "predict")
+  # `summary` is not a prefix of `summaries`, so the old name would reach the
+  # fill scale through `...`.
+  if ("summary" %in% names(match.call(expand.dots = FALSE)$...)) {
+    abort_input("{.arg summary} is now {.arg summaries}, as in {.fn predict}.", arg = "summary")
   }
-  spatial_scale <- match.arg(spatial_scale)
+  spatial_scale <- match_choice(spatial_scale)
+  spatial_scale_given <- !identical(spatial_scale, "auto")
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
+  if (north_arrow || scale_bar) {
+    rlang::check_installed("ggspatial",
+                           reason = "to draw a north arrow or a scale bar.")
+  }
   if (!is.character(quantity) || !length(quantity) || anyNA(quantity) ||
       anyDuplicated(quantity)) {
-    stop("'quantity' must contain unique quantity names", call. = FALSE)
+    abort_input("{.arg quantity} must be distinct names of predicted quantities.", arg = "quantity")
   }
-  if (length(quantity) > 1L && length(summary) > 1L) {
-    stop("Supply several quantities or several summaries, not both",
-         call. = FALSE)
+  if (!is.null(thresholds) &&
+      (!is.numeric(thresholds) || !length(thresholds) || anyNA(thresholds) ||
+         anyDuplicated(thresholds))) {
+    abort_input("{.arg thresholds} must be distinct numbers.", arg = "thresholds")
+  }
+  if (length(quantity) > 1L &&
+      (length(summaries) > 1L || length(thresholds) > 1L)) {
+    several <- if (length(summaries) > 1L) "summaries" else "thresholds"
+    abort_input("Give several quantities or several {several}, not both.", arg = several)
   }
   if (length(quantity) == 1L) {
     if (quantity %in% c("fixed", "offset")) {
-      summary <- "estimate"
-    } else if (is.null(summary)) {
-      summary <- default_prediction_summary(x)
+      summaries <- "estimate"
+    } else if (is.null(summaries)) {
+      summaries <- default_prediction_summary(x)
     }
-    if (!is.character(summary) || !length(summary) || anyNA(summary) ||
-        anyDuplicated(summary)) {
-      stop("'summary' must contain unique summary names", call. = FALSE)
+    if (!is.character(summaries) || !length(summaries) || anyNA(summaries) ||
+        anyDuplicated(summaries)) {
+      abort_input("{.arg summaries} must be distinct names of summaries.", arg = "summaries")
+    }
+    if (!is.null(thresholds) && !"exceedance" %in% summaries) {
+      abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
     }
   }
 
-  if (length(quantity) > 1L || length(summary) > 1L) {
-    if (!requireNamespace("patchwork", quietly = TRUE)) {
-      stop("Plotting several maps requires the 'patchwork' package",
-           call. = FALSE)
-    }
-    if (length(quantity) > 1L) {
-      maps <- lapply(quantity, function(one_quantity) {
-        plot.RiskMap_prediction(
-          x, quantity = one_quantity, summary = summary,
-          spatial_scale = spatial_scale, aggregate = aggregate,
-          threshold = threshold, palette = palette, limits = limits,
-          breaks = breaks, north_arrow = north_arrow, scale_bar = scale_bar,
-          ...
-        )
-      })
-    } else {
-      maps <- lapply(summary, function(one_summary) {
-        plot.RiskMap_prediction(
-          x, quantity = quantity, summary = one_summary,
-          spatial_scale = spatial_scale, aggregate = aggregate,
-          threshold = if (identical(one_summary, "exceedance")) threshold,
-          palette = palette, limits = limits, breaks = breaks,
-          north_arrow = north_arrow, scale_bar = scale_bar, ...
-        )
-      })
-    }
+  # One map for each quantity, or for each summary and each threshold of an
+  # exceedance map.
+  maps <- if (length(quantity) > 1L) {
+    lapply(quantity, function(one_quantity) {
+      list(quantity = one_quantity, summaries = summaries,
+           thresholds = thresholds)
+    })
+  } else {
+    unlist(lapply(summaries, function(one_summary) {
+      shown <- if (identical(one_summary, "exceedance")) thresholds
+      if (length(shown) > 1L) {
+        lapply(shown, function(one_threshold) {
+          list(quantity = quantity, summaries = one_summary,
+               thresholds = one_threshold)
+        })
+      } else {
+        list(list(quantity = quantity, summaries = one_summary,
+                  thresholds = shown))
+      }
+    }), recursive = FALSE)
+  }
+  if (length(maps) > 1L) {
+    maps <- lapply(maps, function(map) {
+      plot_prediction(
+        x, quantity = map$quantity, summaries = map$summaries,
+        spatial_scale = spatial_scale, aggregate = aggregate,
+        thresholds = map$thresholds, palette = palette, limits = limits,
+        breaks = breaks, north_arrow = north_arrow, scale_bar = scale_bar,
+        ...
+      )
+    })
     # Maps carry their legend on top, so two columns keep them readable.
     layout_columns <- if (spatial_scale == "both") 1L else
       min(2L, length(maps))
@@ -155,6 +184,8 @@ plot.RiskMap_prediction <- function(
     return(patchwork::wrap_plots(maps, ncol = layout_columns) &
              theme(plot.margin = margin(4, 14, 4, 14)))
   }
+  summary <- summaries
+  threshold <- thresholds
 
   has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
   if (spatial_scale == "auto") {
@@ -162,8 +193,12 @@ plot.RiskMap_prediction <- function(
       "location"
   }
   if (spatial_scale %in% c("area", "both") && !has_areas) {
-    stop("This prediction object does not contain boundary summaries",
-         call. = FALSE)
+    # An aggregation asked for on a prediction without areas is the mistake
+    # when `spatial_scale` was left to choose itself.
+    if (spatial_scale_given) {
+      abort_input("{.arg x} has no summaries over {.arg boundaries}, so {.arg spatial_scale} can't be {.val {spatial_scale}}.", arg = "spatial_scale")
+    }
+    abort_input("{.arg x} has no summaries over {.arg boundaries}, so {.arg aggregate} can't be used.", arg = "aggregate")
   }
   if (spatial_scale %in% c("area", "both")) {
     aggregate <- select_prediction_plot_value(
@@ -173,9 +208,8 @@ plot.RiskMap_prediction <- function(
   }
   if (spatial_scale == "both" &&
       !aggregate %in% c("mean", "median", "min", "max")) {
-    stop("spatial_scale = \"both\" needs an aggregation on the same scale as ",
-         "the locations: \"mean\", \"median\", \"min\" or \"max\"",
-         call. = FALSE)
+    same_scale <- c("mean", "median", "min", "max")
+    abort_input("{.arg aggregate} must be {.or {.val {same_scale}}} when {.arg spatial_scale} is {.val both}, so that areas and locations share a scale.", arg = "aggregate")
   }
 
   panels <- list()
@@ -199,8 +233,7 @@ plot.RiskMap_prediction <- function(
   }), use.names = FALSE)
   if (role == "evidence" && !is.null(limits) &&
       !identical(as.numeric(limits), c(0, 1))) {
-    warning("Exceedance probabilities always use limits from 0 to 1",
-            call. = FALSE)
+    riskmap_warn("{.arg limits} is ignored, because exceedance probabilities always use limits from 0 to 1.")
   }
   limits <- check_plot_limits(limits)
   breaks <- check_plot_breaks(breaks)
@@ -243,10 +276,17 @@ plot.RiskMap_prediction <- function(
       legend.justification = "center",
       strip.text = element_blank()
     )
-  if (north_arrow) map <- map + annotation_north_arrow(location = "tr")
-  if (scale_bar) map <- map + annotation_scale(location = "bl")
+  if (north_arrow) {
+    map <- map + ggspatial::annotation_north_arrow(location = "tr")
+  }
+  if (scale_bar) map <- map + ggspatial::annotation_scale(location = "bl")
   map
 }
+
+##' @rdname plot_prediction
+##' @method plot RiskMap_prediction
+##' @export
+plot.RiskMap_prediction <- function(x, ...) plot_prediction(x, ...)
 
 ##' Print a RiskMap prediction
 ##'
@@ -254,39 +294,65 @@ plot.RiskMap_prediction <- function(
 ##' object, and how to map them.
 ##'
 ##' @param x A `RiskMap_prediction` object.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return `x`, invisibly.
 ##' @method print RiskMap_prediction
 ##' @export
 print.RiskMap_prediction <- function(x, ...) {
-  locations <- nrow(x$predictions)
-  cat("RiskMap prediction: ", locations, " location",
-      if (locations == 1L) "" else "s", sep = "")
-  if (!is.null(x$boundaries)) {
-    cat(" and", nrow(x$boundaries), "areas")
-  }
-  cat("\n")
-  if (!is.null(x$family)) {
-    cat("Response: ", prediction_quantity_label(x, "response"), " (",
-        x$family, " model)\n", sep = "")
-  }
-  if (!is.null(x$type)) cat("Draws:", x$type, "\n")
-  quantities <- unique(c("response", x$transform, "link", "spatial"))
-  cat("Quantities:", paste(quantities, collapse = ", "), "\n")
-  if (length(x$summaries)) {
-    cat("Summaries:", paste(x$summaries, collapse = ", "), "\n")
-  }
-  if (length(x$thresholds)) {
-    cat("Exceedance thresholds:", paste(x$thresholds, collapse = ", "), "\n")
-  }
-  if (length(x$aggregate)) {
-    cat("Area aggregations:", paste(x$aggregate, collapse = ", "), "\n")
-  }
-  cat("\nMap with plot(x, summary = \"", default_prediction_summary(x), "\")",
-      sep = "")
-  if (!is.null(x$boundaries)) cat(", adding spatial_scale = \"both\"")
-  cat(".\n")
+  check_dots_unused(...)
+  out_print(format_prediction(x))
   invisible(x)
+}
+
+#' The lines that print a prediction
+#' @noRd
+format_prediction <- function(x) {
+  where <- paste0(out_count(nrow(x$predictions), "location"),
+                  if (!is.null(x$boundaries)) {
+                    paste(" and", out_count(nrow(x$boundaries), "area"))
+                  })
+  model <- if (!is.null(x$family)) {
+    paste0(model_title(fit_traits(x)), describe_link(x$link), " of ",
+           prediction_quantity_label(x, "response"), ", at ")
+  } else {
+    "At "
+  }
+  draws <- if (!is.null(x$joint)) {
+    paste0(", with ", if (isTRUE(x$joint)) "joint" else "marginal", " draws")
+  }
+  # The components have no exceedance probabilities and no CV.
+  components <- if (!length(x$summaries) ||
+                    any(!x$summaries %in% c("cv", "exceedance"))) {
+    c("link", "spatial")
+  }
+  quantities <- unique(c("response", x$transform, components))
+  settings <- c(
+    Quantities = paste(quantities, collapse = ", "),
+    Summaries = if (length(x$summaries)) paste(x$summaries, collapse = ", "),
+    "Exceedance thresholds" = if (length(x$thresholds)) {
+      paste(x$thresholds, collapse = ", ")
+    },
+    "Area aggregations" = if (length(x$aggregate)) {
+      paste(x$aggregate, collapse = ", ")
+    }
+  )
+  summary <- default_prediction_summary(x)
+  map <- paste0("`plot(x, summaries = \"", summary, "\"",
+                if (identical(summary, "exceedance") &&
+                    length(x$thresholds) > 1L) {
+                  paste0(", thresholds = ", x$thresholds[1L])
+                },
+                ")` maps it",
+                if (!is.null(x$boundaries)) {
+                  ", and `spatial_scale = \"both\"` adds the areas"
+                }, ".")
+  c(out_rule("Prediction"),
+    out_text(paste0(model, where, draws, ".")),
+    "",
+    out_pairs(names(settings), settings),
+    "",
+    out_bullets(c(i = map)))
 }
 
 #' First summary requested in predict(), used as the default map
@@ -297,22 +363,29 @@ default_prediction_summary <- function(x) {
 }
 
 #' Add the layer for one spatial scale to a prediction map
+#'
+#' `show_legend = TRUE` draws legend keys for every level the fill scale
+#' keeps, including levels absent from the data, which ggplot2 otherwise
+#' leaves blank.
 #' @noRd
-add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
+add_prediction_layer <- function(map, x, panel, facet_label, facet_levels,
+                                 show_legend = NA) {
   facet_label <- factor(facet_label, levels = facet_levels)
   data <- panel$data
   if (isTRUE(panel$polygon)) {
     data$.spatial_scale <- facet_label
     return(map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      colour = "black", linewidth = 0.16, inherit.aes = FALSE
+      colour = "black", linewidth = 0.16, inherit.aes = FALSE,
+      show.legend = show_legend
     ))
   }
   metadata <- attr(data, "grid_metadata", exact = TRUE)
   if (!is.null(metadata) && identical(metadata$cell_shape, "square")) {
     map <- map + geom_sf(
       data = prediction_cells(data, metadata, facet_label),
-      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE
+      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE,
+      show.legend = show_legend
     )
     if (!is.null(metadata$boundary)) {
       # The study boundary marks where the clipped cells end.
@@ -323,10 +396,12 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
     }
   } else {
     data$.spatial_scale <- facet_label
+    # A border of colour NA would count as a missing value, and ggplot2
+    # would drop every point, so the border is transparent instead.
     map <- map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      # A transparent rather than NA colour, which drops every point.
-      shape = 21, colour = "transparent", size = 1.8, inherit.aes = FALSE
+      shape = 21, colour = "transparent", size = 1.8, inherit.aes = FALSE,
+      show.legend = show_legend
     )
   }
   if (!is.null(x$boundaries)) {
@@ -418,11 +493,11 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
                                  threshold) {
   if (!is.character(quantity) || length(quantity) != 1L || is.na(quantity) ||
       !nzchar(quantity)) {
-    stop("'quantity' must be one non-empty character string", call. = FALSE)
+    abort_input("{.arg quantity} must be a single non-empty string.", arg = "quantity")
   }
   if (!is.character(summary) || length(summary) != 1L || is.na(summary) ||
       !nzchar(summary)) {
-    stop("'summary' must be one non-empty character string", call. = FALSE)
+    abort_input("{.arg summaries} must be a single non-empty string.", arg = "summaries")
   }
 
   if (!is.null(aggregate)) {
@@ -432,18 +507,16 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
         x$boundary_summary$summary == summary, , drop = FALSE
     ]
     if (!nrow(candidates)) {
-      stop("The requested quantity, summary and aggregation are not available",
-           call. = FALSE)
+      abort_input("{.arg x} has no summary {.val {summary}} of {.val {quantity}} aggregated by {.val {aggregate}}.", arg = "quantity")
     }
     if (identical(summary, "exceedance")) {
-      threshold <- select_prediction_plot_value(
-        threshold, unique(candidates$threshold), "threshold"
+      threshold <- select_prediction_threshold(
+        threshold, unique(candidates$threshold)
       )
       candidates <- candidates[candidates$threshold == threshold, ,
                                drop = FALSE]
     } else if (!is.null(threshold)) {
-      stop("'threshold' is used only when summary = \"exceedance\"",
-           call. = FALSE)
+      abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
     }
     values <- rep(NA_real_, nrow(x$boundaries))
     values[candidates$boundary_id] <- candidates$value
@@ -459,25 +532,21 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       paste0("^", quantity, "_exceedance_"), names(x$predictions), value = TRUE
     )
     if (!length(available)) {
-      stop("The requested exceedance quantity is not available", call. = FALSE)
+      abort_input("{.arg x} has no exceedance probabilities of {.val {quantity}}.", arg = "quantity")
     }
     available_thresholds <- as.numeric(sub(
       paste0("^", quantity, "_exceedance_"), "", available
     ))
-    threshold <- select_prediction_plot_value(
-      threshold, available_thresholds, "threshold"
-    )
-    available[[which.min(abs(available_thresholds - threshold))]]
+    threshold <- select_prediction_threshold(threshold, available_thresholds)
+    available[[match(threshold, available_thresholds)]]
   } else {
     if (!is.null(threshold)) {
-      stop("'threshold' is used only when summary = \"exceedance\"",
-           call. = FALSE)
+      abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
     }
     paste(quantity, summary, sep = "_")
   }
   if (!column %in% names(x$predictions)) {
-    stop("Prediction column ", shQuote(column), " is not available",
-         call. = FALSE)
+    abort_input("{.arg x} has no prediction column {.val {column}}.", arg = "quantity")
   }
   data <- x$predictions
   data$.prediction_value <- data[[column]]
@@ -490,16 +559,31 @@ select_prediction_plot_value <- function(value, available, argument) {
   available <- available[!is.na(available)]
   if (is.null(value)) {
     if (length(available) != 1L) {
-      stop("'", argument, "' must be supplied; available values are: ",
-           paste(available, collapse = ", "), call. = FALSE)
+      abort_input("{.arg {argument}} must be given, as one of {.or {.val {available}}}.", arg = argument)
     }
     return(available[[1L]])
   }
   if (length(value) != 1L || is.na(value) || !value %in% available) {
-    stop("'", argument, "' must be one of: ",
-         paste(available, collapse = ", "), call. = FALSE)
+    abort_input("{.arg {argument}} must be one of {.or {.val {available}}}.", arg = argument)
   }
   value
+}
+
+#' Choose a threshold among those of the prediction
+#'
+#' The nearest one, when it differs from `value` by rounding only, as
+#' `seq(0.1, 0.5, 0.1)[3]` from 0.3, or as a threshold from its label in the
+#' names of the columns, which has seven digits.
+#' @noRd
+select_prediction_threshold <- function(value, available) {
+  if (is.numeric(value) && length(value) == 1L && is.finite(value)) {
+    nearest <- available[which.min(abs(available - value))]
+    if (length(nearest) &&
+        abs(nearest - value) <= 1e-6 * max(abs(nearest), abs(value))) {
+      return(nearest)
+    }
+  }
+  select_prediction_plot_value(value, available, "thresholds")
 }
 
 #' What a map shows, which determines its default colours
@@ -525,8 +609,10 @@ prediction_role_palette <- function(role) {
       c("#2166AC", "#8FB3D6", neutral, "#DE9585", "#B2182B")
     )(256L),
     uncertainty = rev(grDevices::hcl.colors(256L, "Purples 3"))[24:256],
+    # Teal and orange stay apart in red-green colour blindness, with the same
+    # lightness on both sides of zero.
     signed = grDevices::colorRampPalette(
-      c("#00857F", "#7DBFB9", neutral, "#D69BC2", "#B5408F")
+      c("#00857F", "#7DBFB9", neutral, "#E0A886", "#C05A1E")
     )(256L)
   )
 }
@@ -536,12 +622,11 @@ prediction_role_palette <- function(role) {
 prediction_plot_palette <- function(palette) {
   if (is.null(palette)) return(.riskmap_mist_ember)
   if (!is.character(palette) || !length(palette) || anyNA(palette)) {
-    stop("'palette' must be a named HCL palette or a vector of colours",
-         call. = FALSE)
+    abort_input("{.arg palette} must be the name of an HCL palette or a vector of colours.", arg = "palette")
   }
   if (length(palette) > 1L) {
     tryCatch(grDevices::col2rgb(palette), error = function(error) {
-      stop("'palette' contains an invalid colour", call. = FALSE)
+      abort_input("{.arg palette} has an invalid colour.", arg = "palette", parent = error)
     })
     return(palette)
   }
@@ -549,8 +634,9 @@ prediction_plot_palette <- function(palette) {
   name <- if (reverse) substring(palette, 2L) else palette
   colours <- tryCatch(
     grDevices::hcl.colors(256L, palette = name),
-    error = function(error) stop("Unknown HCL palette ", shQuote(name),
-                                 call. = FALSE)
+    error = function(error) {
+      abort_input(c("{.arg palette} must name an HCL palette, and {.val {name}} doesn't.", "i" = "See {.fn grDevices::hcl.pals} for the names."), arg = "palette")
+    }
   )
   if (reverse) rev(colours) else colours
 }
@@ -559,9 +645,8 @@ prediction_plot_palette <- function(palette) {
 #' @noRd
 prediction_quantity_label <- function(x, quantity) {
   if (identical(quantity, "response")) {
-    family <- x$family %||% ""
-    if (identical(family, "binomial")) return("prevalence")
-    if (identical(family, "poisson")) return("rate")
+    family_quantity <- fit_traits(x)$response_quantity
+    if (!is.null(family_quantity)) return(family_quantity)
     response_name <- x$response_name
     if (length(response_name) == 1L && !is.na(response_name)) {
       return(response_name)
@@ -582,7 +667,7 @@ prediction_quantity_label <- function(x, quantity) {
 #' @noRd
 prediction_is_probability <- function(x, quantity, summary) {
   identical(summary, "exceedance") ||
-    (identical(quantity, "response") && identical(x$family, "binomial") &&
+    (identical(quantity, "response") && isTRUE(fit_traits(x)$probability) &&
        !identical(summary, "cv"))
 }
 
@@ -621,9 +706,7 @@ prediction_legend_title <- function(x, quantity, summary, threshold,
 #' Validate a plot switch
 #' @noRd
 check_plot_flag <- function(value, argument) {
-  if (!is.logical(value) || length(value) != 1L || is.na(value)) {
-    stop("'", argument, "' must be TRUE or FALSE", call. = FALSE)
-  }
+  check_logical(value, arg = argument)
 }
 
 #' Validate colour limits
@@ -632,7 +715,7 @@ check_plot_limits <- function(limits) {
   if (is.null(limits)) return(NULL)
   if (!is.numeric(limits) || length(limits) != 2L || anyNA(limits) ||
       any(!is.finite(limits)) || limits[[1L]] >= limits[[2L]]) {
-    stop("'limits' must contain two increasing finite numbers", call. = FALSE)
+    abort_input("{.arg limits} must be two increasing finite numbers.", arg = "limits")
   }
   limits
 }
@@ -643,8 +726,7 @@ check_plot_breaks <- function(breaks) {
   if (is.null(breaks)) return(NULL)
   if (!is.numeric(breaks) || length(breaks) < 3L || anyNA(breaks) ||
       any(!is.finite(breaks)) || is.unsorted(breaks, strictly = TRUE)) {
-    stop("'breaks' must contain at least three increasing finite numbers",
-         call. = FALSE)
+    abort_input("{.arg breaks} must be at least three increasing finite numbers.", arg = "breaks")
   }
   breaks
 }

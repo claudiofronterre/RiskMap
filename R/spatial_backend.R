@@ -33,8 +33,7 @@ cross_distances <- function(first, second) {
   check_coordinates(first)
   check_coordinates(second)
   if (ncol(first) != ncol(second)) {
-    stop("Coordinate matrices must have the same number of columns.",
-         call. = FALSE)
+    riskmap_bug("Coordinate matrices must have the same number of columns.")
   }
   cpp_cross_distances(first, second)
 }
@@ -48,7 +47,7 @@ cross_distances <- function(first, second) {
 #' @noRd
 check_coordinates <- function(coordinates) {
   if (!is.numeric(coordinates) || any(!is.finite(coordinates))) {
-    stop("`coordinates` must contain only finite values.", call. = FALSE)
+    abort_input("The coordinates of the locations must be finite numbers.", arg = "data")
   }
   invisible(TRUE)
 }
@@ -62,7 +61,7 @@ check_coordinates <- function(coordinates) {
 index_coordinate_rows <- function(coordinates) {
   coordinates <- as.matrix(coordinates)
   if (ncol(coordinates) != 2L) {
-    stop("Spatial coordinates must have exactly two columns.", call. = FALSE)
+    abort_input("The locations must have two coordinates, without Z or M values.", arg = "data")
   }
 
   # Complex values provide an exact, collision-free key for a pair of finite
@@ -77,11 +76,11 @@ index_coordinate_rows <- function(coordinates) {
   )
 }
 
-#' Scale spatial coordinates and range
+#' Rescale spatial coordinates and the spatial scale
 #'
 #' The maximum observed pairwise distance is used for both fitting and future
-#' prediction locations. Scaling the coordinates and range by the same value
-#' leaves every ratio of distance to range unchanged.
+#' prediction locations. Rescaling the coordinates and the scale phi by the
+#' same value leaves every ratio of distance to scale unchanged.
 #'
 #' @param coordinates Numeric matrix containing observed locations.
 #' @param phi Optional scale parameter in the coordinate units.
@@ -91,14 +90,12 @@ index_coordinate_rows <- function(coordinates) {
 scale_spatial_coordinates <- function(coordinates, phi = NULL) {
   coordinates <- as.matrix(coordinates)
   if (nrow(coordinates) < 2) {
-    stop("Spatial coordinates must contain at least two distinct locations.",
-         call. = FALSE)
+    abort_input("The data must have at least two distinct locations.", arg = "data")
   }
   distance_scale <- max(pairwise_distances(coordinates))
 
   if (!is.finite(distance_scale) || distance_scale <= 0) {
-    stop("Spatial coordinates must contain at least two distinct locations.",
-         call. = FALSE)
+    abort_input("The data must have at least two distinct locations.", arg = "data")
   }
 
   list(coordinates = coordinates / distance_scale,
@@ -115,14 +112,17 @@ scale_spatial_coordinates <- function(coordinates, phi = NULL) {
 #' @param context Short description used in diagnostics.
 #' @param allow_jitter Whether to try reported scale-aware diagonal jitter after
 #'   an unmodified factorisation fails.
+#' @param warn Whether to warn when a jitter was needed. A caller that
+#'   factorises many matrices warns once itself, from their `jitter`
+#'   attributes.
 #' @return An upper-triangular Cholesky factor. The applied jitter is stored in
 #'   the `jitter` attribute.
 #' @noRd
 factor_covariance <- function(covariance, context = "covariance matrix",
-                              allow_jitter = TRUE) {
+                              allow_jitter = TRUE, warn = TRUE) {
   covariance <- as.matrix(covariance)
   if (nrow(covariance) != ncol(covariance)) {
-    stop("The ", context, " must be square.", call. = FALSE)
+    riskmap_bug("The {context} must be square.")
   }
 
   covariance <- (covariance + t(covariance)) / 2
@@ -133,7 +133,7 @@ factor_covariance <- function(covariance, context = "covariance matrix",
   }
 
   if (!allow_jitter) {
-    stop("The ", context, " is not positive definite.", call. = FALSE)
+    riskmap_abort("The {context} is not positive definite.", class = "riskmap_error_fit")
   }
 
   covariance_scale <- max(abs(diag(covariance)), 1)
@@ -145,15 +145,31 @@ factor_covariance <- function(covariance, context = "covariance matrix",
     root <- tryCatch(chol(adjusted), error = function(error) NULL)
     if (!is.null(root)) {
       attr(root, "jitter") <- jitter
-      warning("The ", context, " required diagonal jitter of ",
-              format(jitter, scientific = TRUE), " for Cholesky factorisation.",
-              call. = FALSE)
+      if (warn) warn_jitter(context, jitter)
       return(root)
     }
   }
 
-  stop("The ", context, " is not positive definite, even after adaptive jitter.",
-       call. = FALSE)
+  riskmap_abort("The {context} is not positive definite, even with a diagonal jitter.", class = "riskmap_error_fit")
+}
+
+#' Warn that a factorisation needed a diagonal jitter
+#'
+#' `jitter` holds the jitter of each matrix factorised, 0 where none was
+#' needed. One matrix gives the jitter it needed, and several give how many
+#' needed one and the largest.
+#' @noRd
+warn_jitter <- function(context, jitter) {
+  needed <- sum(jitter > 0)
+  if (needed == 0L) return(invisible(NULL))
+  added <- format(max(jitter), scientific = TRUE)
+  if (length(jitter) == 1L) {
+    riskmap_warn("The {context} needed a diagonal jitter of {added} to be factorised.", class = "riskmap_warning_fit")
+  } else {
+    blocks <- length(jitter)
+    riskmap_warn("The {context} of {needed} of {blocks} blocks needed a diagonal jitter, of up to {added}, to be factorised.", class = "riskmap_warning_fit")
+  }
+  invisible(NULL)
 }
 
 #' Solve a positive-definite system from its Cholesky factor
@@ -199,8 +215,7 @@ conditional_variances <- function(marginal_variance, weights,
     max(1, abs(marginal_variance), abs(variance))
 
   if (any(variance < -tolerance)) {
-    stop("The conditional covariance produced materially negative variances.",
-         call. = FALSE)
+    riskmap_abort("The conditional covariance gives clearly negative variances.", class = "riskmap_error_fit")
   }
 
   pmax(variance, 0)
@@ -258,8 +273,11 @@ grouped_joint_prediction <- function(
   samples <- matrix(
     NA_real_, nrow = nrow(prediction_coordinates), ncol = n_samples
   )
+  # The jitter each block needed, reported once after the loop.
+  jitter <- numeric(length(group_indices))
 
-  for (index in group_indices) {
+  for (block in seq_along(group_indices)) {
+    index <- group_indices[[block]]
     block_coordinates <- prediction_coordinates[index, , drop = FALSE]
     distance <- cross_distances(block_coordinates, conditioning_coordinates)
     cross_covariance <- marginal_variance * matern_correlation(
@@ -277,12 +295,15 @@ grouped_joint_prediction <- function(
     conditional_covariance <- prediction_covariance -
       weights %*% t(cross_covariance)
     root <- factor_covariance(
-      conditional_covariance, "conditional prediction covariance"
+      conditional_covariance, "conditional prediction covariance",
+      warn = FALSE
     )
+    jitter[block] <- attr(root, "jitter")
     samples[index, ] <- sample_correlated_gaussian(
       conditional_mean, t(root), n_samples
     )
   }
+  warn_jitter("conditional prediction covariance", jitter)
 
   samples
 }
@@ -317,12 +338,14 @@ marginal_prediction_batch_size <- function(
 #' @param kappa Matérn smoothness.
 #' @param n_samples Number of predictive samples.
 #' @param batch_size Number of prediction locations per batch.
+#' @param progress A bar from `progress_bar()`, moved by the locations of
+#'   each batch, or `NULL`.
 #' @return Matrix with prediction locations in rows and samples in columns.
 #' @noRd
 batched_marginal_prediction <- function(
     prediction_coordinates, conditioning_coordinates, weight_function,
     conditional_signal, marginal_variance, phi, kappa, n_samples,
-    batch_size) {
+    batch_size, progress = NULL) {
   n_prediction <- nrow(prediction_coordinates)
   samples <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
 
@@ -345,6 +368,7 @@ batched_marginal_prediction <- function(
     ))
     samples[index, ] <- conditional_mean +
       conditional_sd * samples[index, , drop = FALSE]
+    progress_tick(progress, length(index))
   }
 
   samples

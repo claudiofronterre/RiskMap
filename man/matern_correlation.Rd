@@ -23,8 +23,8 @@ Computes the Matern correlation function.
 }
 \details{
 The Matern correlation function is defined as
-\deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
-where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
+\deqn{\rho(u; \phi, \kappa) = \frac{1}{2^{\kappa-1}\Gamma(\kappa)}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
+for \eqn{u > 0}, with \eqn{\rho(0; \phi, \kappa) = 1}, where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, \eqn{\Gamma(\cdot)} is the gamma function, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 }
 \examples{
 u <- c(10, 20, 30)

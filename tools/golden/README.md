@@ -1,0 +1,156 @@
+# The golden regression battery
+
+The battery runs a fixed set of fits and computations with fixed data and seeds, saves everything they return, and compares two installs of RiskMap task by task. A refactor that is meant to change nothing (class C in the release plan) must leave every task identical bit for bit. A change that moves fits must move only the tasks it should, and the tolerance mode of `compare.R` then says by how much. The package's tests check behaviour to tolerances and cannot see a change in the last bits, which is why the battery exists beside them.
+
+It moved here from the MCML paper's repository (`theory/family-object-golden.R` and `-compare.R`), where it checked every PR of #253. It is listed in `.Rbuildignore`, so it is not in the tarball and CRAN never runs it. It runs before a merge, not in CI, since fits reproduce bit for bit only on one machine type.
+
+## Files
+
+| File | What it is |
+|---|---|
+| `run.R` | The tasks and the runner. One output file per task. |
+| `compare.R` | The comparison of two arms. |
+| `groups.txt` | The tasks in eight lines, for parallel runs. |
+| `data/surveys.rds` | Two surveys from the MCML paper's studies, saved exactly (see below). |
+| `hpc/push.sh` | Copies a commit's archive to Wayland and checks its md5 sums (run on the laptop). |
+| `hpc/submit.sh` | Submits the install and the run of one arm (run on the Wayland login node). |
+| `hpc/install.sh`, `hpc/run.sh` | The two Slurm jobs that `submit.sh` submits. |
+
+## The tasks
+
+`Rscript --vanilla tools/golden/run.R --list` lists them.
+
+- **F01 to F29, fits.** Binomial, Poisson and Gaussian fits with and without a
+nugget, an `re()` term, households, held nuggets, integrated and sampled noise,
+named links and links given as functions, an imperfect test, and the edge cases
+(no positives, separation, sparse and nearly all positive surveys). A fit task
+keeps the fit, `check_computation()` and the printed fit, summary and check.
+- **F30 to F46, fits added on 14 November 2026** for the gaps that the architecture review listed. They are the negative binomial with its size estimated and held, Poisson with an offset, a fixed nugget (`gp(nugget = 0.5)`), Gaussian fits on the Woodbury path with a nugget, with an `re()` term and with `fix_var_me`, two `re()` terms of which one crosses locations, κ = 1.5, the PC prior, the Laplace proposal and a partial `start_pars`. F31, F33 and F36 hold the size, the nugget and the measurement error variance through `fixed_pars` when `glgpm()` has it (step 2d of the parameter table) and through `negative_binomial(2)`, `gp(nugget = 0.5)` and `fix_var_me` before, with the same model and values in both branches, so arms on either side of 2d can be compared. Their call, formula and printed call differ between the branches. F47 to F52 hold a slope, the scale of a Gaussian fit on the Woodbury path, the spatial and random-effect variances of a binomial fit, the intercept of a Gaussian fit, and every parameter of a Gaussian and of a binomial fit, and exist only for commits that can hold those parameters (`fixed_pars` after step 2d of the parameter table). F42 to F46 are household surveys with one record per child and a child covariate (sex), for the integration of such households (proposal 3), with variants for probit, for the nugget alone, for `re(household)` alone, and one whose children share their sex at each location, which today's rules integrate already.
+- **D tasks, downstream of five fits** (logit, Poisson, probit, integrated
+nugget, Gaussian). Each refits its base fit and keeps one of `predict()` and
+`simulate_glgpm()`, `parametric_bootstrap()`, `profile()`,
+`check_computation(extra = )`, or `assess_prediction()` with
+`assess_simulation()`. The Gaussian fit with an `re()` term (F35) has its
+bootstrap and its cross-validation.
+- **L01 to L03, low-level.** Links, observation terms, likelihoods and engines evaluated at fixed inputs through internals, and the adaptive MCML driver at a bound. They reach internals through `asNamespace("RiskMap")` and follow whichever entry points the commit has, so older commits can still be run.
+- **`--smoke`.** Fifteen of them (fits of each family, a nugget, an `re()` term, a named link, both saved surveys, a Gaussian fit on each path, two predictions and the low-level tasks), about a minute on one Wayland core.
+
+Each output file is a record with the task's status, its value (what is compared), the time and garbage-collection time, the environment (commit, RiskMap version and path, R, BLAS, host, thread settings, the versions of every loaded package) and `fits`, the fits the task made at its top level, which the tolerance mode reads. A failed task is saved with its message and compared like any other.
+
+## What makes two arms comparable
+
+Bits reproduce only when everything but the RiskMap commit is the same.
+
+- **One BLAS and OpenMP thread.** `run.R` stops unless `OPENBLAS_NUM_THREADS` and `OMP_NUM_THREADS` are 1. Use `Rscript --vanilla`, because a user's `~/.Renviron` that sets these variables overrides the shell's values, and `--vanilla` is what skips it.
+- **One machine type.** Laptop arms compare only with laptop arms, and Wayland arms only with Wayland arms of one node type (64core256G, with comp06 excluded, which `submit.sh` sets).
+- **The same R, container and dependencies.** On Wayland every arm runs in the same container and loads its dependencies from the same libraries. `compare.R` prints the environments and warns when package versions differ.
+- **An installed package.** Install each commit from a clean `git archive` with `R CMD INSTALL` into a library of its own. Never use `devtools::load_all()`, which compiles without optimisation and reuses object files.
+- **The same battery.** Run both arms with the battery of the newer commit, so that they have the same tasks. On Wayland that is the third argument of `submit.sh`.
+
+## An arm on Wayland
+
+The battery's home is `~/storage/riskmap-golden` (`GOLDEN_HOME`).
+
+| Folder | What it holds |
+|---|---|
+| `src/<sha>` | The clean archive of a commit, unpacked by `push.sh`. |
+| `library/<sha>` | RiskMap installed from it, with `<sha>.install.log`. |
+| `library/deps` | Imports of RiskMap that the shared library `~/storage/riskmap-sim-env/library` lacks. `install.sh` adds any new import here, so that every arm loads the same versions. |
+| `arms/<arm>` | The outputs of an arm, one `.rds` file per task. |
+| `logs` | The jobs' logs. |
+
+From a RiskMap checkout on the laptop, copy the commits, then submit from the Wayland login node.
+
+```bash
+tools/golden/hpc/push.sh <sha> <base-sha>
+```
+
+```bash
+timeout 120 ssh fronter2@wayland-2022.hec.lancaster.ac.uk '~/storage/riskmap-golden/src/<sha>/tools/golden/hpc/submit.sh <sha> <arm>'
+```
+
+`submit.sh <commit> <arm> [<battery> [<tasks>]]` installs the commit unless its library exists and runs the battery after the install. Installs run one at a time (all are named `golden-install`, with `--dependency=singleton`), so two arms of one commit submitted at once never write its library together. `<battery>` is the commit whose `tools/golden` runs, by default the commit itself. For the base of a PR, give the PR's commit, so that both arms have the PR's tasks. `<tasks>` is `all` (the default, one job of about 20 minutes), `smoke`, a comma-separated list, or `groups` for an array over the lines of `groups.txt`, whose elements take only a few minutes each, so keep it for when the wait matters. The install log should report six compiled source files.
+
+Check the jobs with `squeue -u fronter2` and `sacct -j <job>`, and confirm the arm by counting its files rather than by the job's state. An element that timed out or failed can be resubmitted as it is, since tasks with an output are skipped. Bring the arm back with `rsync -a` into a folder outside the checkout and compare it there.
+
+```bash
+rsync -a fronter2@wayland-2022.hec.lancaster.ac.uk:storage/riskmap-golden/arms/<arm>/ <arms>/<arm>/
+```
+
+## An arm on the laptop
+
+Install the commit from a clean archive into a library of its own, then run the battery.
+
+```bash
+git archive --format=tar --prefix=RiskMap/ <sha> | tar -x -C <scratch>
+```
+
+```bash
+R CMD INSTALL --preclean --library=<libraries>/<sha> <scratch>/RiskMap
+```
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 Rscript --vanilla tools/golden/run.R --lib=<libraries>/<sha> --out=<arms>/<arm> --smoke
+```
+
+A full arm took 30 to 50 minutes in one process on the laptop. Run it detached, with its memory capped, for example `tmux new -d -s golden-<arm> 'systemd-run --user --scope -p MemoryMax=8G bash -c "ulimit -v 6000000; OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 Rscript --vanilla tools/golden/run.R --lib=... --out=... > <log> 2>&1"'`, or run the lines of `groups.txt` in two or three such processes.
+
+## Comparing two arms
+
+```bash
+Rscript --vanilla tools/golden/compare.R --a=<arms>/<base> --b=<arms>/<pr> --report=<arms>/compare-<base>-<pr>.txt
+```
+
+Arm a is the reference. `compare.R` takes about five seconds and needs only sf. It exits with status 1 if any task fails the comparison.
+
+- **Identity**, the default. A task passes when its value and its printed text are identical in both arms, after timings, environments and the environments of functions are removed (functions are compared by their deparsed text). This is the test for a class C change.
+- **Declared paths**, `--declared=<file or list>`. For a PR that changes part of a fit on purpose, for example by adding a field. The paths it declares are removed from both arms before the comparison and reported as same, differs or only in one arm, and everything else must still be identical. Each entry is a regular expression matched against paths as the report prints them, optionally preceded by a regular expression for the task names it applies to. Entries are lines of a file, where `#` starts a comment, or a comma-separated list.
+
+  ```
+  # A version stamp on every fit, and its line in the printed summaries
+  ^/fit/version$
+  ^F ^/text/2$
+  ```
+
+- **Tolerance**, `--tolerance=<k>`. For a PR that changes the optimiser's path or the random streams, so that every number may move. A task passes when
+  - the statuses agree, and the values have the same structure (the same paths, classes and lengths, the same missing values),
+  - every fit the task recorded has the same outcome, certification, number of stages and parameters in both arms, its estimates move by at most k standard errors of arm a (or of arm b for a parameter that has none in a), on the scale of `fit$estimate` (log variances and scale), its standard errors change by at most a fraction `--se-tolerance` and its log-likelihood by at most `--loglik-tolerance` (both k by default), and an estimate or standard error that is finite in one arm is finite in the other,
+  - strings and the printed text agree once their numbers are masked,
+  - and its other numbers differ only if one of its fits moved.
+
+  A parameter without a standard error in either arm (at a boundary, for example) and a change in the proposals of the stages are reported as notes, but a fit whose estimates move with no standard error at all fails. Declared paths are removed from the recorded fits too (at `/fit` for a fit task and `/base` for a downstream task), so a declared field alone does not make a fit count as moved. Downstream numbers that follow from a moved fit are counted, with the largest relative difference, but not judged. The fits of D tasks are recorded only by this `run.R`, so take both arms with it. State the tolerances in the PR and why they fit the change.
+
+- **`--allow-new`** lets arm b have tasks that arm a lacks, for an arm with new tasks against an older reference. They are listed and not compared. A task missing from arm b always fails, as does a comparison in which no task is in both arms.
+
+Each task gets one line, `identical`, `DIFFERENT value`, `DIFFERENT text`, `MISSING in a`, `STATUS done against failed`, `within tolerance` or `OUTSIDE tolerance`. A difference is followed by up to twelve paths, such as `/fit/estimate/phi` or `/fit@optimizer/mcml_outcome` for an attribute, each with its largest absolute and relative difference, and by the first differing line of each printed text. The environments of the two arms come next (commit, RiskMap, R, BLAS, hosts, and the packages whose versions differ), then the names removed as timings and a last line such as `Tasks: 57 compared, 0 differ, all identical: TRUE`.
+
+## The reference
+
+Compare PRs against `arms/main-eb2345b` on Wayland, all 76 tasks of `main` at eb2345b (after #325 and #327 to #333), with the battery of eb2345b, on comp05-00 (64core256G). The earlier references and how they relate to it are these.
+
+| Arm | Code | Tasks | Relation |
+|---|---|---|---|
+| `kernel-a2b307e-wayland` | 6010772 | 57 | taken by the MCML paper's battery |
+| `golden-e1fd248` | 6010772 | 57 | identical to `kernel-a2b307e-wayland`, and records the fits of downstream tasks and the package versions |
+| `golden-707e26e` | `main` after #311 and #314 | 76 | its 57 old tasks identical to `golden-e1fd248`, its 19 new tasks identical when run again on another node (`repeat-707e26e`) |
+| `main-eb2345b` | `main` after #325 and #327 to #333, among them #327 (partial `start_pars`), #331 (`joint` in `predict()`) and #333 (`fixed_pars` for the nugget, the measurement error and the size, `tau2` in profiles) | 76 | identical to the arm of #333, `fixed-pars-bf95527`, but for the five predict tasks, which record `joint` and `standardised` in place of `type` and `standardized` (#331). Against `main-9822eae`, the predict tasks change in the same way, every fit stores `control_mcml$start_comparison` (#327), `nugget` and `fixed_pars` in place of `fix_tau2`, `fix_var_me` and `family_parameters` (#333), F41 moves by at most 1.3e-8 standard errors, with its standard errors by at most 0.001%, since its comparison of starts runs (#327), F31, F33 and F36 give their holds through `fixed_pars`, identical in every number, and the profiles of the two fits with a nugget hold its variance (#333), their φ intervals moving in the sixth digit. The declared paths are in `MBG-RiskMap-work/outputs/golden/declared-start-pars.txt`, `declared-fixed-pars.txt` and `declared-wave2-prediction.txt` |
+| `main-9822eae` | `main` after #326 (the Woodbury start of step 2b) | 76 | identical to `main-99fb030` but for `D_gaussian_re_bootstrap`, whose replicate estimates and printed bootstrap move (`^D_gaussian_re_bootstrap ^/boot/estimates$`, `^D_gaussian_re_bootstrap ^/text/[12]$`), by at most 2e-7 of their value except a cluster variance estimated near 1e-10. It is identical to the arm of #326 itself, `woodbury-79dfb8d` |
+| `main-99fb030` | `main` after #317 and #318 | 76 | identical to `golden-707e26e` in 72 tasks, F46 among them. F42 to F45, whose households #317 integrates, are within a tolerance of 0.01 standard errors, 5% on the standard errors and 0.02 on the log-likelihood (largest shift 0.0064 standard errors), with the sentences and check that report the integration declared (`^F4[2-5] ^/text/[34]$`, `^F4[2-5] ^/check/draws$`) and, for F44, the bank its certificate's radius comes from (`^F44 radius_from$`) |
+
+The printed text of fits and the findings of the checks name `check_computation()`, which was `check_fit()` in arms made before #374, so a comparison across the rename shows those texts as different.
+
+A PR that changes no number keeps the reference. A PR that moves numbers or adds tasks takes a new one at its merge commit, noted here.
+
+## Adding a task
+
+- Add it to `fits`, `downstream` (which every base fit runs), `re_downstream` (which only F35 runs, in its own block of `tasks`) or the low-level list of `run.R` with fixed seeds, and to a line of `groups.txt`. A downstream task for another single fit can follow the pattern of `re_downstream`. Keep it to a minute or two on one core where possible.
+- Never change the call, data or seed of an existing task, since arms are compared by task name. Give a changed task a new name instead.
+- Keep data in the script or, when it cannot be simulated, small in `data/`.
+- Take a new reference that includes the task, by running the base commit with the new battery.
+
+## The saved surveys
+
+`data/surveys.rds` holds two surveys exactly as the MCML paper's repository generated them, since regenerating them through BLAS on another machine could change their last bits and with them F26 to F28. Each entry has the data frame, its EPSG code and its source.
+
+- `n05_2`, for F27 and F28, is survey n05-2 of `nugget/datasets.R` (seed 64010000), 200 sites with 20 tested each, a spatial variance of 3, a nugget of 0.15 and a prevalence of 3%.
+- `households`, for F26, is survey r01-1 of `integrated/re-setup.R` (seed 73001001), 795 households at 200 locations with a household effect of variance 0.15 and a prevalence of 3%.

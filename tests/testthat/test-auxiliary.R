@@ -15,22 +15,22 @@ test_that("check_formula functions correctly", {
   expect_no_error(check_formula(y ~ gp(kappa = test_kappa), data))
   expect_no_error(check_formula(y ~ log(c) + gp(), data))
 
-  expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
-  expect_error(check_formula(~ gp(), data), "The 'formula' must specify a response")
+  expect_input_error(check_formula("not formula", data), "formula")
+  expect_error(check_formula(~ gp(), data), "must have a response")
   expect_error(check_formula(~ gp(), data, response_required = FALSE),
-               "The 'formula' must specify a response")
-  expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
-  expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
-  expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
-  expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
-  expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+               "must have a response")
+  expect_error(check_formula(y ~ c, data), "must contain a Gaussian process term")
+  expect_error(check_formula(y ~ gp, data), "must contain a Gaussian process term")
+  expect_error(check_formula(y ~ gp(xx, c), data), "must have the column \"xx\"")
+  expect_error(check_formula(y ~ gp(xx, zz), data), "must have the columns \"xx\" and \"zz\"")
+  expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "must have the columns \"xx\" and \"zz\"")
 
   # c not included in formula so should not error
   data$c[1] <- NA
   expect_no_error(check_formula(y ~ gp(), data))
 
   data$y[1] <- NA
-  expect_error(check_formula(y ~ gp(), data), "'data' contains rows with missing data")
+  expect_input_error(check_formula(y ~ gp(), data), "data")
 
   data_without_response <- data[, "c"]
   data_without_response$c[1] <- 1
@@ -38,9 +38,9 @@ test_that("check_formula functions correctly", {
                                 response_required = FALSE))
 
   data_without_response$c[1] <- NA
-  expect_error(check_formula(y ~ c + gp(), data_without_response,
+  expect_input_error(check_formula(y ~ c + gp(), data_without_response,
                              response_required = FALSE),
-               "'data' contains rows with missing data")
+               "data")
  })
 
 test_that("check_complete_data only checks the specified columns and names the caller's argument", {
@@ -49,19 +49,41 @@ test_that("check_complete_data only checks the specified columns and names the c
 
   # "b" has a missing value, but it is ignored when only checking "a"
   expect_no_error(check_complete_data(df, "a"))
-  expect_error(check_complete_data(df, "b"), "'df' contains rows with missing data")
-  expect_error(check_complete_data(df, c("a", "b")), "'df' contains rows with missing data")
+  expect_input_error(check_complete_data(df, "b"), "df")
+  expect_input_error(check_complete_data(df, c("a", "b")), "df")
 })
 
 test_that("check_binomial functions correctly", {
 
   expect_no_error(check_binomial(0:3, NULL))
-  expect_no_error(check_binomial(0:3, 0:3))
+  expect_no_error(check_binomial(0:3, c(1, 1, 2, 3)))
   expect_no_error(check_binomial(0:3, 1:4))
   expect_no_error(check_binomial(c(0, 1.00000001, 2), NULL))
-  expect_error(check_binomial(-1:2, NULL), "'y' must only consist of zero or positive integers")
-  expect_error(check_binomial(c(0, 1.1, 2), NULL), "'y' must only consist of zero or positive integers")
-  expect_error(check_binomial(1:4, 0:3), "Values of 'den' must be greater")
+  expect_input_error(check_binomial(-1:2, NULL), "data")
+  expect_input_error(check_binomial(c(0, 1.1, 2), NULL), "data")
+  expect_error(check_binomial(2:5, 1:4), "can't exceed their denominators")
+
+  # Denominators that aren't numbers of trials.
+  for (den in list(c(1, 2.5), c(1, 0), c(1, -1), c(1, NA), c(1, Inf))) {
+    expect_input_error(check_binomial(c(0, 0), den), "denominator")
+  }
+  expect_error(check_binomial(c(0, 0), c(1, 2.5)), "positive whole numbers")
+  expect_input_error(check_binomial(c(0, NA), c(1, 1)), "data")
+  # Whole to floating point, on either side.
+  expect_no_error(check_binomial(c(20, 20), 20 * c(1 - 1e-12, 1 + 1e-12)))
+  expect_no_error(check_binomial(20 * c(1 - 1e-12, 1 + 1e-12), c(20, 20)))
+})
+
+test_that("check_counts functions correctly", {
+
+  expect_no_error(check_counts(c(0, 3 + 1e-12), c(0.5, 2), "Poisson"))
+  for (count in list(c(1, 1.5), c(1, -1), c(1, NA), c(1, Inf))) {
+    expect_input_error(check_counts(count, c(1, 1), "Poisson"), "data")
+  }
+  for (exposure in list(c(1, 0), c(1, -2), c(1, NA), c(1, Inf))) {
+    expect_input_error(check_counts(c(1, 1), exposure, "Poisson"), "denominator")
+  }
+  expect_error(check_counts(1, 0, "Poisson"), "of a Poisson model")
 })
 
 test_that("check_data functions correctly", {
@@ -84,19 +106,21 @@ test_that("check_data functions correctly", {
   sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
   sf_merged <- rbind(gaussian_data, sf_polygon)
 
-  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point', 'polygon' or 'any'")
-  expect_error(check_data(gaussian_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
+  expect_error(check_data(gaussian_data, geometry = "n"),
+               class = "riskmap_error_internal")
+  expect_error(check_data(gaussian_data, type = "n"),
+               class = "riskmap_error_internal")
 
   expect_no_error(check_data(gaussian_data))
-  expect_error(check_data(data), "'data' must be of class 'sf'")
+  expect_input_error(check_data(data), "data")
 
-  expect_error(check_data(sf_no_crs), "'sf_no_crs' must contain a coordinate reference system")
-  expect_error(check_data(sf_merged), "'sf_merged' can only contain 'POINT' geometry")
-  expect_error(check_data(sf_wrong_coord), "'sf_wrong_coord' contains impossible latitude or longitude values")
+  expect_input_error(check_data(sf_no_crs), "sf_no_crs")
+  expect_input_error(check_data(sf_merged), "sf_merged")
+  expect_input_error(check_data(sf_wrong_coord), "sf_wrong_coord")
 
   expect_no_error(check_data(sf_polygon, "polygon"))
-  expect_error(check_data(gaussian_data, "polygon"), "'gaussian_data' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(check_data(sf_merged, "polygon"), "'sf_merged' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_input_error(check_data(gaussian_data, "polygon"), "gaussian_data")
+  expect_input_error(check_data(sf_merged, "polygon"), "sf_merged")
 
   expect_no_error(check_data(sf_multipolygon, "polygon"))
 
@@ -105,38 +129,22 @@ test_that("check_data functions correctly", {
 
 })
 
-test_that("check_crs functions correctly", {
-  crs <- "invalid"
-  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
-  crs <- 121212
-  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
-  dif_crs <- 12121.2
-  expect_error(check_crs(dif_crs), "The 'dif_crs' provided is not a valid CRS")
-
-  crs <- 2648
-  expect_no_error(check_crs(crs))
-  expect_no_error(check_crs(2648))
-
-  custom_crs <- "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
-  expect_no_error(check_crs(custom_crs))
-})
-
 test_that("check_invlink functions correctly", {
-  expect_error(check_invlink("not a function", "binomial"), "'invlink' must be a function")
+  expect_input_error(check_invlink("not a function", "binomial"), "invlink")
 
-  expect_error(check_invlink(function(eta) 1, "binomial"),
-               "'invlink' must return one numeric value per linear predictor")
-  expect_error(check_invlink(function(eta) rep("a", length(eta)), "binomial"),
-               "'invlink' must return one numeric value per linear predictor")
+  expect_input_error(check_invlink(function(eta) 1, "binomial"),
+               "invlink")
+  expect_input_error(check_invlink(function(eta) rep("a", length(eta)), "binomial"),
+               "invlink")
 
-  expect_error(check_invlink(function(eta) rep(Inf, length(eta)), "binomial"),
-               "'invlink' returned non-finite mean values")
+  expect_input_error(check_invlink(function(eta) rep(Inf, length(eta)), "binomial"),
+               "invlink")
 
   expect_error(check_invlink(identity, "binomial"),
-               "For a binomial model, 'invlink' must return probabilities between 0 and 1")
+               "must return probabilities between 0 and 1")
 
   expect_error(check_invlink(identity, "poisson"),
-               "For a Poisson model, 'invlink' must return non-negative mean values")
+               "must return non-negative means")
 
   expect_identical(check_invlink(plogis, "binomial", c(-1, 0, 1)), plogis(c(-1, 0, 1)))
   expect_identical(check_invlink(exp, "poisson", c(-1, 0, 1)), exp(c(-1, 0, 1)))
@@ -148,12 +156,12 @@ test_that("gp functions correctly", {
 
   expected_output <- c("term", "kappa", "nugget", "dim", "label")
 
-  expect_error(gp(nugget = 0), "'nugget' must be either 'TRUE'")
-  expect_error(gp(nugget = -1), "'nugget' must be either 'TRUE'")
-  expect_error(gp(nugget = "TRUE"), "'nugget' must be either 'TRUE'")
+  expect_input_error(gp(nugget = 0), "nugget")
+  expect_input_error(gp(nugget = -1), "nugget")
+  expect_input_error(gp(nugget = "TRUE"), "nugget")
 
-  expect_error(gp(kappa = 0), "'kappa' must be positive")
-  expect_error(gp(kappa = "TRUE"), "'kappa' must be positive")
+  expect_input_error(gp(kappa = 0), "kappa")
+  expect_input_error(gp(kappa = "TRUE"), "kappa")
 
   default_result <- gp()
 
@@ -167,166 +175,20 @@ test_that("gp functions correctly", {
   true_result <- gp(nugget = TRUE)
   expect_true(true_result$nugget)
 
-  custom_result <- gp(a, b, kappa = 2, nugget = 3)
+  # A value for the nugget is held through fixed_pars, not given here.
+  error <- expect_input_error(gp(nugget = 3), "nugget")
+  expect_match(conditionMessage(error), "fixed_pars", fixed = TRUE)
+  custom_result <- gp(a, b, kappa = 2, nugget = TRUE)
   expect_identical(custom_result$term, c("a", "b"))
   expect_identical(custom_result$kappa, 2)
-  expect_identical(custom_result$nugget, 3)
+  expect_true(custom_result$nugget)
   expect_identical(custom_result$dim, 2L)
   expect_identical(custom_result$label, "gp(a,b)")
 
 })
 
-test_that("check_positive_integer functions correctly", {
-  expect_no_error(check_positive_integer(1, "a"))
-  expect_no_error(check_positive_integer(999, "a"))
-  expect_no_error(check_positive_integer(NULL, "a", allow_null = TRUE))
-  expect_no_error(check_positive_integer(0, "a", allow_zero = TRUE))
-
-  expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(c(0, 1), "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(Inf, "a"), "'a' must be a single positive integer")
-})
-
-test_that("check_logical functions correctly and names the caller's argument", {
-  my_flag <- TRUE
-  expect_no_error(check_logical(my_flag))
-
-  my_flag <- FALSE
-  expect_no_error(check_logical(my_flag))
-
-  my_flag <- NA
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-
-  my_flag <- c(TRUE, FALSE)
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-
-  my_flag <- "TRUE"
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-
-  my_flag <- 1
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-})
-
-test_that("check_positive_number functions correctly", {
-  expect_no_error(check_positive_number(1, ""))
-  expect_no_error(check_positive_number(0.1, ""))
-
-  a <- 0
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- c(0, 1)
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- "not"
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- NULL
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- NA
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- Inf
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-})
-
-test_that("check_zero_one validates the closed unit interval", {
-  expect_no_error(check_zero_one(0, "a"))
-  expect_no_error(check_zero_one(0.5, "a"))
-  expect_no_error(check_zero_one(1, "a"))
-
-  expect_error(check_zero_one(-0.1, "a"), "between 0 and 1")
-  expect_error(check_zero_one(1.1, "a"), "between 0 and 1")
-  expect_error(check_zero_one(c(0, 1), "a"), "between 0 and 1")
-  expect_error(check_zero_one(NA, "a"), "between 0 and 1")
-  expect_error(check_zero_one(Inf, "a"), "between 0 and 1")
-})
-
-test_that("plot.RiskMap_cross_validation validates model before metric (#156)", {
-  ## an invalid model should be reported even when the metric is also invalid -
-  ## previously this incorrectly complained about the metric first
-  expect_error(
-    plot(cross_validation, metric = "not_a_metric", model = "not_a_model"),
-    "'model' 'not_a_model' was not found"
-  )
-
-  expect_error(
-    plot(cross_validation, metric = "not_a_metric", model = "model_a"),
-    "'metric' 'not_a_metric' was not computed for model 'model_a'"
-  )
-})
-
-test_that("plot.RiskMap_cross_validation plots the requested metric for the requested model", {
-  p <- plot(cross_validation, metric = "SCRPS", model = "model_b")
-
-  expect_s3_class(p, "ggplot")
-  expect_no_error(ggplot2::ggplot_build(p))
-})
-
-test_that("plot.RiskMap_cross_validation applies extra ggplot components passed via ...", {
-  p_plain <- plot(cross_validation, metric = "CRPS", model = "model_a")
-  expect_length(p_plain$scales$scales, 0)
-
-  p_custom <- plot(cross_validation, metric = "CRPS", model = "model_a",
-                   ggplot2::scale_color_gradient(low = "yellow", high = "red"))
-  expect_length(p_custom$scales$scales, 1)
-  expect_no_error(ggplot2::ggplot_build(p_custom))
-})
-
-test_that("create_convex_hull generates errors", {
-  expect_error(create_convex_hull("a"), "'sf_object' must be an sf object")
-})
-
-test_that("create_convex_hull functions correctly", {
-  result <- create_convex_hull(gaussian_data)
-  expect_s3_class(result, "sf")
-  expect_identical(nrow(result), 1L)
-
-  intersect <- unlist(st_intersects(gaussian_data, result))
-  expect_identical(intersect, rep(1L, 10))
-})
-
-test_that("propose_utm generates errors", {
-  expect_error(propose_utm("a"), "'data' must be of class 'sf'")
-})
-
-test_that("propose_utm handles both polygons and points", {
-  expect_no_error(propose_utm(areal))
-  expect_no_error(propose_utm(gaussian_data))
-})
-
-test_that("propose_utm warns when locations are split equally", {
-  lonlat_points <- function(lon, lat) {
-    st_as_sf(data.frame(lon = lon, lat = lat), coords = c("lon", "lat"), crs = 4326)
-  }
-
-  # longitudes 33 and 39 fall in UTM zones 36 and 37
-  expect_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 39), lat = c(5, 5))),
-    "An equal amount of locations falls in different UTM zones"
-  )
-  # default to min
-  expect_identical(epsg, 32636)
-
-  expect_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 33), lat = c(5, -5))),
-    "An equal amount of locations falls north and south of the Equator"
-  )
-  # default to south
-  expect_identical(epsg, 32736)
-
-  expect_no_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 39), lat = c(5, 5, 5)))
-  )
-  expect_identical(epsg, 32636)
-
-  expect_no_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 33, 33), lat = c(5, 6, 7, -5)))
-  )
-  expect_identical(epsg, 32636)
-})
-
 test_that("re errors when no variables are provided",{
-  expect_error(re(), "You need to provide at least one variable to re")
+  expect_error(re(), "needs at least one variable")
 })
 
 test_that("re produces expected output", {
@@ -343,19 +205,79 @@ test_that("re produces expected output", {
   expect_identical(result$label, "re(variable,region)")
 })
 
+test_that("interpret_formula combines several re() calls", {
+  one_call <- interpret_formula(y ~ cov + gp() + re(i, j))
+
+  two_calls <- interpret_formula(y ~ cov + gp() + re(i) + re(j))
+  expect_identical(two_calls$re_spec, one_call$re_spec)
+  expect_identical(deparse(two_calls$pf), "y ~ cov")
+
+  separated_calls <- interpret_formula(y ~ re(i) + cov + re(j) + gp())
+  expect_identical(separated_calls$re_spec, one_call$re_spec)
+
+  shared_variable <- interpret_formula(y ~ cov + gp() + re(i) + re(i, j))
+  expect_identical(shared_variable$re_spec, one_call$re_spec)
+
+  reversed_calls <- interpret_formula(y ~ gp() + re(j) + re(i))
+  expect_identical(reversed_calls$re_spec, re(j, i))
+
+  three_calls <- interpret_formula(y ~ gp() + re(a, b) + re(c) + re(d))
+  expect_identical(three_calls$re_spec, re(a, b, c, d))
+})
+
+test_that("interpret_formula keeps a single re() call as written", {
+  expect_identical(interpret_formula(y ~ gp() + re(i))$re_spec, re(i))
+  expect_identical(interpret_formula(y ~ gp() + re(i, j))$re_spec, re(i, j))
+  expect_null(interpret_formula(y ~ gp())$re_spec)
+})
+
+test_that("interpret_formula allows only one gp() term", {
+  expect_error(
+    interpret_formula(y ~ cov + gp(kappa = 1.5) + gp(kappa = 0.5)),
+    "only one `gp\\(\\)` term"
+  )
+  expect_error(
+    interpret_formula(y ~ gp(lon, lat) + gp(east, north) + re(i)),
+    "only one `gp\\(\\)` term"
+  )
+  expect_identical(interpret_formula(y ~ gp() + gp())$gp_spec, gp())
+})
+
+test_that("interpret_formula reads one offset column", {
+  expect_null(interpret_formula(y ~ cov + gp() + re(i))$offset)
+  expect_identical(interpret_formula(y ~ gp() + offset(exposure))$offset, "exposure")
+  expect_identical(
+    interpret_formula(y ~ gp() + re(i) + offset(exposure))$offset,
+    "exposure"
+  )
+  expect_identical(
+    interpret_formula(y ~ gp() + re(i) + re(j) + offset(exposure))$offset,
+    "exposure"
+  )
+
+  expect_error(
+    interpret_formula(y ~ gp() + offset(exposure) + offset(other)),
+    "only one `offset\\(\\)` term"
+  )
+  expect_error(
+    interpret_formula(y ~ gp() + offset(log(exposure))),
+    "must name a column of `data`, not `offset\\(log\\(exposure\\)\\)`"
+  )
+})
+
 
 test_that("matern_correlation returns output matching the shape of u", {
   u <- dist(st_coordinates(gaussian_data))
   n <- nrow(gaussian_data)
 
-  expect_error(
+  expect_input_error(
     matern_correlation("a", 0.5, 0.5),
-    "'u' must contain only finite, non-negative distances"
+    "u"
   )
 
   expect_error(
     matern_correlation(u, -0.5, 0.5),
-    "must be a single finite number"
+    "phi", class = "riskmap_error_input"
   )
 
   for (kappa in c(0.5, 0.8)) {
@@ -388,14 +310,14 @@ test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n mat
   for (kappa in c(0.5, 0.8)) {
     for (derivative in list(matern_gradient_phi, matern_hessian_phi)) {
 
-      expect_error(
+      expect_input_error(
         derivative("u", 0.5, 0.5),
-        "'u' must be an output from 'stats::dist"
+        "u"
       )
 
       expect_error(
         derivative(u, -0.5, 0.5),
-        "must be a single finite number"
+        "phi", class = "riskmap_error_input"
       )
 
       output <- derivative(u, phi = 1, kappa = kappa)
@@ -408,91 +330,3 @@ test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n mat
   }
 })
 
-test_that("plot.RiskMap_cross_validation combines calibration curves with combine_pit (#183)", {
-  p <- plot(cross_validation, metric = "PIT", combine_pit = TRUE)
-
-  expect_s3_class(p, "ggplot")
-  expect_setequal(unique(p$data$model), c("model_a", "model_b"))
-})
-
-test_that("plot.RiskMap_cross_validation labels metric maps by metric and model (#183)", {
-  p <- plot(cross_validation, metric = "CRPS", model = "model_a")
-
-  expect_equal(p$labels$title, "Model model_a: CRPS")
-  expect_equal(p$labels$colour, "CRPS")
-})
-
-test_that("plot.RiskMap_cross_validation labels PIT as AnPIT for discrete families (#183)", {
-  p <- plot(cross_validation, metric = "PIT_area", model = "model_a")
-  expect_equal(p$labels$title, "Model model_a: PIT_area")
-  expect_equal(p$labels$colour, "PIT_area")
-
-  ## discrete families store AnPIT curves rather than PIT values
-  discrete_cv <- cross_validation
-  discrete_cv$model$model_a$AnPIT <- list(seq(0, 1, length.out = 11),
-                                          seq(0, 1, length.out = 11)^2)
-  discrete_cv$model$model_a$PIT <- NULL
-
-  p_area <- plot(discrete_cv, metric = "PIT_area", model = "model_a")
-  expect_equal(p_area$labels$title, "Model model_a: AnPIT_area")
-  expect_equal(p_area$labels$colour, "AnPIT_area")
-
-  p_curve <- plot(discrete_cv, metric = "PIT", model = "model_a")
-  expect_equal(p_curve$labels$title, "Model model_a: AnPIT (average)")
-  expect_equal(p_curve$labels$y, "AnPIT")
-})
-
-test_that("plot.RiskMap_cross_validation plots each metric separately rather than one combined grid (#87)", {
-  ## the fixture was fit with the default metrics = c("PIT", "CRPS", "SCRPS"),
-  ## and "PIT" also computes the scalar "PIT_area" score, so there are 4
-  ## metrics here. With more than one metric, each gets its own plot/grid
-  ## (printed in turn as a side effect) instead of everything being squeezed
-  ## into one combined grid; the list returned invisibly has one entry per
-  ## metric.
-  groups <- plot(cross_validation)
-
-  expect_type(groups, "list")
-  expect_named(groups, c("PIT", "CRPS", "SCRPS", "PIT_area"))
-  for (g in groups) {
-    expect_s3_class(g, "gtable")
-    expect_equal(length(g$grobs), 2) # one panel per model, no padding
-  }
-})
-
-test_that("plot.RiskMap_cross_validation sizes each metric's grid from its own models only (#87)", {
-  ## 3 models, 2 metrics - each metric's grid should be sized from its own
-  ## 3 models, independent of the other metric (no cross-metric padding)
-  cv3 <- cross_validation
-  cv3$model$model_c <- cv3$model$model_a
-
-  groups <- plot(cv3, metric = c("PIT", "CRPS"))
-
-  expect_named(groups, c("PIT", "CRPS"))
-  for (g in groups) {
-    expect_s3_class(g, "gtable")
-    expect_equal(length(g$grobs), 3)
-  }
-})
-
-test_that("plot.RiskMap_cross_validation can select only the calibration curve", {
-  p <- plot(cross_validation, metric = "PIT", model = "model_a")
-
-  expect_s3_class(p, "ggplot")
-  expect_no_error(ggplot2::ggplot_build(p))
-})
-
-test_that("plot.RiskMap_cross_validation's calibration curve actually filters to the requested test_set", {
-
-  p1 <- plot(cross_validation, metric = "PIT", model = "model_a",
-             pit_mode = "single", pit_test_set = 1)
-  p2 <- plot(cross_validation, metric = "PIT", model = "model_a",
-             pit_mode = "single", pit_test_set = 2)
-
-  expect_false(identical(p1$data$value, p2$data$value))
-  expect_equal(p1$labels$title, "Model model_a: PIT (test set 1)")
-  expect_error(
-    plot(cross_validation, metric = "PIT", model = "model_a",
-         pit_mode = "single", pit_test_set = 99),
-    "No data for test set 99"
-  )
-})

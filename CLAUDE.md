@@ -32,6 +32,18 @@ different data (e.g. a covariate name collision, or a formula shape none of
 the fixtures cover). If you ever need to produce examples of bugs, use these
 same objects.
 
+## Golden battery
+
+`tools/golden/` (outside the built package, see `.Rbuildignore`) runs a fixed set of
+fits, predictions, profiles, bootstraps and engine evaluations and compares two
+installs of RiskMap task by task. A PR that is meant to change no number must leave
+every task identical bit for bit, and a PR that moves fits shows by how much with the
+declared paths or the tolerance mode of `compare.R`. Run both arms with the same
+battery, from installs of clean `git archive`s (never `load_all()`), with one BLAS
+thread and on one machine type, on Wayland with `tools/golden/hpc/push.sh` and
+`submit.sh`. Say in the PR which arms were compared and what the comparison found.
+`tools/golden/README.md` has the details and the current reference.
+
 ## Commit messages
 
 Reference the issue number where one exists, e.g. `fix thing #92`.

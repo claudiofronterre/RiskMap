@@ -1,14 +1,14 @@
 #' Resolve the CRS and compute pairwise distances for distance-based computations
 #'
 #' Projected data retain their CRS; longitude/latitude data are automatically
-#' reprojected to an appropriate UTM CRS, with an informative message. This is
-#' the same convention used by `glgpm()`'s `model_crs`, applied here to
-#' functions with no fitted model of their own (`summarise_distance()`,
-#' `variogram()`).
+#' reprojected to the CRS from `propose_crs()`, with an informative message
+#' (`project_for_distances()`). This is the convention `glgpm()` follows for
+#' its CRS argument, applied here to functions with no fitted model of their
+#' own (`summarise_distance()`, `variogram()`).
 #'
 #' @param data An `sf` object.
-#' @param crs `NULL` to retain an existing projected CRS or auto-select UTM
-#'   for longitude/latitude data, or a CRS (must be projected) to reproject
+#' @param crs `NULL` to retain an existing projected CRS or choose one with
+#'   `propose_crs()` for longitude/latitude data, or a CRS (must be projected) to reproject
 #'   `data` to.
 #' @param crs_arg The name of the caller's CRS argument, used in messages and
 #'   errors.
@@ -19,23 +19,16 @@
 #'   distances. Defaults to `FALSE`.
 #' @return A numeric vector of pairwise distances, in `distance_units`, as
 #'   returned by `dist()`.
+#' @param call The call named in input errors, so that they name the exported
+#'   function that called this one.
 #' @noRd
 extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
-                              dedupe = FALSE) {
-  if (!is.null(crs)) {
-    check_crs(crs, name = crs_arg)
-    data <- st_transform(data, crs = crs)
-    if (st_is_longlat(data)) {
-      stop("'", crs_arg, "' must be a projected CRS, not longitude/latitude", call. = FALSE)
-    }
-  } else if (st_is_longlat(data)) {
-    auto_crs <- propose_utm(data)
-    data <- st_transform(data, crs = auto_crs)
-    message("'data' are in longitude/latitude and '", crs_arg, "' was not provided; ",
-            "automatically reprojecting to EPSG:", auto_crs,
-            " for ", purpose, ". Set '", crs_arg, "' to override.")
-  }
-  coords <- coordinates_in_units(data, distance_units)
+                              dedupe = FALSE, call = rlang::caller_env()) {
+  data <- project_for_distances(data, crs, crs_arg,
+                                paste("for", purpose, "in", distance_units),
+                                call = call)
+  coords <- coordinates_in_units(data, distance_units,
+                                 if (is.null(crs)) "data" else crs_arg)
   if (dedupe) coords <- unique(coords)
   as.numeric(pairwise_distances(coords))
 }
@@ -45,19 +38,25 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
 ##'
 ##' @param data an object of class `sf` containing point geometries.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
-##' automatically reproject longitude/latitude data to an appropriate UTM CRS
-##' (with a message reporting the choice). Alternatively, a CRS to reproject
-##' `data` to, which must itself be projected.
+##' automatically reproject longitude/latitude data to the CRS from
+##' [propose_crs()] (with a message naming the CRS and the units of
+##' distance). Alternatively, a CRS to reproject `data` to, which must itself
+##' be projected. A warning of class `riskmap_warning_crs` is raised when the
+##' CRS used distorts distances by more than 1% over the data.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
 ##' distances used are expressed in kilometers or meters. Defaults to `"km"`.
 ##'
-##' @return a named vector containing the following components
+##' @return a named numeric vector of class `RiskMap_distance_summary`
+##' containing the following components
 ##' \describe{
 ##'   \item{`min`}{the minimum distance}
 ##'   \item{`max`}{the maximum distance}
 ##'   \item{`mean`}{the mean distance}
-##'   \item{`median`}{the minimum distance}
+##'   \item{`median`}{the median distance}
 ##' }
+##' The values are stored in full. Its `print()` method shows them to
+##' `digits` significant digits, with the number of unique locations and the
+##' distance units.
 ##'
 ##' @examples
 ##' data(italy_sim)
@@ -68,12 +67,11 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
 summarise_distance <- function(data,
                            distance_crs = NULL,
                            distance_units = c("km", "m")) {
+  check_supplied(data)
 
   check_data(data)
 
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")))
-  distance_units <- match.arg(distance_units)
+  distance_units <- match_choice(distance_units)
 
   d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
                          distance_units, dedupe = TRUE)
@@ -81,7 +79,32 @@ summarise_distance <- function(data,
   out <- c(min(d), max(d), mean(d), median(d))
   names(out) <- c("min", "max", "mean", "median")
 
-  return(out)
+  # n unique locations give n (n - 1) / 2 distances
+  n_locations <- round((1 + sqrt(1 + 8 * length(d))) / 2)
+  structure(out, class = "RiskMap_distance_summary",
+            n_locations = n_locations, distance_units = distance_units)
+}
+
+##' @rdname summarise_distance
+##' @param x an object returned by `summarise_distance()`.
+##' @param digits the number of significant digits to print. Defaults to 3.
+##' @param ... not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
+##' @export
+print.RiskMap_distance_summary <- function(x, digits = 3, ...) {
+  check_dots_unused(...)
+  check_positive_integer(digits, "digits")
+  values <- formatC(as.numeric(x), digits = digits, format = "fg",
+                    big.mark = ",")
+  names(values) <- names(x)
+  out_print(c(
+    out_rule("Distances between locations"),
+    out_text(paste0(format_count(attr(x, "n_locations")),
+                    " unique locations, with distances in ",
+                    attr(x, "distance_units"), ".")),
+    out_capture(print(noquote(values), right = TRUE))
+  ))
+  invisible(x)
 }
 
 #' Construct an extreme-rank-length global envelope
@@ -97,14 +120,14 @@ global_rank_envelope <- function(curves, level) {
   # A curve is globally extreme when its sorted vector of two-sided pointwise
   # ranks is lexicographically small. ERL resolves most ties left by the
   # minimum-rank measure while preserving the exchangeability of the curves.
-  pointwise_ranks <- apply(curves, 1L, function(values) {
+  # apply() drops to a vector when there is a single distance class, so the
+  # results are reshaped to one row per curve explicitly
+  pointwise_ranks <- matrix(apply(curves, 1L, function(values) {
     pmin(rank(values, ties.method = "average"),
          rank(-values, ties.method = "average"))
-  })
-  if (is.null(dim(pointwise_ranks))) {
-    pointwise_ranks <- matrix(pointwise_ranks, ncol = 1L)
-  }
-  sorted_ranks <- t(apply(pointwise_ranks, 1L, sort))
+  }), nrow = number_curves)
+  sorted_ranks <- matrix(apply(pointwise_ranks, 1L, sort),
+                         nrow = number_curves, byrow = TRUE)
   ordering <- do.call(order, c(as.data.frame(sorted_ranks),
                                list(method = "radix")))
   ordered_ranks <- sorted_ranks[ordering, , drop = FALSE]
@@ -117,11 +140,108 @@ global_rank_envelope <- function(curves, level) {
   upper_position <- integer(number_curves)
   upper_position[ordering] <- ordered_upper_position
 
-  number_excluded <- floor((1 - level) * number_curves)
+  # The tolerance stops rounding error from excluding one curve too few, as
+  # (1 - 0.9) * 1000 is slightly below 100
+  number_excluded <- floor((1 - level) * number_curves + 1e-8)
   retained <- upper_position > number_excluded
 
   list(lower = apply(curves[, retained, drop = FALSE], 1L, min),
        upper = apply(curves[, retained, drop = FALSE], 1L, max))
+}
+
+#' Check the lag-distance breakpoints given by the user
+#' @noRd
+check_distance_breaks <- function(breaks, call = rlang::caller_env()) {
+  if (!is.numeric(breaks) || length(breaks) < 2L || any(!is.finite(breaks))) {
+    abort_input("{.arg breaks} must be at least two finite numbers.", arg = "breaks", call = call)
+  }
+  if (any(diff(breaks) <= 0)) {
+    abort_input("{.arg breaks} must be strictly increasing.", arg = "breaks", call = call)
+  }
+  if (min(breaks) < 0) {
+    abort_input("{.arg breaks} must be non-negative.", arg = "breaks", call = call)
+  }
+  invisible(breaks)
+}
+
+#' The lag-distance breakpoints used when the user gives none
+#'
+#' @param d Distances between the locations.
+#' @param n_bins The number of distance classes, of equal width.
+#' @param max_dist The largest distance, by default a third of the largest one.
+#' @noRd
+default_distance_breaks <- function(d, n_bins = 14L, max_dist = NULL) {
+  seq(0, max_dist %||% (max(d) / 3), length.out = n_bins + 1)
+}
+
+#' The distance classes of an empirical variogram and the pairs in them
+#'
+#' @param d Distances between the locations, in the order of `dist()`.
+#' @param n The number of locations.
+#' @param breaks The lag-distance breakpoints, valid as in
+#'   `check_distance_breaks()`.
+#' @param distance_units The units of `d`, for messages.
+#' @param hint What to check when classes have no pairs, in cli markup.
+#' @param call The call named in input errors.
+#' @return A list with the mean `distance` of the pairs of each class, `NA` for
+#'   a class without pairs, their number, `n_pairs`, the zero-based locations
+#'   (`first_index` and `second_index`) and class (`bin_index`) of each pair
+#'   that is in a class, and the number of classes, `number_bins`.
+#' @noRd
+distance_classes <- function(d, n, breaks, distance_units, hint,
+                             call = rlang::caller_env()) {
+  distance_class <- as.integer(cut(d, breaks = breaks,
+                                   include.lowest = TRUE, right = TRUE))
+  included <- !is.na(distance_class)
+  if (!any(included)) {
+    range_d <- signif(range(d), 3)
+    abort_input(c("No pair of locations falls within the distance classes.", "i" = "Distances between locations range from {range_d[1]} to {range_d[2]} {distance_units}.", "i" = hint), arg = "breaks", call = call)
+  }
+  # Classes are closed on the right, so a class whose lower limit is at or
+  # beyond the largest distance cannot contain any pair
+  number_beyond <- sum(breaks[-length(breaks)] >= max(d))
+  if (number_beyond > 0L) {
+    largest <- signif(max(d), 3)
+    riskmap_warn(c("{number_beyond} distance class{?es} {?lies/lie} beyond the largest distance between locations, {largest} {distance_units}, and {cli::qty(number_beyond)}{?has/have} no pairs.", "i" = hint))
+  }
+
+  d <- d[included]
+  distance_class <- distance_class[included]
+  number_bins <- length(breaks) - 1L
+  n_pairs <- tabulate(distance_class, nbins = number_bins)
+  distance_sum <- numeric(number_bins)
+  summed_distances <- rowsum(d, distance_class, reorder = FALSE)
+  distance_sum[as.integer(rownames(summed_distances))] <- summed_distances[, 1L]
+  mean_distance <- distance_sum / n_pairs
+  mean_distance[n_pairs == 0L] <- NA_real_
+
+  first_index <- integer(n * (n - 1L) / 2L)
+  second_index <- integer(length(first_index))
+  position <- 1L
+  for (second in seq_len(n - 1L)) {
+    length_block <- n - second
+    indices <- position:(position + length_block - 1L)
+    first_index[indices] <- (second + 1L):n
+    second_index[indices] <- second
+    position <- position + length_block
+  }
+  list(distance = mean_distance, n_pairs = n_pairs,
+       first_index = first_index[included] - 1L,
+       second_index = second_index[included] - 1L,
+       bin_index = distance_class - 1L, number_bins = number_bins)
+}
+
+#' Empirical semivariances of several datasets at the same locations
+#'
+#' @param values A matrix with a location in each row and a dataset in each
+#'   column.
+#' @param classes Output from `distance_classes()`.
+#' @return A matrix with a distance class in each row and a dataset in each
+#'   column.
+#' @noRd
+binned_semivariances <- function(values, classes) {
+  cpp_binned_semivariances(values, classes$first_index, classes$second_index,
+                           classes$bin_index, classes$number_bins)
 }
 
 
@@ -129,31 +249,35 @@ global_rank_envelope <- function(curves, level) {
 ##' @description Computes the empirical semivariogram using lag-distance
 ##' breakpoints and, optionally, an extreme-rank-length global envelope for
 ##' spatial independence.
-##' @param data an object of class \code{sf} containing the variable for which the variogram
+##' @param data an object of class `sf` containing the variable for which the variogram
 ##' is to be computed and the coordinates
 ##' @param variable a character indicating the name of variable for which the variogram is to be computed.
 ##' @param breaks an optional numeric vector of lag-distance breakpoints.
 ##' If supplied, these breakpoints are used directly to define the distance classes.
-##' @param n_bins the number of lag-distance classes to generate when \code{breaks = NULL}.
-##' By default \code{n_bins = 14}.
-##' @param max_dist an optional maximum lag distance. When \code{breaks = NULL},
-##' the breakpoints are generated as \code{seq(0, max_dist, length.out = n_bins + 1)}.
-##' By default \code{max_dist = NULL} and the upper lag distance is set to \code{d_max/3},
-##' where \code{d_max} is the maximum observed distance in the data.
+##' A warning is raised when some classes lie entirely beyond the largest
+##' distance between locations, since they contain no pairs.
+##' @param n_bins the number of lag-distance classes to generate when `breaks = NULL`.
+##' By default `n_bins = 14`.
+##' @param max_dist an optional maximum lag distance. When `breaks = NULL`,
+##' the breakpoints are generated as `seq(0, max_dist, length.out = n_bins + 1)`.
+##' By default `max_dist = NULL` and the upper lag distance is set to `d_max/3`,
+##' where `d_max` is the maximum observed distance in the data.
 ##' @param n_permutations a non-negative integer indicating the number of random
 ##' permutations used with the observed curve to construct the global envelope.
-##' By default \code{n_permutations = 999}; set it to zero to omit the envelope.
+##' By default `n_permutations = 999`; set it to zero to omit the envelope.
 ##' @param level the simultaneous coverage probability of the global envelope.
-##' By default \code{level = 0.95}.
+##' By default `level = 0.95`.
+##' @param distance_crs `NULL` to retain an existing projected CRS, or
+##' automatically reproject longitude/latitude data to the CRS from
+##' [propose_crs()] (with a message naming the CRS and the units of
+##' distance). Alternatively, a CRS to reproject `data` to, which must itself
+##' be projected. A warning of class `riskmap_warning_crs` is raised when the
+##' CRS used distorts distances by more than 1% over the data.
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether
+##' the distances used in the variogram are expressed in kilometers or meters.
+##' By default `distance_units = "km"`, as in [glgpm()].
 ##' @param seed an optional non-negative integer seed for the permutations. The
 ##' caller's random-number state is restored before the function returns.
-##' @param distance_crs `NULL` to retain an existing projected CRS, or
-##' automatically reproject longitude/latitude data to an appropriate UTM CRS
-##' (with a message reporting the choice). Alternatively, a CRS to reproject
-##' `data` to, which must itself be projected.
-##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
-##' the distances used in the variogram are expressed in kilometers or meters.
-##' By default \code{distance_units = "m"}
 ##' @details The observed variogram is included among the permuted curves so
 ##' that they are exchangeable under the null hypothesis of spatial
 ##' independence. Curves are ordered by their extreme-rank-length ordering.
@@ -169,19 +293,21 @@ global_rank_envelope <- function(curves, level) {
 ##'     \item{distance}{the mean pair distance within each lag class}
 ##'     \item{semivariance}{the observed empirical semivariance}
 ##'     \item{n_pairs}{the number of pairs in the lag class}}
-##'   If \code{n_permutations > 0}, the data-frame also contains the following columns:
-##'.  \describe{
+##'   If `n_permutations > 0`, the data-frame also contains the following columns:
+##'   \describe{
 ##'     \item{lower_envelope}{the lower bound of the simultaneous envelope}
 ##'     \item{upper_envelope}{the upper bound of the simultaneous envelope}
 ##'   }}
-##'   \item{distance_units}{the value passed to \code{distance_units}}
+##'   \item{distance_units}{the value passed to `distance_units`}
 ##'   \item{n_permutations}{the number of permutations}
 ##'   \item{breaks}{the calculated breaks}
 ##'   \item{level}{the simultaneous coverage probability}
-##'   \item{envelope_method}{\code{"global_extreme_rank_length"}, or
-##'   \code{NULL} if no permutations were requested}
+##'   \item{envelope_method}{`"global_extreme_rank_length"`, or
+##'   `NULL` if no permutations were requested}
 ##'   }
 ##'
+##' @seealso [plot_variogram()], which `plot()` of the result also calls, and
+##'   [print.RiskMap_variogram()].
 ##' @examples
 ##' data(italy_sim)
 ##'
@@ -202,108 +328,67 @@ variogram <- function(data,
                       max_dist = NULL,
                       n_permutations = 999L,
                       level = 0.95,
-                      seed = NULL,
                       distance_crs = NULL,
-                      distance_units = c("m", "km")) {
+                      distance_units = c("km", "m"),
+                      seed = NULL) {
+  check_supplied(data)
+  check_supplied(variable)
 
   check_data(data)
 
   if (!is.character(variable) || length(variable) != 1L ||
       is.na(variable) || !nzchar(variable)) {
-    stop("'variable' must be a single object of class 'character'")
+    supplied <- describe_value(variable)
+    abort_input("{.arg variable} must be the name of one column of {.arg data}, not {supplied}.", arg = "variable")
   }
-  if (!variable %in% names(data)){
-    stop("'variable' must be one of the columns in 'data'")
+  if (!variable %in% names(data)) {
+    abort_input("{.arg variable} must name a column of {.arg data}, and {.val {variable}} doesn't.", arg = "variable")
   }
-  if (!is.null(breaks) && !missing(n_bins)){
-    stop("'breaks' and 'n_bins' cannot both be supplied")
+  if (!is.null(breaks) && !missing(n_bins)) {
+    abort_input("{.arg breaks} and {.arg n_bins} can't both be given.", arg = "breaks")
   }
-  if (!is.null(breaks) && !missing(max_dist)){
-    stop("'breaks' and 'max_dist' cannot both be supplied")
+  if (!is.null(breaks) && !is.null(max_dist)) {
+    abort_input("{.arg breaks} and {.arg max_dist} can't both be given.", arg = "breaks")
   }
   values <- data[[variable]]
   if (!is.numeric(values) || any(!is.finite(values))) {
-    stop("'variable' must contain only finite numeric values", call. = FALSE)
+    abort_input("The column {.val {variable}} must hold only finite numbers.", arg = "variable")
   }
   if (nrow(data) < 2L) {
-    stop("'data' must contain at least two locations", call. = FALSE)
+    abort_input("{.arg data} must have at least two locations.", arg = "data")
   }
 
   check_positive_integer(n_bins, "n_bins")
   if (!is.null(max_dist)) {
     check_range(max_dist, min = 0, max = Inf, allow_equal = FALSE,
-                name = "max_dist")
+                arg = "max_dist")
   }
   check_positive_integer(n_permutations, "n_permutations", allow_zero = TRUE)
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   if (n_permutations > 0L &&
       n_permutations + 1L < ceiling(1 / (1 - level))) {
-    stop("'n_permutations' is too small to construct a global envelope at ",
-         "the requested 'level'", call. = FALSE)
+    needed <- ceiling(1 / (1 - level)) - 1L
+    abort_input("{.arg n_permutations} must be at least {needed} for a global envelope at {.arg level} = {level}, not {n_permutations}.", arg = "n_permutations")
   }
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")))
-  distance_units <- match.arg(distance_units)
+  distance_units <- match_choice(distance_units)
 
   d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
                         distance_units)
   if (!length(d) || !is.finite(max(d)) || max(d) <= 0) {
-    stop("'data' must contain at least two distinct locations", call. = FALSE)
+    abort_input("{.arg data} must have at least two distinct locations.", arg = "data")
   }
 
   if (is.null(breaks)) {
-    upper_dist <- ifelse(is.null(max_dist), max(d) / 3, max_dist)
-    breaks <- seq(0, upper_dist, length.out = n_bins + 1)
+    breaks <- default_distance_breaks(d, n_bins, max_dist)
   } else {
-    if (!is.numeric(breaks) || length(breaks) < 2L || any(!is.finite(breaks))) {
-      stop("'breaks' must be a numeric vector with at least two values")
-    }
-    if (any(diff(breaks) <= 0)) {
-      stop("'breaks' must be strictly increasing")
-    }
-    if (min(breaks) < 0) {
-      stop("'breaks' must be non-negative")
-    }
-    upper_dist <- max(breaks)
+    check_distance_breaks(breaks)
   }
-  if (upper_dist > max(d)){
-    stop("the provided lag distances go beyond the maximum observed distance")
-  }
-  distance_class <- as.integer(cut(d, breaks = breaks,
-                                   include.lowest = TRUE, right = TRUE))
-  included <- !is.na(distance_class)
-  if (!any(included)) {
-    stop("the provided lag distances do not match the
-          scale of the observed distances; consider setting distance_units = 'km'")
-  }
-
-  d <- d[included]
-  distance_class <- distance_class[included]
-  number_bins <- length(breaks) - 1L
-  number_pairs <- length(d)
-  n_pairs <- tabulate(distance_class, nbins = number_bins)
-  distance_sum <- numeric(number_bins)
-  summed_distances <- rowsum(d, distance_class, reorder = FALSE)
-  distance_sum[as.integer(rownames(summed_distances))] <- summed_distances[, 1L]
-  mean_distance <- distance_sum / n_pairs
-  mean_distance[n_pairs == 0L] <- NA_real_
-
   n <- nrow(data)
-  first_index <- integer(n * (n - 1L) / 2L)
-  second_index <- integer(length(first_index))
-  position <- 1L
-  for (second in seq_len(n - 1L)) {
-    length_block <- n - second
-    indices <- position:(position + length_block - 1L)
-    first_index[indices] <- (second + 1L):n
-    second_index[indices] <- second
-    position <- position + length_block
-  }
-
-  first_index <- first_index[included] - 1L
-  second_index <- second_index[included] - 1L
-  bin_index <- distance_class - 1L
+  classes <- distance_classes(
+    d, n, breaks, distance_units,
+    "Check {.arg breaks}, {.arg max_dist} and {.arg distance_units}."
+  )
 
   if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
@@ -318,17 +403,16 @@ variogram <- function(data,
     )
   }
   permuted_values <- matrix(values[permutations], nrow = n)
-  curves <- cpp_binned_semivariances(permuted_values, first_index,
-                                     second_index, bin_index, number_bins)
+  curves <- binned_semivariances(permuted_values, classes)
 
   variogram_data <- data.frame(
-    distance = mean_distance,
+    distance = classes$distance,
     semivariance = curves[, 1L],
-    n_pairs = n_pairs
+    n_pairs = classes$n_pairs
   )
   envelope_method <- NULL
   if (n_permutations > 0L) {
-    nonempty <- n_pairs > 0L
+    nonempty <- classes$n_pairs > 0L
     envelope <- global_rank_envelope(curves[nonempty, , drop = FALSE], level)
     variogram_data$lower_envelope <- NA_real_
     variogram_data$upper_envelope <- NA_real_
@@ -347,49 +431,156 @@ variogram <- function(data,
   )
 
   class(result) <- "RiskMap_variogram"
-  return(result)
+  stamp_version(result)
 }
 
-##' @title Plot Method for RiskMap_variogram Objects
-##' @description Plots the empirical variogram generated by \code{\link{variogram}}
-##' @param x The output generated by the function \code{\link{variogram}}.
-##' @param plot_envelope A logical value indicating if the global envelope of spatial independence
-##' generated using the permutation test must be displayed (\code{plot_envelope = TRUE}) or not
-##' (\code{plot_envelope = FALSE}). By default \code{plot_envelope = TRUE}. Note: if
-##' \code{n_permutations} was 0 when running \code{\link{variogram}}, no envelope
-##' can be generated; a warning is raised and the envelope is skipped.
-##' @param color If \code{plot_envelope = TRUE}, it sets the colour of the envelope; run \code{vignette("ggplot2-specs")} for more details on this argument.
-##' @param ... Currently unused.
-##' @return A \code{ggplot} object representing the empirical variogram plot, optionally including the envelope of spatial independence.
-##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. If \code{plot_envelope} is set to \code{TRUE}, the plot also includes a simultaneous extreme-rank-length envelope for spatial independence.
-##' @seealso \code{\link{variogram}}
-##' @method plot RiskMap_variogram
+##' @title Print Method for RiskMap_variogram Objects
+##' @description Prints the distance classes and the envelope settings of an
+##' empirical variogram computed by [variogram()], followed by its
+##' table.
+##' @param x an object of class `RiskMap_variogram`.
+##' @param digits the number of significant digits to print. By default
+##' `digits = 3`.
+##' @param ... further arguments passed to [base::print.data.frame()].
+##' @return `x`, invisibly.
+##' @seealso [variogram()]
+##' @method print RiskMap_variogram
 ##' @export
-plot.RiskMap_variogram <- function(x,
-                                   plot_envelope = TRUE,
-                                   color = "royalblue1", ...) {
+print.RiskMap_variogram <- function(x, digits = 3, ...) {
+  out_print(format_variogram(x, digits, ...))
+  invisible(x)
+}
 
-  if (plot_envelope && x$n_permutations == 0L){
-    warning("No envelope for spatial independence can be plotted because 'n_permutations' ",
-            "was ", x$n_permutations, " when 'variogram()' was run; ",
-            "plotting without the envelope. Increase 'n_permutations' or set ",
-            "plot_envelope = FALSE to silence this warning.")
-    plot_envelope <- FALSE
+##' The lines that print an empirical variogram
+##' @noRd
+format_variogram <- function(x, digits, ...) {
+  classes <- nrow(x$variogram)
+  envelope <- if (x$n_permutations > 0L) {
+    paste0("The ", 100 * x$level, "% global envelope for spatial ",
+           "independence is from ", format_count(x$n_permutations),
+           " permutations.")
+  } else {
+    "There is no envelope, since `n_permutations` is 0."
+  }
+  outside <- if (x$n_permutations > 0L) {
+    # A class without pairs has no semivariance and no envelope, so it is
+    # neither inside nor outside.
+    table <- x$variogram
+    tested <- is.finite(table$semivariance) &
+      is.finite(table$lower_envelope) & is.finite(table$upper_envelope)
+    beyond <- sum(tested & (table$semivariance < table$lower_envelope |
+                              table$semivariance > table$upper_envelope))
+    untested <- classes - sum(tested)
+    c(i = paste0("The variogram is outside the envelope in ", beyond, " of ",
+                 sum(tested), " distance classes",
+                 if (untested > 0L) {
+                   paste0(", and ", untested,
+                          if (untested == 1L) " class has" else
+                            " classes have", " no envelope")
+                 }, "."))
+  }
+  # Counts are printed in full, whatever the number of digits
+  variogram_table <- x$variogram
+  variogram_table$n_pairs <- as.integer(variogram_table$n_pairs)
+  c(out_rule("Empirical variogram"),
+    out_text(paste0(classes, " distance classes from ",
+                    signif(min(x$breaks), digits), " to ",
+                    signif(max(x$breaks), digits), " ", x$distance_units,
+                    ". ", envelope)),
+    "",
+    out_capture(print(variogram_table, digits = digits, row.names = FALSE,
+                      ...)),
+    if (!is.null(outside)) "",
+    out_bullets(outside))
+}
+
+##' @title Plot an empirical variogram
+##' @description Plots the empirical variogram computed by [variogram()].
+##' `plot()` of a [variogram()] result does the same.
+##' @param x The result of [variogram()].
+##' @param envelope Whether to draw the global envelope for spatial
+##' independence from the permutations of [variogram()]. Defaults to `TRUE`.
+##' If [variogram()] was run with `n_permutations = 0`, there is no envelope,
+##' so a warning is raised and the variogram is drawn without it.
+##' @param colour The fill colour of the envelope. See
+##' `vignette("ggplot2-specs")` for the ways a colour can be given.
+##' @param show_pairs A logical value indicating if each point should be
+##' labelled with the number of pairs of locations in its distance class. A
+##' semivariance estimated from few pairs is unstable, so the labels help to
+##' judge how much each point can be trusted, and to choose the distance
+##' classes in [variogram()]. By default `show_pairs = FALSE`.
+##' @param ... For `plot()`, the arguments of `plot_variogram()`. For
+##'   `plot_variogram()`, not used, and an error if given, so that a misspelt
+##'   argument is not ignored.
+##' @return A `ggplot` object representing the empirical variogram plot, optionally including the envelope of spatial independence.
+##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. Each point is the semivariance of one distance class, and classes without pairs are omitted. Points are not joined by lines, because the empirical variogram is only defined for the distance classes. Both axes start at zero. With `envelope = TRUE`, the plot also includes a simultaneous extreme-rank-length envelope for spatial independence, and points that fall outside it are drawn in red.
+##' @seealso [variogram()]
+##' @examples
+##' data(galicia)
+##' galicia_variogram <- variogram(galicia, variable = "lead",
+##'                                distance_units = "km", seed = 1)
+##' plot_variogram(galicia_variogram, show_pairs = TRUE)
+##' # The same plot
+##' plot(galicia_variogram, show_pairs = TRUE)
+##' @export
+plot_variogram <- function(x, envelope = TRUE, colour = "royalblue1",
+                           show_pairs = FALSE, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_variogram", "plot_variogram", "variogram")
+  check_dots_unused(..., .hints = c(
+    plot_envelope = "It is now {.arg envelope}.",
+    color = "It is now {.arg colour}."
+  ))
+  check_logical(envelope)
+  check_logical(show_pairs)
+
+  if (envelope && x$n_permutations == 0L){
+    riskmap_warn(c("The variogram is plotted without an envelope for spatial independence, because {.fn variogram} was run with {.code n_permutations = 0}.", "i" = "Increase {.arg n_permutations}, or set {.code envelope = FALSE}."))
+    envelope <- FALSE
   }
 
-  basic_plot <- ggplot(data = x$variogram,
+  # Classes without pairs have no semivariance to show
+  variogram_data <- x$variogram[x$variogram$n_pairs > 0L, , drop = FALSE]
+
+  basic_plot <- ggplot(data = variogram_data,
                        aes(x = .data$distance, y = .data$semivariance))
 
-  if (plot_envelope) {
+  point_colours <- rep("black", nrow(variogram_data))
+  if (envelope) {
     basic_plot <- basic_plot +
       geom_ribbon(aes(ymin = .data$lower_envelope,
                       ymax = .data$upper_envelope),
-                  fill = color, alpha = 0.3)
+                  fill = colour, alpha = 0.3)
+    outside <- variogram_data$semivariance < variogram_data$lower_envelope |
+      variogram_data$semivariance > variogram_data$upper_envelope
+    point_colours[outside] <- "firebrick"
   }
 
-  basic_plot <- basic_plot + geom_point() + geom_line()
+  basic_plot <- basic_plot + geom_point(colour = point_colours, size = 2)
+
+  if (show_pairs) {
+    # Labels alternate above and below the points so that neighbouring
+    # labels do not overlap, and the top of the axis gets extra room.
+    labels <- variogram_data
+    labels$label <- format(labels$n_pairs, big.mark = ",", trim = TRUE)
+    labels$vjust <- ifelse(seq_len(nrow(labels)) %% 2L == 1L, -0.9, 1.9)
+    basic_plot <- basic_plot +
+      geom_text(data = labels,
+                aes(label = .data$label, vjust = .data$vjust),
+                size = 2.4, colour = "grey30") +
+      scale_y_continuous(expand = expansion(mult = c(0.05, 0.12)))
+  }
 
   x_label <- sprintf("Distance (%s)", x$distance_units)
 
-  basic_plot + labs(x = x_label, y = "Semivariance")
+  basic_plot +
+    expand_limits(x = 0, y = 0) +
+    labs(x = x_label, y = "Semivariance") +
+    theme_minimal() +
+    theme(panel.grid.minor = element_blank())
 }
+
+##' @rdname plot_variogram
+##' @method plot RiskMap_variogram
+##' @export
+plot.RiskMap_variogram <- function(x, ...) plot_variogram(x, ...)

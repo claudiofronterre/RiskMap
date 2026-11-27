@@ -2,9 +2,17 @@
 % Please edit documentation in R/extrapolation.R
 \name{assess_extrapolation}
 \alias{assess_extrapolation}
+\alias{print.RiskMap_extrapolation}
 \title{Assess where predictions extrapolate beyond the data}
 \usage{
-assess_extrapolation(object, newdata, spatial_threshold = 0.8)
+assess_extrapolation(
+  object,
+  newdata,
+  spatial_threshold = NULL,
+  sampling_noise = TRUE
+)
+
+\method{print}{RiskMap_extrapolation}(x, ...)
 }
 \arguments{
 \item{object}{A fitted \code{RiskMap} model.}
@@ -12,9 +20,27 @@ assess_extrapolation(object, newdata, spatial_threshold = 0.8)
 \item{newdata}{An \code{sf} object of prediction points with the covariates used
 by the model, typically a grid from \code{\link[=create_grid]{create_grid()}}.}
 
-\item{spatial_threshold}{Share of the spatial variance left unexplained by
-the data above which a location is classed as spatial extrapolation.
-Defaults to 0.8.}
+\item{spatial_threshold}{Threshold of the share of the spatial variance
+left unexplained above which a location is classed as spatial
+extrapolation. \code{NULL} (the default) uses the 95th percentile of the
+shares left at the sampled locations when their own data are left out
+(see Details). A number strictly between 0 and 1 gives a fixed
+threshold.}
+
+\item{sampling_noise}{Whether the share of the spatial variance left
+unexplained includes the sampling noise of the outcomes (the default).
+With \code{FALSE}, it depends only on where the data were collected and on
+the nugget, as if the spatial effect had been observed without noise at
+every sampled location.}
+
+\item{x}{A \code{RiskMap_extrapolation} object, whose \code{print()} method counts
+the locations in each class and states the thresholds of the classes,
+returning \code{x} invisibly.}
+
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored. A subset that lost the classes or the threshold prints
+as an \code{sf} object, or as a data frame if it lost the geometry, and the
+arguments go to its print method.}
 }
 \value{
 An \code{sf} object of class \code{RiskMap_extrapolation} with the rows and
@@ -28,19 +54,24 @@ as a share of that range (0 when all are within range).}
 largest distance outside its range, or \code{NA}.}
 \item{covariate_leverage}{Leverage relative to its maximum over the
 data.}
-\item{spatial_unexplained}{Share of the spatial variance not explained
-by the data.}
+\item{spatial_unexplained}{Share of the spatial variance left
+unexplained by the data, \eqn{v(x)}.}
 \item{extrapolation}{Factor with levels \code{"Supported"}, \code{"Spatial"},
 \code{"Covariate"} and \code{"Spatial and covariate"}.}
 }
-Rows with missing covariates have missing indicators. Map the result with
-\code{\link[=plot.RiskMap_extrapolation]{plot.RiskMap_extrapolation()}}.
+Rows with missing covariates, or with ones that give the model a covariate
+that isn't finite, such as \code{log(0)}, have missing indicators. The attribute
+\code{spatial_threshold} holds the threshold used, and \code{covariate_ranges} the
+range of each covariate in the data. Map the result with
+\code{\link[=plot_extrapolation]{plot_extrapolation()}}, or \code{plot()}, which does the same.
 }
 \description{
 Computes, for each prediction location, indicators of whether a prediction
 from a fitted geostatistical model relies on extrapolation, either in space
-(far from the data relative to the estimated spatial correlation) or in the
-covariates (outside the conditions observed in the data).
+(where the data say little about the spatial effect) or in the covariates
+(outside the conditions observed in the data). The spatial indicator, with
+its sampling noise and its default threshold, is experimental and may
+change in a minor release.
 }
 \details{
 Covariates are assessed on the model's scale, that is, as the columns of
@@ -54,35 +85,67 @@ the fitted design matrix, is reported relative to its maximum over the
 data. Values above 1 indicate a combination of covariates that is more
 unusual than any in the data, even when each covariate is within its range.
 
-The unexplained spatial variance is
-\eqn{1 - \rho(x)^\top (R + \nu^2 I)^{-1} \rho(x)}, where \eqn{\rho(x)}
-holds the estimated correlations between \eqn{x} and the sampled
-locations, \eqn{R} their correlation matrix, and \eqn{\nu^2} the ratio of
-the nugget (and, for Gaussian models, the measurement-error variance) to the
-spatial variance. It is close to 0 next to well-sampled locations and close
-to 1 where the data carry no information about the spatial effect. Unlike
-the distance to the nearest sampled location, it accounts for the estimated
-scale of spatial correlation and for clustering of the sampled locations. It depends
-only on where the data were collected, not on the outcomes or on the number
-of individuals at each location. For binomial and Poisson outcomes, which
-carry less information than a noise-free observation of the linear
-predictor, it is therefore an optimistic (lower) value.
+The share of the spatial variance left unexplained is
+\deqn{v(x) = 1 - \rho(x)^\top (R + \sigma^{-2} W)^{-1} \rho(x),}
+where \eqn{\rho(x)} holds the estimated correlations between \eqn{x} and
+the sampled locations, \eqn{R} their correlation matrix, \eqn{\sigma^2}
+the spatial variance, and \eqn{W} a diagonal matrix with
+\eqn{w_j = \tau^2 + c_j}, the nugget variance plus the sampling variance
+of the linear predictor at the sampled location \eqn{j}. For a Gaussian
+model, \eqn{c_j} is the measurement-error variance divided by the number
+of records at the location, and \eqn{v(x)} is
+\eqn{\mathrm{Var}[S(x) \mid y] / \sigma^2} at the estimated parameters. For
+binomial, Poisson and negative binomial models, \eqn{c_j} is the inverse of
+the information \eqn{-\partial^2 \log f(y \mid \eta) / \partial \eta^2}
+of the records at the location, summed over them and evaluated at the
+conditional mode of the spatial effect given the data at the estimated
+parameters, so that \eqn{v(x)} is the Laplace approximation of
+\eqn{\mathrm{Var}[S(x) \mid y] / \sigma^2}. With \code{sampling_noise = FALSE},
+\eqn{c_j = 0}.
+
+\eqn{v(x)} is close to 0 where the data determine the spatial effect and
+close to 1 where they carry no information about it. Unlike the distance
+to the nearest sampled location, it accounts for the estimated scale of
+spatial correlation, for clustering of the sampled locations and for how
+much the data at each location say about the spatial effect, which is
+little where few individuals were sampled or where a prevalence is close
+to 0 or 1. The variances of \code{re()} terms are not included in \eqn{W}, so
+for models with \code{re()} terms \eqn{v(x)} is lower than the share they
+leave.
 
 A location is classed as covariate extrapolation when any covariate lies
 outside its observed range or its relative leverage exceeds 1, and as
-spatial extrapolation when its unexplained spatial variance exceeds
-\code{spatial_threshold}. The two are kept separate because they call for
-different responses: more sampling where data are sparse, and caution about
-the form of the covariate effects outside the observed conditions.
+spatial extrapolation when \eqn{v(x)} exceeds the threshold. By default
+the threshold is the 95th percentile over the sampled locations
+\eqn{s_j} of
+\deqn{v_{-j} = \mathrm{Var}[S(s_j) \mid y_{-j}] / \sigma^2
+  = 1 / [(R + \sigma^{-2} W)^{-1}]_{jj} - w_j / \sigma^2,}
+the share left at \eqn{s_j} by the data of the other locations.
+Leave-one-out cross-validation predicts at each sampled location from the
+others, so the \eqn{v_{-j}} are the amounts of spatial information under
+which predictions can be checked against held-out data, and a location
+above their 95th percentile has less than nearly all of them. A percentile
+rather than the largest value keeps a single remote sampled location from
+setting the threshold. The percentile is 1 only when the data of the
+other locations say nothing about the spatial effect at more than 5\% of
+the sampled locations, as when the locations share almost no spatial
+correlation. No location can then be classed as spatial extrapolation, so
+\code{assess_extrapolation()} warns, and a fixed \code{spatial_threshold} is more
+informative. The two
+classes are kept separate because they call for different responses: more
+sampling where data are sparse, and caution about the form of the
+covariate effects outside the observed conditions.
 }
 \examples{
 data(italy_sim)
-example_data <- italy_sim[1:50, ]
+example_data <- italy_sim[1:150, ]
 fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
              family = "gaussian", messages = FALSE)
-extrapolation <- assess_extrapolation(fit, italy_sim[51:100, ])
+extrapolation <- assess_extrapolation(fit, italy_sim[151:200, ])
+extrapolation
 table(extrapolation$extrapolation)
 }
 \seealso{
-\code{\link[=plot.RiskMap_extrapolation]{plot.RiskMap_extrapolation()}}, \code{\link[=predict.RiskMap]{predict.RiskMap()}}
+\code{\link[=plot_extrapolation]{plot_extrapolation()}}, \code{\link[=predict.RiskMap]{predict.RiskMap()}}, and \link{assessment} for
+the other assessments of a model.
 }

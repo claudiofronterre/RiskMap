@@ -12,24 +12,23 @@
 ##'   \item{date}{Date. Exact collection date (local).}
 ##'   \item{trap_nights}{Integer. Number of trap-nights for the event.}
 ##'   \item{trap_type}{Character. Acronym for trap type used to collect mosquitoes. These include:
-##'   \code{"NJLT"} (New Jersey Light Trap), \code{"GRVD"} (Gravid Trap), and \code{"MMT"} (Mosquito Magnet Trap).}
+##'   `"NJLT"` (New Jersey Light Trap), `"GRVD"` (Gravid Trap), and `"MMT"` (Mosquito Magnet Trap).}
 ##'   \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
 ##' }
 ##' @details
-##' Derived from the \pkg{vectorsurvR} sample datasets by:
-##' \enumerate{
-##' \item Filtering to female *Culex pipiens* collection records within the Sacramento
-##' Metropolitan Area (SMA) using point-in-polygon against the union of Sacramento, Placer,
-##' and El Dorado county boundaries.
-##' \item Summing counts and trap-nights per unique \emph{location}–\emph{date}–\emph{trap type}.
-##' \item The coordinate reference system is 4326.
-##' }
+##' Derived from the \pkg{vectorsurvR} sample datasets in two steps.
+##' 1. Filtering to female *Culex pipiens* collection records within the
+##'    Sacramento Metropolitan Area (SMA), using point-in-polygon against the
+##'    union of the Sacramento, Placer and El Dorado county boundaries.
+##' 2. Summing counts and trap-nights per unique *location*–*date*–*trap type*.
+##'
+##' The coordinate reference system is 4326.
 ##'
 ##' This sample dataset is intended for examples, mapping, and vector-index workflows. It is
 ##' not official surveillance output. Dates span the same period as the \pkg{vectorsurvR}
 ##' sample (e.g., 2015–2021).
 ##'
-##' @source Constructed from \code{sample_collections} in the \code{vectorsurvR} R package.
+##' @source Constructed from `sample_collections` in the `vectorsurvR` R package.
 ##'
 ##' @docType data
 ##' @name abund_sma
@@ -52,9 +51,10 @@ NULL
 ##'  \item{An.gambiae}{Counts of *Anopheles gambiae*.}
 ##'  \item{Total}{Total counts of *Anopheles coluzzii* and *Anopheles gambiae*.}
 ##'  \item{elevation}{Elevation in meters of the sampled location.}
-##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
+##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 ##' }
-##' @details The coordinate reference system is 3857.
+##' @details The coordinate reference system is WGS 84 / UTM zone 32N
+##'   (EPSG:32632), which distorts distances by less than 0.1% over the data.
 ##' @source Tene Fossog, B., Ayala, D., Acevedo, P., Kengne, P., Ngomo Abeso Mebuy,
 ##' I., Makanga, B., et al. (2015) Habitat segregation and ecological character displacement in cryptic African malaria
 ##' mosquitoes. *Evolutionary Applications*, 8 (4), 326-345.
@@ -88,31 +88,30 @@ NULL
 ##' @format An sf object with one row per tested pool (for a total of 596 pools) and 4 variables:
 ##' \describe{
 ##'   \item{est_pool_n}{Integer. Estimated number of mosquitoes in the pool (see Details).}
-##'   \item{wnv_pos}{Logical. Whether the pool tested positive for West Nile virus (\code{TRUE}/\code{FALSE}).}
+##'   \item{wnv_pos}{Logical. Whether the pool tested positive for West Nile virus (`TRUE`/`FALSE`).}
 ##'   \item{date}{Date. Pool collection date (local).}
 ##'   \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
 ##' }
 ##'
 ##' @details
-##' Derived from the \pkg{vectorsurvR} sample datasets by:
-##' \itemize{
-##' \item Filtering to female \emph{Culex pipiens} pools with WNV testing within the SMA
-##' using point-in-polygon against the union of Sacramento, Placer, and El Dorado counties.
-##' \item Estimating pool size \code{est_pool_n} for each pool by:
-##'   \itemize{
-##'     \item Summing total female counts from nearby collection points within the \emph{same week}
-##'           and within a spatial radius (e.g., 2 km) to obtain \eqn{T_{\mathrm{near}}}.
-##'     \item Counting nearby pools within the same week/radius to obtain \eqn{m_{\mathrm{near}}}.
-##'     \item Setting \code{est_pool_n = round(max(1, T_near / m_near))}; if no nearby collections are found,
-##'           a conservative fallback (default 25) is used.
-##'   }
-##' \item The coordinate reference system is 4326.
-##' }
+##' Derived from the \pkg{vectorsurvR} sample datasets in two steps.
+##' - Filtering to female *Culex pipiens* pools with WNV testing within the
+##'   SMA, using point-in-polygon against the union of the Sacramento, Placer
+##'   and El Dorado counties.
+##' - Estimating the size `est_pool_n` of each pool.
+##'   - The total female counts from nearby collection points within the
+##'     *same week* and within a spatial radius (for example 2 km) are summed
+##'     to obtain \eqn{T_{\mathrm{near}}}.
+##'   - The nearby pools within the same week and radius are counted to
+##'     obtain \eqn{m_{\mathrm{near}}}.
+##'   - `est_pool_n` is `round(max(1, T_near / m_near))`, or a conservative
+##'     fallback of 25 if no nearby collections are found.
 ##'
-##' \strong{Important:} \code{est_pool_n} is an estimate for demonstration and pooled-modelling
-##' examples; it is not the recorded laboratory pool size.
+##' The coordinate reference system is 4326. `est_pool_n` is an estimate for
+##' demonstration and pooled-modelling examples, not the recorded laboratory
+##' pool size.
 ##'
-##' @source Constructed from \code{sample_collections} in the \code{vectorsurvR} R package.
+##' @source Constructed from `sample_collections` in the `vectorsurvR` R package.
 ##' @docType data
 ##' @name infect_sma
 ##' @aliases infect_sma
@@ -134,11 +133,15 @@ NULL
 ##'  \item{ID_loc}{an ID identifying the location to which the observation belong.}
 ##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 ##' }
-##' @details The coordinate reference system is 32634.
+##' @details The coordinate reference system is WGS 84 / UTM zone 33N
+##'   (EPSG:32633), which distorts distances by less than 0.5% over the data.
+##'   The outcome was simulated in UTM zone 34N (EPSG:32634), so its spatial
+##'   correlation is isotropic in those coordinates, and its range in the
+##'   coordinates of the data varies by up to about 1.4% over Italy.
 NULL
 
 ##' @title River-blindness in Liberia
-##' @description Counts of reported onchocerciasis (or riverblindess)
+##' @description Counts of reported onchocerciasis (or river blindness)
 ##' cases from 90 villages sampled across Liberia.
 ##' @docType data
 ##' @keywords datasets
@@ -239,7 +242,7 @@ NULL
 ##' @usage data(malnutrition)
 ##' @format An sf object with 2671 rows and 9 variables:
 ##' \describe{
-##'  \item{age}{age in months of the child.}
+##'  \item{age}{age of the child in years.}
 ##'  \item{sex}{sex of the child.}
 ##'  \item{HAZ}{height-for-age Z-score.}
 ##'  \item{WAZ}{weight-for-age Z-score.}
@@ -256,9 +259,7 @@ NULL
 
 ##' @title Covariates Dataset for Malaria Prediction in Tanzania
 ##'
-##' @description This dataset provides covariates over a 10 by 10 km regular grid covering Tanzania. It is intended to be used together with the `tz_malaria` dataset for spatial prediction of malaria prevalence.
-##'
-
+##' @description Covariates at the centres of the cells of a regular 10 by 10 km grid covering Tanzania, for spatial prediction of malaria prevalence from the `tz_malaria` dataset. Each covariate has the units it has in `tz_malaria`, and EVI, Temperature, NTL and Precipitation come from the same rasters.
 ##'
 ##' @name tz_covariates
 ##' @docType data
@@ -266,18 +267,29 @@ NULL
 ##' @keywords datasets
 ##' @format An sf object with 8740 observations of 7 variables:
 ##' \describe{
-##'   \item{Population}{Population density in the area (in thousands).}
-##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
-##'   \item{EVI}{Enhanced Vegetation Index, indicating vegetation density.}
-##'   \item{Temperature}{Average temperature in degrees Celsius.}
-##'   \item{NTL}{Nighttime light intensity, indicating urbanization and infrastructure.}
-##'   \item{Precipitation}{Total precipitation in millimeters.}
-##'   \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
+##'   \item{Population}{Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.}
+##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN), from a modelled surface whose source is not recorded. Missing at 8 points.}
+##'   \item{EVI}{Enhanced vegetation index from MODIS (about 500 m), the mean over 2015, without units, which indicates the density of vegetation.}
+##'   \item{Temperature}{Daytime land surface temperature from MODIS (band `LST_Day_1km`, about 1 km), the mean over 2015, in degrees Celsius. Missing at 2 points, where the raster has no value.}
+##'   \item{NTL}{Night-time light from the VIIRS Day/Night Band monthly composites (about 500 m), the mean radiance over 2015, in nanowatts per square centimetre per steradian. Small negative values at 41 points are noise of the sensor.}
+##'   \item{Precipitation}{Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres. Missing at 1 point, where the raster has no value.}
+##'   \item{geometry}{Simple feature geometry (POINT) giving the coordinates of the centres of the cells in metres}
 ##' }
-##' @details The coordinate reference system is 32736.
+##' @details The coordinate reference system is 32736. EVI, Temperature, NTL
+##'   and Precipitation are the values at the grid points of the rasters that
+##'   give these covariates in `tz_malaria`, and ITN is a percentage, as in
+##'   `tz_malaria`. Before RiskMap 2.0.0 they came from other products or
+##'   processing, ITN was a proportion and -9999 marked a missing value, so
+##'   that predictions from models with Temperature, NTL or ITN were wrong. The
+##'   script `data-raw/tz_covariates.R` in the source repository of RiskMap
+##'   made the change.
 ##' @source Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. (2021)
 ##'  Model building and assessment of the impact of covariates for disease prevalence
 ##'  mapping in low-resource settings: to explain and to predict. *J. R. Soc. Interface* 18: 20210104. \doi{10.1098/rsif.2021.0104}
+##'
+##'  The covariates come from MODIS (EVI and land surface temperature), the
+##'  VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+##'  WorldPop (population density).
 NULL
 
 ##' @title Malaria Dataset from Tanzania Demographic Health Surveys 2015
@@ -295,12 +307,12 @@ NULL
 ##'   \item{Pf}{Number of individuals tested positive for Plasmodium falciparum (malaria parasite).}
 ##'   \item{PfPR2.10}{Plasmodium falciparum parasite rate in the population (aged 2-10 years).}
 ##'   \item{Method}{Method used for malaria diagnosis (e.g., Rapid Diagnostic Test (RDT)).}
-##'   \item{EVI}{Enhanced Vegetation Index, indicating vegetation density.}
-##'   \item{Temperature}{Average temperature in degrees Celsius.}
-##'   \item{Precipitation}{Total precipitation in millimeters.}
-##'   \item{Population}{Population density in the area (in thousands).}
-##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
-##'   \item{NTL}{Nighttime light intensity, indicating urbanization and infrastructure.}
+##'   \item{EVI}{Enhanced vegetation index from MODIS (about 500 m), the mean over 2015, without units, which indicates the density of vegetation.}
+##'   \item{Temperature}{Daytime land surface temperature from MODIS (band `LST_Day_1km`, about 1 km), the mean over 2015, in degrees Celsius.}
+##'   \item{Precipitation}{Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres. Missing for 2 clusters.}
+##'   \item{Population}{Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.}
+##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN), from a modelled surface whose source is not recorded.}
+##'   \item{NTL}{Night-time light from the VIIRS Day/Night Band monthly composites (about 500 m), the mean radiance over 2015, in nanowatts per square centimetre per steradian.}
 ##'   \item{Urban.Rural}{Indicator of whether the area is urban ('U') or rural ('R').}
 ##'   \item{elogit}{Empirical logit transformation of the positive cases - `elogit(Pf, Ex)`}
 ##'   \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
@@ -311,11 +323,15 @@ NULL
 ##' @usage data(tz_malaria)
 ##' @keywords datasets
 ##'
-##' @source \href{https://dhsprogram.com}{Tanzania Demographic Health Surveys 2015},
+##' @source [Tanzania Demographic Health Surveys 2015](https://dhsprogram.com),
 ##' Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. (2021)
 ##' Model building and assessment of the impact of covariates for disease prevalence
 ##' mapping in low-resource settings: to explain and to predict.
 ##' J. R. Soc. Interface 18: 20210104. \doi{10.1098/rsif.2021.0104}
+##'
+##' The covariates come from MODIS (EVI and land surface temperature), the
+##' VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+##' WorldPop (population density), at the coordinates of the clusters.
 NULL
 
 

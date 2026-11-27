@@ -8,7 +8,7 @@
 ##' @param object A fitted `RiskMap` object returned by [glgpm()].
 ##' @param newdata An `sf` object with point geometries and the variables needed
 ##'   by the fitted model. When `NULL`, predictions are made at the observed
-##'   locations.
+##'   locations, with one row for each record of the data.
 ##' @param boundaries Optional `sf` polygon object. When supplied, prediction
 ##'   locations are assigned to polygons and their joint samples are aggregated
 ##'   within each polygon. Grids returned by [create_grid()] use exact
@@ -22,27 +22,38 @@
 ##'   `list(mean = "mean", q90 = function(values, weights) ...)`. A custom
 ##'   function receives a location-by-draw matrix and the location weights and
 ##'   must return one numeric value per draw.
-##' @param type Character string specifying `"auto"`, `"marginal"`, or
-##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
-##'   joint prediction when `boundaries` are supplied.
+##' @param joint `NULL`, `TRUE` or `FALSE`. With `TRUE` the predictive draws
+##'   at the locations are joint, so they keep the dependence between
+##'   locations, and with `FALSE` each location is drawn on its own (marginal
+##'   prediction), which is faster for many locations. `NULL`, the default,
+##'   draws jointly when `boundaries` are given and marginally otherwise.
+##'   Summaries over `boundaries` need joint draws, so `FALSE` can't be used
+##'   with them. At the observed locations of a binomial, Poisson or negative
+##'   binomial fit the draws are the joint conditional samples whatever
+##'   `joint` is.
 ##' @param include `NULL`, or a character vector specifying optional components
 ##'   to add to the complete linear predictor and response. Supported values are
 ##'   `"random_effects"`, for conditional predictions at known groups, and
 ##'   `"nugget"`, for a new realization of observation-level predictive
 ##'   variation at locations supplied through `newdata`. Fixed effects, the
-##'   spatial process and any offset are always returned separately.
+##'   spatial process and any offset are always returned separately. A level of
+##'   a random effect that isn't in the data of the fit stops a prediction that
+##'   includes `"random_effects"`, and doesn't matter to one that doesn't. The
+##'   nugget is one value for each location, so with joint draws rows of
+##'   `newdata` at the same location share it, as they share the spatial
+##'   process.
 ##' @param transform Optional named list of functions defining derived predictive
 ##'   targets from the complete linear-predictor draws. Each function receives a
 ##'   location-by-draw matrix and must return a numeric matrix with the same
 ##'   dimensions. The ordinary response-scale prediction is always calculated,
 ##'   so this argument is needed only for additional scientific targets, for
 ##'   example `list(stunting = function(link) pnorm((-2 - link) / sd_child))`.
-##' @param standardize Optional data frame describing a common reference
+##' @param standardise Optional data frame describing a common reference
 ##'   population over which response-scale predictions are averaged. Its columns
 ##'   must be fixed-effect predictors from the fitted model and override the
 ##'   corresponding columns in `newdata`. Rows receive equal weight unless an
 ##'   optional numeric `.weight` column is supplied. Predictor values kept
-##'   together on each row are standardized jointly, preserving their empirical
+##'   together on each row are standardised jointly, preserving their empirical
 ##'   association. This answers what would be predicted if every location had
 ##'   the same reference-population distribution. `.weight` weights reference
 ##'   people or profiles and is distinct from the polygon `weights` argument.
@@ -79,15 +90,18 @@
 ##'   samples stored in the fit are not used in that case, because they
 ##'   condition on the estimate only; `control_mcmc`, if supplied, sets only
 ##'   the total number of predictive draws.
-##' @param seed Optional integer seed for random draws made during prediction.
-##'   The caller's random-number state is restored on exit. When supplied, this
-##'   seed takes precedence over a seed stored in `control_mcmc` for this call.
+##' @param seed Optional integer seed for random draws made during prediction,
+##'   including a fresh conditional MCMC run. The caller's random-number state
+##'   is restored on exit.
 ##' @param keep_samples Logical. If `TRUE`, retain the minimal latent samples
 ##'   needed for custom post-processing. Predictive samples are generated to
 ##'   calculate summaries regardless of this setting, but are discarded by
 ##'   default to limit memory use.
-##' @param messages Logical. Display progress messages.
-##' @param ... Additional arguments reserved for future prediction methods.
+##' @param messages Logical. Display messages, and a progress bar while
+##'   predicting at many locations, as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
+##' @param ... Not used, and an error if given, so that a misspelt or former
+##'   argument such as `type` is not ignored.
 ##'
 ##' @details
 ##' At new locations, the default prediction represents the underlying spatial
@@ -108,35 +122,45 @@
 ##'
 ##' Plug-in prediction treats the estimated parameters as known, so its
 ##' intervals can be too narrow when the parameters, in particular the spatial
-##' variance and range, are poorly estimated, as in small or low-prevalence
+##' variance and scale, are poorly estimated, as in small or low-prevalence
 ##' surveys. With `parameter_uncertainty = TRUE`, `parameter_draws` parameter
 ##' values are drawn from the approximate sampling distribution of the
 ##' estimate: a multivariate normal distribution with the estimated covariance
 ##' matrix, on the scale on which the model is estimated (log variances and
-##' log range). For each value, conditional samples of the latent effects are
+##' log scale). For each value, conditional samples of the latent effects are
 ##' generated at that value and the prediction is repeated; the draws are then
 ##' pooled, so every summary, aggregation and derived target reflects both the
-##' latent and the parameter uncertainty. For binomial and Poisson models the
+##' latent and the parameter uncertainty. For binomial, Poisson and negative binomial models the
 ##' conditional samples at each parameter value come from a short run of the
 ##' same Langevin (MALA) sampler used for plug-in prediction, in coordinates
-##' whitened by the Laplace approximation at that value, started at its mode
-##' and using the step size tuned at the estimate (500 burn-in iterations,
-##' then thinning by 10). The total number of predictive draws equals that of
-##' plug-in prediction. Parameters
+##' whitened by the Laplace approximation at that value, started from a draw
+##' of that approximation and using the step size tuned at the estimate (100
+##' burn-in iterations, then thinning by 10). The total number of predictive
+##' draws equals that of plug-in prediction, 2,000 by default. Parameters
 ##' without a finite positive variance, such as those held at a boundary, keep
-##' their estimated value. When the covariance matrix of the estimates is not
+##' their estimated value. So does a variance, a scale or a size whose
+##' logarithm has a standard error above 3, as a variance of a Gaussian model
+##' estimated at zero has, because draws on the log scale would span more than
+##' five orders of magnitude. The other parameters are then drawn given it, and
+##' a warning names it unless it is a variance close to zero. When the
+##' covariance matrix of the estimates is not
 ##' available, an error is returned; refitting with
 ##' `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
 ##' column `fixed` then reports the average fixed-effect contribution.
 ##'
-##' At the observed locations, the conditioned location-level Gaussian effect
-##' already includes the fitted nugget when the model has one. Consequently,
+##' At the observed locations of a binomial, Poisson or negative binomial fit
+##' with a nugget, the effect of each location is drawn given the data and
+##' already includes the nugget. At those of a Gaussian fit the prediction is of
+##' the spatial process \eqn{S(x)}, without the nugget, as it is at new
+##' locations, and [fitted()][fitted.RiskMap()] gives the fitted values with the
+##' nugget and the random effects of the data. For every family,
 ##' `include = "nugget"` is available only for predictions supplied through
 ##' `newdata`, where it represents a new independent nugget realization.
 ##'
 ##' `newdata` and `boundaries` are transformed internally to the fitted model
 ##' CRS without changing row order; returned geometries remain in their input
-##' CRS. Rows with missing required predictors are retained with `NA`
+##' CRS. Rows with missing required predictors, or with predictors that give the
+##' model a covariate that isn't finite, such as `log(0)`, are retained with `NA`
 ##' predictions and an informative warning.
 ##'
 ##' When `boundaries` are supplied, one prediction run produces both the
@@ -181,14 +205,14 @@
 ##' `response_exceedance_0.2` and `response_exceedance_0.5`; polygon output
 ##' stores thresholds in the tidy `threshold` column.
 ##'
-##' When `standardize` is supplied, every conditional spatial draw is reused
+##' When `standardise` is supplied, every conditional spatial draw is reused
 ##' across all rows of the reference population. The response and any derived
 ##' targets are evaluated for each reference profile and then averaged using
-##' `.weight`. This is direct standardization (empirical or counterfactual
+##' `.weight`. This is direct standardisation (empirical or counterfactual
 ##' averaging), not simulation of uncertain predictors. The reported `fixed`
 ##' and `link_*` quantities use the weighted mean fixed-effect contribution;
 ##' with a nonlinear link, transforming that mean is not the same as the
-##' standardized `response_*` quantity.
+##' standardised `response_*` quantity.
 ##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
@@ -201,22 +225,28 @@
 ##'     is the row number of the corresponding polygon in `boundaries`.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
-##'     samples for location-level prediction, and, with parameter
+##'     samples for location-level prediction, with one row for each row of
+##'     `predictions`, and, with parameter
 ##'     uncertainty, the fixed-effect contribution of each draw (`fixed`).
 ##'     For polygon aggregation it is nested first by aggregation and then by
 ##'     component, with one matrix row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
 ##'   \item{transform}{Names of additional derived predictive targets.}
-##'   \item{standardized}{Whether response predictions were averaged over a
-##'     reference population supplied through `standardize`.}
+##'   \item{standardised}{Whether response predictions were averaged over a
+##'     reference population supplied through `standardise`.}
 ##'   \item{aggregate}{Names of the within-polygon aggregations.}
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
-##'   \item{type}{Whether prediction was marginal or joint.}
+##'   \item{weights}{Name of the weights column used for the polygon
+##'     summaries, or `NULL`.}
+##'   \item{joint}{`TRUE` when the draws were joint and `FALSE` when they were
+##'     marginal.}
 ##'   \item{parameter_draws}{The number of parameter draws when parameter
 ##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
+##'   \item{link}{The link of the fit when it is not the canonical one, its
+##'     name or `"custom"`, and `NULL` for the canonical link.}
 ##'   \item{response_name}{Name of the response variable, used to label
 ##'     maps of Gaussian predictions.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
@@ -253,13 +283,13 @@
 ##'
 ##' # Use the same reference distribution of population density at each location
 ##' reference_population <- data.frame(pop_dens = example_data$pop_dens)
-##' standardized_prediction <- predict(
+##' standardised_prediction <- predict(
 ##'   fit,
 ##'   newdata = example_data[1:5, ],
-##'   standardize = reference_population,
+##'   standardise = reference_population,
 ##'   messages = FALSE
 ##' )
-##' standardized_prediction$predictions
+##' standardised_prediction$predictions
 ##'
 ##' # Aggregate joint predictions within two example areas
 ##' areas <- sf::st_sf(
@@ -275,7 +305,12 @@
 ##' )
 ##' areal_prediction$boundary_summary
 ##'
-##' @seealso [glgpm()], [fitted()], [set_control_mcmc()]
+##' @seealso The methods for a prediction are
+##'   [print()][print.RiskMap_prediction()],
+##'   [to_table()][to_table.RiskMap_prediction()] and [plot_prediction()],
+##'   which `plot()` of the prediction also calls. [assess_extrapolation()]
+##'   shows where predictions go beyond the data, and
+##'   [fitted()][fitted.RiskMap()] gives the fitted values at the data.
 ##' @method predict RiskMap
 ##' @export
 predict.RiskMap <- function(
@@ -283,10 +318,10 @@ predict.RiskMap <- function(
     newdata = NULL,
     boundaries = NULL,
     aggregate = NULL,
-    type = c("auto", "marginal", "joint"),
+    joint = NULL,
     include = NULL,
     transform = NULL,
-    standardize = NULL,
+    standardise = NULL,
     summaries = c("mean", "lower", "upper"),
     thresholds = NULL,
     level = 0.95,
@@ -296,8 +331,12 @@ predict.RiskMap <- function(
     parameter_draws = 50L,
     seed = NULL,
     keep_samples = FALSE,
-    messages = TRUE,
+    messages = getOption("RiskMap.messages", TRUE),
     ...) {
+  check_dots_unused(..., .hints = c(
+    type = "Use {.arg joint} to choose between joint and marginal draws. The response, link and spatial effect are always predicted.",
+    standardize = "It is spelt {.arg standardise}."
+  ))
 
   if (is.null(include)) include <- character()
   check_logical(parameter_uncertainty)
@@ -319,11 +358,11 @@ predict.RiskMap <- function(
     argument_name = "summaries"
   )
   transform <- normalise_prediction_transforms(transform)
-  standardize <- validate_prediction_standardize(object, standardize)
+  standardise <- validate_prediction_standardise(object, standardise)
 
   type <- validate_prediction_options(
     object = object,
-    type = type,
+    joint = joint,
     include = include,
     boundaries = boundaries,
     aggregate = aggregate,
@@ -337,23 +376,26 @@ predict.RiskMap <- function(
     messages = messages
   )
   if (!is.null(seed)) {
-    if (!is.null(control_mcmc)) control_mcmc$seed <- NULL
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
     set.seed(seed)
   }
   observed_locations <- is.null(newdata)
   if (observed_locations && "nugget" %in% include) {
-    stop("At observed locations the conditioned location-level effect already includes the nugget; do not request include = \"nugget\"",
-         call. = FALSE)
+    reason <- if (fit_is_exact(object)) {
+      "The prediction there is of the spatial process, without the nugget of the data, which {.fn fitted} includes. For a new realisation of it, give the locations as {.arg newdata}."
+    } else {
+      "There the effect of each location is drawn given the data, and it already includes the nugget."
+    }
+    abort_input(c("{.arg include} can't contain {.val nugget} at the observed locations.", "i" = reason), arg = "include")
   }
   prediction_input <- validate_prediction_data(
-    object, newdata, include, standardize
+    object, newdata, include, standardise, messages = messages,
+    check_finite = TRUE
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
-      stop("'newdata' must be supplied when aggregating predictions over 'boundaries'",
-           call. = FALSE)
+      abort_input("{.arg newdata} must be given to aggregate predictions over {.arg boundaries}.", arg = "newdata")
     }
     return(predict_over_boundaries(
       object = object,
@@ -362,7 +404,7 @@ predict.RiskMap <- function(
       aggregate = aggregate,
       include = include,
       transform = transform,
-      standardize = standardize,
+      standardise = standardise,
       summaries = summaries,
       thresholds = thresholds,
       level = level,
@@ -386,25 +428,32 @@ predict.RiskMap <- function(
       samples = NULL,
       include = include,
       transform = names(transform),
-      standardized = !is.null(standardize),
+      standardised = !is.null(standardise),
       aggregate = NULL,
       summaries = names(summaries),
       thresholds = thresholds,
       level = level,
-      type = type,
+      joint = type == "joint",
       family = object$family,
+      link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = observed_locations,
       parameter_draws = parameter_draws,
-      coverage = NULL
+      coverage = NULL,
+      weights = NULL
     )
     class(out) <- "RiskMap_prediction"
-    return(out)
+    return(stamp_version(out))
   }
+  # At the observed locations of a non-Gaussian fit the draws are the joint
+  # conditional samples.
+  joint_draws <- type == "joint" ||
+    (observed_locations && !fit_is_exact(object))
   sample_components <- prediction_sample_components(
     object, prediction_data, type, include, control_mcmc, messages,
     observed_locations = observed_locations, transform = transform,
-    standardize = standardize, parameter_draws = parameter_draws
+    standardise = standardise, parameter_draws = parameter_draws,
+    mcmc_seed = seed
   )
   output_data <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
@@ -427,85 +476,83 @@ predict.RiskMap <- function(
     samples = samples,
     include = include,
     transform = names(transform),
-    standardized = !is.null(standardize),
+    standardised = !is.null(standardise),
     aggregate = NULL,
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    type = type,
+    joint = joint_draws,
     family = object$family,
+    link = fit_link(object),
     response_name = prediction_response_name(object),
     observed_locations = observed_locations,
     parameter_draws = parameter_draws,
-    coverage = NULL
+    coverage = NULL,
+    weights = NULL
   )
   class(out) <- "RiskMap_prediction"
-  out
+  stamp_version(out)
 }
 
 #' Validate the unified prediction options
+#' @param call The call named in input errors, so that they name
+#'   `predict.RiskMap()`.
 #' @noRd
-validate_prediction_options <- function(object, type, include,
+validate_prediction_options <- function(object, joint, include,
                                         boundaries, aggregate, summaries,
                                         thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
-                                        messages) {
-  type <- match.arg(type, c("auto", "marginal", "joint"))
+                                        messages, call = rlang::caller_env()) {
+  if (!is.null(joint) && !isTRUE(joint) && !isFALSE(joint)) {
+    supplied <- describe_value(joint)
+    abort_input("{.arg joint} must be {.code NULL}, {.code TRUE} or {.code FALSE}, not {supplied}.", arg = "joint", call = call)
+  }
   if (!is.null(boundaries)) {
     check_data(boundaries, geometry = "polygon", type = "sf")
-    if (type == "marginal") {
-      stop("When 'boundaries' are provided, 'type' must be \"joint\"",
-           call. = FALSE)
+    if (isFALSE(joint)) {
+      abort_input("{.arg joint} can't be {.code FALSE} when {.arg boundaries} are given, because summaries over areas need joint draws.", arg = "joint", call = call)
     }
     type <- "joint"
     if (is.null(aggregate)) {
-      stop("'aggregate' must be supplied when 'boundaries' is used; choose one or more of: ",
-           paste(shQuote(c("mean", "median", "sum", "min", "max")),
-                 collapse = ", "),
-           call. = FALSE)
+      choices <- c("mean", "median", "sum", "min", "max")
+      abort_input("{.arg aggregate} must be given with {.arg boundaries}, as one or more of {.or {.val {choices}}}.", arg = "aggregate", call = call)
     }
   } else {
     if (!is.null(aggregate)) {
-      stop("'aggregate' is used only when 'boundaries' are supplied",
-           call. = FALSE)
+      abort_input("{.arg aggregate} is used only with {.arg boundaries}.", arg = "aggregate", call = call)
     }
-    if (type == "auto") type <- "marginal"
+    type <- if (isTRUE(joint)) "joint" else "marginal"
   }
   allowed_include <- c("random_effects", "nugget")
   if (!is.character(include) || anyNA(include) ||
       any(!include %in% allowed_include) || anyDuplicated(include)) {
-    stop("'include' must contain unique values chosen from: ",
-         paste(shQuote(allowed_include), collapse = ", "), call. = FALSE)
+    abort_input("{.arg include} must contain distinct values among {.val {allowed_include}}.", arg = "include", call = call)
   }
   if (prediction_operation_requested(summaries, "exceedance")) {
     if (!is.numeric(thresholds) || !length(thresholds) || anyNA(thresholds) ||
         any(!is.finite(thresholds)) || anyDuplicated(thresholds)) {
-      stop("'thresholds' must contain unique, finite numeric values when ",
-           "'summaries' includes 'exceedance'", call. = FALSE)
+      abort_input("{.arg thresholds} must be distinct finite numbers when {.arg summaries} includes {.val exceedance}.", arg = "thresholds", call = call)
     }
   } else if (!is.null(thresholds)) {
-    stop("'thresholds' is used only when 'summaries' includes 'exceedance'",
-         call. = FALSE)
+    abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds", call = call)
   }
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
-  if (!is.null(control_mcmc) &&
-      !inherits(control_mcmc, "RiskMap_control_mcmc")) {
-    stop("'control_mcmc' must be NULL or an output from set_control_mcmc()",
-         call. = FALSE)
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level",
+              call = call)
+  if (!is.null(control_mcmc)) {
+    check_control(control_mcmc, "set_control_mcmc", call = call)
   }
   check_positive_integer(seed, "seed", allow_null = TRUE,
-                         allow_zero = FALSE)
+                         allow_zero = FALSE, call = call)
   if (!is.null(weights) &&
       (!is.character(weights) || length(weights) != 1L || is.na(weights))) {
-    stop("'weights' must be NULL or the name of one column in 'newdata'",
-         call. = FALSE)
+    supplied <- describe_value(weights)
+    abort_input("{.arg weights} must be {.code NULL} or the name of one column of {.arg newdata}, not {supplied}.", arg = "weights", call = call)
   }
   if (!is.null(weights) && is.null(boundaries)) {
-    stop("'weights' is used only when 'boundaries' are supplied",
-         call. = FALSE)
+    abort_input("{.arg weights} is used only with {.arg boundaries}.", arg = "weights", call = call)
   }
-  check_logical(keep_samples)
-  check_logical(messages)
+  check_logical(keep_samples, call = call)
+  check_logical(messages, call = call)
   type
 }
 
@@ -515,27 +562,23 @@ normalise_prediction_operations <- function(x, allowed, argument_name,
                                             allow_null = FALSE) {
   if (is.null(x)) {
     if (allow_null) return(NULL)
-    stop("'", argument_name, "' cannot be NULL", call. = FALSE)
+    abort_input("{.arg {argument_name}} can't be {.code NULL}.", arg = argument_name)
   }
   if (is.character(x)) {
     if (!length(x) || anyNA(x) || any(!x %in% allowed) || anyDuplicated(x)) {
-      stop("'", argument_name, "' must contain unique values chosen from: ",
-           paste(shQuote(allowed), collapse = ", "),
-           ", or named custom functions", call. = FALSE)
+      abort_input("{.arg {argument_name}} must contain distinct values among {.val {allowed}}, or named functions.", arg = argument_name)
     }
     out <- as.list(x)
     names(out) <- x
     return(out)
   }
   if (!is.list(x) || !length(x)) {
-    stop("'", argument_name, "' must be a character vector or a named list of ",
-         "built-ins and functions", call. = FALSE)
+    abort_input("{.arg {argument_name}} must be a character vector, or a named list of the names of built-in operations and functions.", arg = argument_name)
   }
   operation_names <- names(x)
   if (is.null(operation_names) || anyNA(operation_names) ||
       any(!nzchar(operation_names)) || anyDuplicated(operation_names)) {
-    stop("Every entry in '", argument_name,
-         "' must have a unique, non-empty name", call. = FALSE)
+    abort_input("Every entry of {.arg {argument_name}} must have a distinct, non-empty name.", arg = argument_name)
   }
   valid <- vapply(x, function(operation) {
     is.function(operation) ||
@@ -543,8 +586,7 @@ normalise_prediction_operations <- function(x, allowed, argument_name,
          !is.na(operation) && operation %in% allowed)
   }, logical(1))
   if (!all(valid)) {
-    stop("Each entry in '", argument_name, "' must be a function or one of: ",
-         paste(shQuote(allowed), collapse = ", "), call. = FALSE)
+    abort_input("Each entry of {.arg {argument_name}} must be a function or one of {.or {.val {allowed}}}.", arg = argument_name)
   }
   x
 }
@@ -557,36 +599,32 @@ normalise_prediction_transforms <- function(transform) {
     all(nzchar(names(transform))) && !anyDuplicated(names(transform))
   if (!is.list(transform) || !length(transform) || !valid_names ||
       any(!vapply(transform, is.function, logical(1)))) {
-    stop("'transform' must be NULL or a named list of functions with unique, non-empty names",
-         call. = FALSE)
+    abort_input("{.arg transform} must be {.code NULL} or a list of functions with distinct, non-empty names.", arg = "transform")
   }
   reserved <- c("fixed", "offset", "spatial", "random_effects", "nugget",
                 "link", "response")
   conflicts <- intersect(names(transform), reserved)
   if (length(conflicts)) {
-    stop("Names in 'transform' cannot use reserved prediction quantities: ",
-         paste(shQuote(conflicts), collapse = ", "), call. = FALSE)
+    abort_input(c("The names in {.arg transform} can't be those of built-in prediction quantities.", "x" = "{.val {conflicts}} {cli::qty(length(conflicts))}{?is a built-in quantity/are built-in quantities}."), arg = "transform")
   }
   transform
 }
 
-#' Validate a reference population for direct standardization
+#' Validate a reference population for direct standardisation
 #' @noRd
-validate_prediction_standardize <- function(object, standardize) {
-  if (is.null(standardize)) return(NULL)
-  if (!is.data.frame(standardize) || inherits(standardize, "sf") ||
-      !nrow(standardize)) {
-    stop("'standardize' must be a non-empty data frame without geometry",
-         call. = FALSE)
+validate_prediction_standardise <- function(object, standardise) {
+  if (is.null(standardise)) return(NULL)
+  if (!is.data.frame(standardise) || inherits(standardise, "sf") ||
+      !nrow(standardise)) {
+    abort_input("{.arg standardise} must be a non-empty data frame without geometry, not {.obj_type_friendly {standardise}}.", arg = "standardise")
   }
-  if (anyDuplicated(names(standardize)) || anyNA(names(standardize)) ||
-      any(!nzchar(names(standardize)))) {
-    stop("'standardize' must have unique, non-empty column names",
-         call. = FALSE)
+  if (anyDuplicated(names(standardise)) || anyNA(names(standardise)) ||
+      any(!nzchar(names(standardise)))) {
+    abort_input("{.arg standardise} must have distinct, non-empty column names.", arg = "standardise")
   }
-  reference_names <- setdiff(names(standardize), ".weight")
+  reference_names <- setdiff(names(standardise), ".weight")
   response <- as.character(object$formula[[2L]])
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   offset_names <- inter_f$offset %||% character()
   fixed_names <- setdiff(
     get_formula_terms(object$formula),
@@ -594,27 +632,35 @@ validate_prediction_standardize <- function(object, standardize) {
   )
   if (!length(reference_names) || any(!reference_names %in% fixed_names)) {
     invalid <- setdiff(reference_names, fixed_names)
-    stop("'standardize' must contain one or more fixed-effect predictors",
-         if (length(invalid)) paste0("; invalid column",
-           if (length(invalid) > 1L) "s" else "", ": ",
-           paste(shQuote(invalid), collapse = ", ")) else "",
-         call. = FALSE)
+    problem <- "{.arg standardise} must have one or more columns, each a covariate of the model."
+    if (length(invalid)) {
+      problem <- c(problem, "x" = "{.val {invalid}} {cli::qty(length(invalid))}{?is not a covariate/are not covariates}.")
+    }
+    abort_input(problem, arg = "standardise")
   }
-  if (!all(complete.cases(standardize[reference_names]))) {
-    stop("'standardize' contains missing predictor values", call. = FALSE)
+  if (!all(complete.cases(standardise[reference_names]))) {
+    abort_input("{.arg standardise} has missing values.", arg = "standardise")
   }
-  weights <- if (".weight" %in% names(standardize)) {
-    standardize$.weight
+  weights <- if (".weight" %in% names(standardise)) {
+    standardise$.weight
   } else {
-    rep(1, nrow(standardize))
+    rep(1, nrow(standardise))
   }
   if (!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights)) ||
       any(weights < 0) || sum(weights) <= 0) {
-    stop("'.weight' in 'standardize' must contain finite, non-negative values with a positive total",
-         call. = FALSE)
+    abort_input("The column {.code .weight} of {.arg standardise} must hold finite, non-negative values with a positive total.", arg = "standardise")
+  }
+  # Each profile with the other covariates of a record of the data
+  profiles <- st_drop_geometry(object$data)[rep(1L, nrow(standardise)), ,
+                                            drop = FALSE]
+  profiles <- as.data.frame(profiles)
+  profiles[reference_names] <- standardise[reference_names]
+  infinite <- !prediction_design_is_finite(object, profiles)
+  if (any(infinite)) {
+    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}.", arg = "standardise")
   }
   list(
-    data = standardize,
+    data = standardise,
     weights = weights / sum(weights),
     predictors = reference_names
   )
@@ -638,42 +684,59 @@ prediction_operation_requested <- function(operations, built_in) {
 }
 
 #' Validate and align prediction locations
+#'
+#' Levels of the random effects that aren't in the fit stop, unless
+#' `allow_new_levels` is `TRUE`, for the assessment of predictions, whose test
+#' sets can have levels of their own. Their effects are then drawn from the
+#' distribution of the random effect (`draw_prediction_samples()`).
+#' With `check_finite`, rows of `newdata` whose covariates give a term that
+#' isn't finite are left out as those with missing values are.
 #' @noRd
 validate_prediction_data <- function(object, newdata, include,
-                                     standardize = NULL) {
+                                     standardise = NULL,
+                                     allow_new_levels = FALSE,
+                                     messages = TRUE, check_finite = FALSE) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
-  check_data(prediction_data, geometry = "point", type = "sf")
+  data_arg <- if (is.null(newdata)) "object" else "newdata"
+  check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
+  # The compiled distances need finite planar coordinates.
+  coordinates <- st_coordinates(prediction_data)
+  if (ncol(coordinates) != 2L) {
+    abort_input("The points of {.arg {data_arg}} must have two coordinates, without Z or M values.", arg = data_arg)
+  }
+  if (any(!is.finite(coordinates))) {
+    abort_input("The points of {.arg {data_arg}} must have finite coordinates, and none may be empty.", arg = data_arg)
+  }
   output_data <- prediction_data
   if (!isTRUE(st_crs(prediction_data) == st_crs(object$data))) {
-    message("Transforming 'newdata' to the fitted model CRS for prediction")
+    if (messages) {
+      riskmap_inform("{.arg newdata} is projected to the coordinate reference system of the fit.")
+    }
     prediction_data <- st_transform(prediction_data, st_crs(object$data))
   }
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   response <- as.character(object$formula[[2]])
   required <- setdiff(get_formula_terms(object$formula), response)
   if (!"random_effects" %in% include) {
     required <- setdiff(required, names(object$re))
   }
-  standardized_names <- if (is.null(standardize)) character() else
-    setdiff(names(standardize$data), ".weight")
-  required <- setdiff(required, standardized_names)
+  standardised_names <- if (is.null(standardise)) character() else
+    setdiff(names(standardise$data), ".weight")
+  required <- setdiff(required, standardised_names)
   missing_columns <- setdiff(required, names(prediction_data))
   if (length(missing_columns) > 0L) {
-    stop("'newdata' is missing required column", if (length(missing_columns) > 1L) "s" else "",
-         ": ", paste(shQuote(missing_columns), collapse = ", "), call. = FALSE)
+    abort_input("{.arg newdata} must have the column{?s} {.val {missing_columns}}, which the model uses.", arg = "newdata")
   }
-  for (name in standardized_names) {
-    prediction_data[[name]] <- standardize$data[[name]][1L]
+  for (name in standardised_names) {
+    prediction_data[[name]] <- standardise$data[[name]][1L]
   }
-  if ("random_effects" %in% include) {
+  if ("random_effects" %in% include && !allow_new_levels) {
     for (name in names(object$re)) {
       supplied <- prediction_data[[name]]
       unknown <- unique(supplied[!is.na(supplied) &
                                    !supplied %in% object$re[[name]]])
       if (length(unknown) > 0L) {
-        stop("'newdata' contains unknown levels for random effect ",
-             shQuote(name), ": ", paste(shQuote(unknown), collapse = ", "),
-             call. = FALSE)
+        abort_input(c("{.arg newdata} has levels of the random effect {.val {name}} that the fit doesn't know.", "x" = "The unknown {cli::qty(length(unknown))}level{?s} {?is/are} {.val {unknown}}."), arg = "newdata")
       }
     }
   }
@@ -683,11 +746,16 @@ validate_prediction_data <- function(object, newdata, include,
     rep(TRUE, nrow(prediction_data))
   }
   if (any(!valid_rows)) {
-    warning(
-      sum(!valid_rows), " prediction row", if (sum(!valid_rows) == 1L) "" else "s",
-      " contain missing required values; their predictions are returned as NA",
-      call. = FALSE
+    riskmap_warn("{sum(!valid_rows)} prediction row{?s} {?has/have} missing values, so {?its/their} predictions are {.code NA}.")
+  }
+  if (check_finite && !is.null(newdata) && any(valid_rows)) {
+    finite <- prediction_design_is_finite(
+      object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
     )
+    if (any(!finite)) {
+      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}, so {?its/their} predictions are {.code NA}.")
+      valid_rows[valid_rows] <- finite
+    }
   }
   # Values can be present but invalid once transformed, e.g. log() of zero.
   finite_rows <- prediction_finite_rows(
@@ -742,19 +810,21 @@ restore_prediction_rows <- function(values, valid_rows, n_rows) {
 }
 
 #' Assign prediction support to polygon boundaries
+#'
+#' `boundaries` are in the CRS of the fit and `supplied` as the user gave them.
 #' @noRd
-assign_prediction_locations <- function(model_data, boundaries) {
+assign_prediction_locations <- function(model_data, boundaries,
+                                        supplied = boundaries) {
   metadata <- attr(model_data, "grid_metadata", exact = TRUE)
   if (inherits(model_data, "RiskMap_grid") && !is.null(metadata)) {
-    return(assign_prediction_grid_cells(model_data, boundaries, metadata))
+    return(assign_prediction_grid_cells(model_data, boundaries, metadata,
+                                        supplied))
   }
 
   membership <- st_within(model_data, boundaries)
   membership_count <- lengths(membership)
   if (any(membership_count > 1L)) {
-    stop(sum(membership_count > 1L), " prediction location",
-         if (sum(membership_count > 1L) == 1L) " belongs" else "s belong",
-         " to overlapping polygons in 'boundaries'", call. = FALSE)
+    abort_input("The polygons of {.arg boundaries} must not overlap, but {sum(membership_count > 1L)} prediction location{?s} {?lies/lie} in more than one.", arg = "boundaries")
   }
   boundary_candidates <- which(membership_count == 0L)
   if (length(boundary_candidates)) {
@@ -778,14 +848,50 @@ assign_prediction_locations <- function(model_data, boundaries) {
   )
 }
 
+#' Whether any polygons overlap by more than rounding
+#'
+#' An overlap of up to a millionth of the smaller polygon is rounding.
+#' @noRd
+polygons_overlap <- function(polygons) {
+  pairs <- st_overlaps(polygons)
+  shapes <- st_geometry(polygons)
+  any(vapply(seq_along(pairs), function(first) {
+    any(vapply(pairs[[first]][pairs[[first]] > first], function(second) {
+      tryCatch({
+        shared <- sum(as.numeric(
+          st_area(st_intersection(shapes[first], shapes[second]))
+        ))
+        shared > 1e-6 * min(as.numeric(st_area(shapes[c(first, second)])))
+      }, error = function(error) TRUE)
+    }, logical(1)))
+  }, logical(1)))
+}
+
+#' Project polygons along their edges
+#'
+#' Projecting polygons moves their vertices and keeps the edges between them
+#' straight, so a polygon with a vertex on the edge of its neighbour, as at a
+#' T-junction, overlaps it once projected, or leaves a gap. Edges with vertices
+#' added along them, in the plane of the supplied coordinates, stay together.
+#' @noRd
+project_polygon_edges <- function(polygons, crs) {
+  shapes <- st_set_crs(st_geometry(polygons), NA)
+  box <- st_bbox(shapes)
+  longest <- max(box[["xmax"]] - box[["xmin"]], box[["ymax"]] - box[["ymin"]])
+  shapes <- st_segmentize(shapes, dfMaxLength = longest / 1000)
+  st_geometry(polygons) <- st_set_crs(shapes, st_crs(polygons))
+  st_transform(polygons, crs)
+}
+
 #' Calculate exact polygon coverage for cells created by create_grid
 #' @noRd
-assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
+assign_prediction_grid_cells <- function(model_data, boundaries, metadata,
+                                         supplied = boundaries) {
   if (!identical(metadata$cell_shape, "square") ||
       !is.numeric(metadata$cellsize) || length(metadata$cellsize) != 1L ||
       !is.finite(metadata$cellsize) || metadata$cellsize <= 0 ||
       is.null(metadata$grid_crs)) {
-    stop("'newdata' contains invalid RiskMap grid metadata", call. = FALSE)
+    abort_input(c("{.arg newdata} has invalid grid metadata.", "i" = "Make the grid with {.fn create_grid}, or drop its class {.cls RiskMap_grid}."), arg = "newdata")
   }
   if (!nrow(model_data)) {
     return(list(
@@ -799,10 +905,16 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   }
   grid_crs <- st_crs(metadata$grid_crs)
   grid_boundaries <- st_transform(boundaries, grid_crs)
-  overlaps <- st_overlaps(grid_boundaries)
+  # Polygons that only their projection makes overlap are projected again
+  # along their edges.
+  overlapping <- any(lengths(st_overlaps(grid_boundaries)) > 0L)
+  if (overlapping) {
+    grid_boundaries <- project_polygon_edges(supplied, grid_crs)
+    overlapping <- polygons_overlap(grid_boundaries)
+  }
   duplicates <- st_equals(grid_boundaries)
-  if (any(lengths(overlaps) > 0L) || any(lengths(duplicates) > 1L)) {
-    stop("'boundaries' contains overlapping polygons", call. = FALSE)
+  if (overlapping || any(lengths(duplicates) > 1L)) {
+    abort_input("The polygons of {.arg boundaries} must not overlap.", arg = "boundaries")
   }
 
   grid_points <- st_transform(model_data, grid_crs)
@@ -821,7 +933,7 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   )
   raster_cells <- terra::cellFromXY(cell_raster, coordinates)
   if (anyDuplicated(raster_cells)) {
-    stop("'newdata' contains duplicate RiskMap grid cells", call. = FALSE)
+    abort_input("{.arg newdata} has the same grid cell more than once.", arg = "newdata")
   }
   raster_values <- rep(NA_real_, terra::ncell(cell_raster))
   raster_values[raster_cells] <- seq_len(nrow(model_data))
@@ -886,7 +998,7 @@ prediction_boundary_groups <- function(assignment, n_locations) {
 #' Predict and aggregate jointly within polygon boundaries
 #' @noRd
 predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    aggregate, include, transform, standardize,
+                                    aggregate, include, transform, standardise,
                                     summaries,
                                     thresholds,
                                     level, weights,
@@ -895,35 +1007,36 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
-    message("Transforming 'boundaries' to the fitted model CRS for aggregation")
+    if (messages) {
+      riskmap_inform("{.arg boundaries} are projected to the coordinate reference system of the fit.")
+    }
     boundaries <- st_transform(boundaries, st_crs(object$data))
   }
+  # Points on a grid that has lost its cells, in the CRS of newdata, are said
+  # to be counted whole (#214)
+  inform_point_assignment(prediction_input$output_data)
 
-  assignment <- assign_prediction_locations(model_data, boundaries)
+  assignment <- assign_prediction_locations(model_data, boundaries,
+                                            output_boundaries)
   assigned_data <- assignment$data
   area_id <- assignment$area_id
   coverage <- assignment$coverage
   if (length(assignment$outside)) {
-    warning(length(assignment$outside), " prediction ",
-            if (assignment$method == "exact") "cell" else "location",
-            if (length(assignment$outside) == 1L) " lies" else "s lie",
-            " outside all polygons and will not contribute to areal summaries",
-            call. = FALSE)
+    unit <- if (assignment$method == "exact") "cell" else "location"
+    n_outside <- length(assignment$outside)
+    riskmap_warn("{n_outside} prediction {unit}{cli::qty(n_outside)}{?s} {?lies/lie} outside every polygon, so {?it doesn't/they don't} count in the summaries of the areas.")
   }
 
   if (is.null(weights)) {
     weight_values <- coverage
   } else {
     if (!weights %in% names(assigned_data)) {
-      stop("'newdata' does not contain the weights column ", shQuote(weights),
-           call. = FALSE)
+      abort_input("{.arg weights} must name a column of {.arg newdata}, and {.val {weights}} doesn't.", arg = "weights")
     }
     supplied_weights <- assigned_data[[weights]]
     if (!is.numeric(supplied_weights) || anyNA(supplied_weights) ||
         any(!is.finite(supplied_weights)) || any(supplied_weights < 0)) {
-      stop("The weights column ", shQuote(weights),
-           " must contain finite, non-negative values without missing values",
-           call. = FALSE)
+      abort_input("The column {.val {weights}} named by {.arg weights} must hold finite, non-negative values.", arg = "weights")
     }
     # Allocate each cell's supplied weight in proportion to polygon coverage.
     weight_values <- supplied_weights * coverage
@@ -933,13 +1046,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   nonempty_areas <- as.integer(names(area_indices))
   single_location <- lengths(area_indices) == 1L
   if (any(single_location)) {
-    warning(sum(single_location), " polygon",
-            if (sum(single_location) == 1L) " contains" else "s contain",
-            " only one prediction ",
-            if (assignment$method == "exact") "cell" else "location",
-            "; ", if (sum(single_location) == 1L) "its" else "their",
-            " areal summaries are based on a single value",
-            call. = FALSE)
+    unit <- if (assignment$method == "exact") "cell" else "location"
+    n_single <- sum(single_location)
+    riskmap_warn("{n_single} polygon{?s} {?contains/contain} only one prediction {unit}, so {cli::qty(n_single)}{?its/their} summaries rest on a single value.")
   }
   zero_weight <- vapply(area_indices, function(index) {
     sum(weight_values[index]) <= 0
@@ -948,10 +1057,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     is.character(operation) && operation %in% c("mean", "median", "sum")
   }, logical(1))
   if (!is.null(weights) && any(weighted_operations) && any(zero_weight)) {
-    warning(sum(zero_weight), " polygon",
-            if (sum(zero_weight) == 1L) " has" else "s have",
-            " zero total weight and will receive NA summaries for weighted ",
-            "means, medians and sums", call. = FALSE)
+    riskmap_warn("{sum(zero_weight)} polygon{?s} {?has/have} a total weight of zero, so {?its/their} weighted means, medians and sums are {.code NA}.")
   }
 
   if (!nrow(model_data)) {
@@ -965,16 +1071,17 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
         summaries, thresholds
       ),
       samples = NULL, include = include, transform = names(transform),
-      standardized = !is.null(standardize), aggregate = names(aggregate),
+      standardised = !is.null(standardise), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
-      type = "joint", family = object$family,
+      joint = TRUE, family = object$family, link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = FALSE,
       parameter_draws = parameter_draws,
-      coverage = assignment$method
+      coverage = assignment$method,
+      weights = weights
     )
     class(out) <- "RiskMap_prediction"
-    return(out)
+    return(stamp_version(out))
   }
 
   prediction_groups <- prediction_boundary_groups(
@@ -983,7 +1090,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   sample_components <- prediction_sample_components(
     object, model_data, "joint", include, control_mcmc, messages,
     groups = prediction_groups, transform = transform,
-    standardize = standardize, parameter_draws = parameter_draws
+    standardise = standardise, parameter_draws = parameter_draws,
+    mcmc_seed = seed
   )
   predictions <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
@@ -1113,27 +1221,30 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     samples = retained,
     include = include,
     transform = names(transform),
-    standardized = !is.null(standardize),
+    standardised = !is.null(standardise),
     aggregate = names(aggregate),
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    type = "joint",
+    joint = TRUE,
     family = object$family,
+    link = fit_link(object),
     response_name = prediction_response_name(object),
     observed_locations = FALSE,
     parameter_draws = parameter_draws,
-    coverage = assignment$method
+    coverage = assignment$method,
+    weights = weights
   )
   class(out) <- "RiskMap_prediction"
-  out
+  stamp_version(out)
 }
 
 #' Run the conditional-prediction engine from aligned sf data
 #' @noRd
 prepare_prediction <- function(object, prediction_data, prediction, include,
                                control_mcmc, messages,
-                               observed_locations = FALSE, groups = NULL) {
+                               observed_locations = FALSE, groups = NULL,
+                               mcmc_seed = NULL) {
   draw_prediction_samples(
     object = object,
     prediction_data = prediction_data,
@@ -1142,6 +1253,7 @@ prepare_prediction <- function(object, prediction_data, prediction, include,
     control_mcmc = control_mcmc,
     groups = groups,
     observed_locations = observed_locations,
+    mcmc_seed = mcmc_seed,
     messages = messages
   )
 }
@@ -1149,16 +1261,19 @@ prepare_prediction <- function(object, prediction_data, prediction, include,
 #' Construct link and response samples from prediction components
 #' @noRd
 build_prediction_components <- function(object, prediction_setup, include,
-                                        transform = list(), standardize = NULL,
+                                        transform = list(), standardise = NULL,
                                         prediction_data = NULL) {
   spatial <- prediction_setup$S_samples
   if (!is.matrix(spatial)) {
     spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
   }
+  # Samples of the distinct locations give each row those of its location.
+  location <- prediction_setup$location_index
+  if (!is.null(location)) spatial <- spatial[location, , drop = FALSE]
   n_locations <- nrow(spatial)
   n_samples <- ncol(spatial)
-  fixed <- rep(prediction_setup$mu_pred, length.out = n_locations)
-  offset <- rep(prediction_setup$cov_offset, length.out = n_locations)
+  fixed <- prediction_row_values(prediction_setup$mu_pred, n_locations)
+  offset <- prediction_row_values(prediction_setup$cov_offset, n_locations)
   random_effects <- prediction_random_effect_samples(
     prediction_setup, n_locations, n_samples,
     include = "random_effects" %in% include
@@ -1170,7 +1285,7 @@ build_prediction_components <- function(object, prediction_setup, include,
   link <- sweep(spatial, 1L, fixed + offset, "+")
   if (!is.null(random_effects)) link <- link + random_effects
   if (!is.null(nugget)) link <- link + nugget
-  response <- if (object$family == "gaussian") {
+  response <- if (fit_is_exact(object)) {
     link
   } else {
     matrix(object$link_function$inv(as.numeric(link)), nrow = n_locations)
@@ -1179,18 +1294,16 @@ build_prediction_components <- function(object, prediction_setup, include,
     values <- transform[[name]](link)
     if (!is.numeric(values) || !is.matrix(values) ||
         !identical(dim(values), dim(link))) {
-      stop("Transformation ", shQuote(name),
-           " must return a numeric matrix with the same dimensions as its input",
-           call. = FALSE)
+      abort_input("The function {.val {name}} in {.arg transform} must return a numeric matrix of the same dimensions as its input.", arg = "transform")
     }
     values
   })
   names(transformed) <- names(transform)
-  if (!is.null(standardize)) {
-    standardized <- standardize_prediction_targets(
+  if (!is.null(standardise)) {
+    standardised <- standardise_prediction_targets(
       object = object,
       prediction_data = prediction_data,
-      standardize = standardize,
+      standardise = standardise,
       spatial = spatial,
       offset = offset,
       random_effects = random_effects,
@@ -1198,14 +1311,23 @@ build_prediction_components <- function(object, prediction_setup, include,
       transform = transform,
       beta = prediction_setup$par_hat$beta
     )
-    fixed <- standardized$fixed
-    link <- standardized$link
-    response <- standardized$response
-    transformed <- standardized$transformed
+    fixed <- standardised$fixed
+    link <- standardised$link
+    response <- standardised$response
+    transformed <- standardised$transformed
   }
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
        link = link, response = response, transformed = transformed)
+}
+
+#' A value for each prediction row, from one for each or a single one
+#' @noRd
+prediction_row_values <- function(values, n_rows) {
+  if (!length(values) %in% c(1L, n_rows)) {
+    riskmap_bug("The prediction has {length(values)} values for {n_rows} rows.")
+  }
+  rep(values, length.out = n_rows)
 }
 
 #' Prediction components, optionally averaged over parameter uncertainty
@@ -1216,30 +1338,34 @@ build_prediction_components <- function(object, prediction_setup, include,
 #' latent effects are generated at that parameter value and passed through the
 #' ordinary prediction machinery. The draws are pooled, so every summary,
 #' aggregation and transformation reflects both sources of uncertainty.
+#' `mcmc_seed` seeds a fresh conditional MCMC run of plug-in prediction, as
+#' in `draw_prediction_samples()`.
 #' @noRd
 prediction_sample_components <- function(object, prediction_data, prediction,
                                          include, control_mcmc, messages,
                                          observed_locations = FALSE,
                                          groups = NULL, transform = list(),
-                                         standardize = NULL,
-                                         parameter_draws = NULL) {
+                                         standardise = NULL,
+                                         parameter_draws = NULL,
+                                         mcmc_seed = NULL) {
   components_at <- function(fit, control) {
     setup <- prepare_prediction(
       fit, prediction_data, prediction, include, control, messages = FALSE,
       observed_locations = observed_locations, groups = groups
     )
     build_prediction_components(
-      fit, setup, include, transform, standardize = standardize,
+      fit, setup, include, transform, standardise = standardise,
       prediction_data = prediction_data
     )
   }
   if (is.null(parameter_draws)) {
     setup <- prepare_prediction(
       object, prediction_data, prediction, include, control_mcmc, messages,
-      observed_locations = observed_locations, groups = groups
+      observed_locations = observed_locations, groups = groups,
+      mcmc_seed = mcmc_seed
     )
     return(build_prediction_components(
-      object, setup, include, transform, standardize = standardize,
+      object, setup, include, transform, standardise = standardise,
       prediction_data = prediction_data
     ))
   }
@@ -1248,42 +1374,52 @@ prediction_sample_components <- function(object, prediction_data, prediction,
   per_draw <- max(1L, ceiling(n_total / parameter_draws))
   parameters <- draw_parameter_values(object, parameter_draws)
   if (messages) {
-    message("Propagating parameter uncertainty over ", parameter_draws,
-            " parameter draws")
+    riskmap_inform("Propagating parameter uncertainty over {parameter_draws} parameter draws.")
   }
-  sampler <- if (object$family == "gaussian") NULL else
+  sampler <- if (fit_is_exact(object)) NULL else
     parameter_conditioning_sampler(object)
   pieces <- vector("list", parameter_draws)
   acceptance <- rep(NA_real_, parameter_draws)
+  # A failure at one parameter value leaves that draw out. An input error
+  # would fail at every value, so it reaches the user as it is.
+  first_failure <- NULL
+  leave_out <- function(error) {
+    if (inherits(error, "riskmap_error_input")) riskmap_rethrow(error)
+    if (is.null(first_failure)) first_failure <<- error
+    NULL
+  }
+  bar <- progress_bar("Propagating parameter uncertainty", parameter_draws,
+                      messages)
   for (k in seq_len(parameter_draws)) {
     fit <- object
     fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
     if (is.null(sampler)) {
-      control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
+      # The latent effects of a Gaussian model are drawn independently.
+      control <- set_control_mcmc(n_draws = per_draw, burnin = 0, thin = 1)
     } else {
-      draws <- tryCatch(sampler(fit$estimate, per_draw),
-                        error = function(error) NULL)
-      if (is.null(draws)) next
+      draws <- tryCatch(sampler(fit$estimate, per_draw), error = leave_out)
+      if (is.null(draws)) {
+        progress_tick(bar)
+        next
+      }
       fit$S_samples <- draws$samples
       acceptance[k] <- draws$acceptance
       control <- NULL
     }
-    pieces[[k]] <- tryCatch(components_at(fit, control),
-                            error = function(error) NULL)
+    pieces[[k]] <- tryCatch(components_at(fit, control), error = leave_out)
+    progress_tick(bar)
   }
+  progress_done(bar)
   pieces <- pieces[!vapply(pieces, is.null, logical(1))]
   if (length(pieces) < parameter_draws / 2) {
-    stop("Prediction failed for most parameter draws; parameter uncertainty ",
-         "could not be propagated", call. = FALSE)
+    riskmap_abort("Prediction failed at most parameter draws, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit", parent = first_failure)
   }
   if (length(pieces) < parameter_draws) {
-    warning(parameter_draws - length(pieces), " of ", parameter_draws,
-            " parameter draws were discarded because prediction failed at ",
-            "those values", call. = FALSE)
+    failed <- parameter_draws - length(pieces)
+    riskmap_warn("{failed} of {parameter_draws} parameter draws are left out, because prediction failed at those values.", class = "riskmap_warning_fit")
   }
   if (any(acceptance < 0.1, na.rm = TRUE)) {
-    warning("The Langevin sampler accepted few proposals for some parameter ",
-            "draws; predictive summaries may be noisy", call. = FALSE)
+    riskmap_warn("The Langevin sampler accepted few proposals at some parameter draws, so the predictive summaries may be noisy.", class = "riskmap_warning_fit")
   }
   pool_prediction_components(pieces)
 }
@@ -1315,114 +1451,215 @@ pool_prediction_components <- function(pieces) {
 #' Number of predictive draws used by plug-in prediction
 #' @noRd
 prediction_sample_size <- function(object, control_mcmc) {
-  if (!is.null(control_mcmc)) {
-    if (isTRUE(control_mcmc$linear_model)) return(control_mcmc$n_sim)
-    return((control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin)
-  }
-  if (object$family != "gaussian" && !is.null(object$S_samples)) {
+  if (!is.null(control_mcmc)) return(control_mcmc$n_draws)
+  if (!fit_is_exact(object) && !is.null(object$S_samples)) {
     return(nrow(object$S_samples))
   }
-  control_mcmc <- set_control_mcmc()
-  if (object$family == "gaussian") return(control_mcmc$n_sim)
-  (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+  # As many draws as plug-in prediction takes by default for every family.
+  set_control_mcmc()$n_draws
 }
 
 #' Draw parameters from the approximate sampling distribution of the estimate
 #'
 #' Draws are multivariate normal on the scale on which the model is estimated
-#' (log variances and log range), with the covariance matrix of the estimate.
+#' (log variances and log scale), with the covariance matrix of the estimate.
 #' Parameters without a finite positive variance, such as those held at a
-#' boundary, keep their estimated value.
+#' boundary, keep their estimated value, and so do those that the data don't
+#' determine (`undetermined_parameters()`), such as a variance of a Gaussian
+#' model estimated at zero.
 #' @noRd
 draw_parameter_values <- function(object, n_draws) {
   estimate <- unlist(object$estimate)
   covariance <- object$covariance
-  failure <- paste0(
-    "The covariance matrix of the parameter estimates is not available or ",
-    "not positive definite, so parameter uncertainty cannot be propagated. ",
-    "For binomial and Poisson models, refitting with ",
-    "'control_mcml = set_control_mcml(pc_prior = TRUE)' usually resolves this."
-  )
-  if (is.null(covariance)) stop(failure, call. = FALSE)
-  covariance <- as.matrix(covariance)
-  if (!identical(dim(covariance), rep(length(estimate), 2L))) {
-    stop(failure, call. = FALSE)
+  failure <- function() {
+    riskmap_abort(c("The covariance matrix of the estimates isn't available or isn't positive definite, so parameter uncertainty can't be propagated.", "i" = "For a binomial, Poisson or negative binomial model, refitting with {.code control_mcml = set_control_mcml(pc_prior = TRUE)} usually solves this."), class = "riskmap_error_fit")
   }
+  if (!nrow(estimated_rows(fit_parameter_table(object)))) {
+    abort_input(c("{.arg parameter_uncertainty} can't be {.code TRUE} for a fit that holds every parameter.", "i" = "The parameters given in {.arg fixed_pars} have no uncertainty to propagate."), arg = "parameter_uncertainty")
+  }
+  if (is.null(covariance)) failure()
+  covariance <- as.matrix(covariance)
+  if (!identical(dim(covariance), rep(length(estimate), 2L))) failure()
   free <- which(is.finite(diag(covariance)) & diag(covariance) > 0)
   block <- covariance[free, free, drop = FALSE]
-  root <- if (length(free) && all(is.finite(block))) {
-    tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
-  }
-  if (is.null(root)) stop(failure, call. = FALSE)
+  if (!length(free) || any(!is.finite(block))) failure()
   draws <- matrix(estimate, nrow = n_draws, ncol = length(estimate),
                   byrow = TRUE, dimnames = list(NULL, names(estimate)))
-  draws[, free] <- draws[, free, drop = FALSE] +
-    matrix(stats::rnorm(n_draws * length(free)), n_draws) %*% root
+  undetermined <- undetermined_parameters(object, block)
+  kept <- !undetermined$parameters
+  if (!any(kept)) {
+    riskmap_abort("The data don't determine any of the estimated parameters, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit")
+  }
+  # With some parameters kept at their estimates, the others are drawn given
+  # them, with the variance of the nugget in place of its ratio to the spatial
+  # variance, so that a spatial variance estimated at zero leaves the nugget
+  # its own uncertainty.
+  if (!all(kept)) {
+    warn_undetermined(object, names(estimate)[free][!kept])
+    block <- conditional_covariance_of(undetermined$covariance, kept)
+  }
+  root <- tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
+  if (is.null(root)) failure()
+  moves <- matrix(0, nrow = n_draws, ncol = length(free))
+  moves[, kept] <- matrix(stats::rnorm(n_draws * sum(kept)), n_draws) %*% root
+  if (!all(kept)) moves <- moves %*% t(solve(undetermined$jacobian))
+  draws[, free] <- draws[, free, drop = FALSE] + moves
   draws
+}
+
+#' The parameters that the data don't determine
+#'
+#' Those of the covariance, the random effects and the family whose logarithm
+#' has a standard error above 3, the nugget by its variance. A Gaussian fit
+#' lets the logarithm of a variance estimated at zero drift along an almost
+#' flat likelihood, with a standard error of thousands, where a count fit
+#' holds it. The information on the logarithm is then below 1/9, about the
+#' log-likelihood that a variance of zero loses, and the draws of a normal
+#' distribution on the log scale would span more than five orders of
+#' magnitude. So would draws of the scale where the likelihood is flat in it.
+#' The limit of 3 is a provisional choice. The book's fits are all below 1.
+#' @param covariance The covariance of the free parameters of the fit, on the
+#'   scale on which it is estimated.
+#' @return A list with `parameters`, `TRUE` for each undetermined one, the
+#'   `jacobian` to the scale with the variance of the nugget and the
+#'   `covariance` there.
+#' @noRd
+undetermined_parameters <- function(object, covariance) {
+  table <- fit_parameter_table(object)
+  rows <- vector_rows(table)
+  free <- match(colnames(covariance), rows$stored)
+  jacobian <- parameter_jacobian(table)[free, free, drop = FALSE]
+  reported <- jacobian %*% covariance %*% t(jacobian)
+  reported <- (reported + t(reported)) / 2
+  list(parameters = rows$block[free] != "coefficients" &
+         diag(reported) > 3^2,
+       jacobian = jacobian, covariance = reported)
+}
+
+#' The covariance of the parameters `kept` given the others
+#'
+#' The others can have enormous variances and be confounded with each other,
+#' so their block is inverted on the scale of their correlations, without the
+#' directions in which it is singular.
+#' @noRd
+conditional_covariance_of <- function(covariance, kept) {
+  scale <- sqrt(diag(covariance)[!kept])
+  correlation <- covariance[!kept, !kept, drop = FALSE] / outer(scale, scale)
+  decomposition <- eigen(correlation, symmetric = TRUE)
+  used <- decomposition$values > 1e-10 * max(decomposition$values)
+  cross <- sweep(covariance[kept, !kept, drop = FALSE], 2L, scale, "/") %*%
+    decomposition$vectors[, used, drop = FALSE]
+  covariance[kept, kept, drop = FALSE] -
+    cross %*% (t(cross) / decomposition$values[used])
+}
+
+#' Warn that parameters keep their estimates when parameters are drawn
+#'
+#' Not for a variance below a hundredth of the total, which is zero for the
+#' prediction, nor for the scale of such a spatial variance or a parameter of
+#' the family at its limit, as no warning is given for those the fit holds
+#' there. The others have an uncertainty that the prediction leaves out.
+#' @param names The parameters, as the estimate names them.
+#' @noRd
+warn_undetermined <- function(object, names) {
+  table <- fit_parameter_table(object)
+  rows <- vector_rows(table)
+  rows <- rows[match(names, rows$stored), , drop = FALSE]
+  values <- unlist(coef(object))
+  variances <- values[grepl("^(sigma2|tau2|sigma2_me|sigma2_re\\..*)$",
+                            names(values))]
+  negligible <- names(variances)[variances < 0.01 * sum(variances)]
+  if ("sigma2" %in% negligible) negligible <- c(negligible, "phi")
+  named <- setdiff(
+    rows$reported[rows$block != "family" | rows$name == "sigma2_me"],
+    negligible
+  )
+  if (length(named)) {
+    riskmap_warn(c("The data don't determine {.code {named}}, so {?it keeps its estimate/they keep their estimates} and the prediction leaves out {?its/their} uncertainty.", "i" = "The standard {cli::qty(length(named))}error{?s} on the log scale {?is/are} above 3."), class = "riskmap_warning_fit")
+  }
+  invisible(NULL)
 }
 
 #' Conditional samples of the latent effects at given parameter values
 #'
 #' Returns a function drawing samples from the conditional distribution of the
 #' latent effects (locations, then random-effect levels) given the data, at
-#' any parameter value, with the same Langevin sampler used for plug-in
-#' prediction. Each short chain runs in the coordinates whitened by the Laplace
-#' approximation at that parameter value, starts at its mode and reuses the
-#' step size tuned at the estimate, so a brief burn-in suffices.
+#' any parameter value, with the same Langevin sampler and the same covariance
+#' as plug-in prediction. Each short chain runs in the coordinates whitened by
+#' the Laplace approximation at that parameter value and starts from a draw of
+#' it, so that it is in its stationary spread from the start, and the search
+#' for the mode starts from the mode at the previous parameter value. The step
+#' is not tuned. It is the one tuned at the estimate, or else the default,
+#' which suits the whitened chain as well, so the burn-in only discards the
+#' first draws.
 #' @noRd
-parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
+parameter_conditioning_sampler <- function(object, burnin = 100L, thin = 10L) {
   distance_scale <- attr(object, "distance_scale") %||% 1
-  coords <- object$coords / distance_scale
+  fitting_coords <- object$coords / distance_scale
+  distances <- pairwise_distances(fitting_coords)
   invlink <- if (identical(object$link_function$name, "canonical")) {
     NULL
   } else {
-    object$link_function$inv
+    object$link_function[c("inv", "d1", "d2")]
   }
   design <- as.matrix(object$D)
-  engine <- make_adaptive_mcml_engine(
-    D = design, y = object$y, units_m = object$units_m,
-    distances = as.matrix(pairwise_distances(coords)),
-    family = object$family, kappa = object$kappa,
-    cov_offset = object$cov_offset, ID_coords = object$ID_coords,
-    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink
-  )
-  phi_index <- engine$layout$index$phi
   step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
   if (!length(step_size) || !is.finite(step_size) || step_size <= 0) {
     step_size <- NULL
   }
+  last_mode <- NULL
   function(estimate, n_samples) {
-    parameters <- unname(unlist(estimate))
-    parameters[phi_index] <- parameters[phi_index] - log(distance_scale)
-    proposal <- engine$proposal_at(parameters)
-    values <- proposal$values
+    fit <- object
+    fit$estimate <- estimate
+    parameters <- coef(fit)
     simulation <- laplace_sampling_mcmc(
       y = object$y, units_m = object$units_m,
-      mu = as.numeric(design %*% values$beta + object$cov_offset),
-      Sigma = proposal$covariance, ID_coords = object$ID_coords,
-      ID_re = object$ID_re, sigma2_re = values$sigma2_re,
-      family = object$family,
+      mu = as.numeric(design %*% parameters$beta + object$cov_offset),
+      Sigma = conditioning_covariance(fit, parameters, distances,
+                                      distance_scale),
+      ID_coords = object$ID_coords, ID_re = object$ID_re,
+      sigma2_re = parameters$sigma2_re, family = object$family,
       control_mcmc = set_control_mcmc(
-        n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
-        h = step_size
+        n_draws = n_samples, burnin = burnin, thin = thin, h = step_size
       ),
-      invlink = invlink, Sigma_pd = crossprod(proposal$root),
-      mean_pd = proposal$mode, messages = FALSE
+      invlink = invlink, start = last_mode, adapt_step = FALSE,
+      # At the drawn estimate, so a size the fit estimates is drawn with it.
+      family_parameters = fit_family_values(fit)
     )
+    last_mode <<- simulation$mode
     list(samples = do.call(cbind, simulation$samples),
          acceptance = simulation$acceptance_rate[["sampling"]])
   }
 }
 
+#' Covariance of the location effects that prediction conditions on
+#'
+#' The spatial covariance at the locations plus the nugget, which is at least
+#' 1e-10 times the spatial variance, as in `prepare_prediction()`.
+#' `distances` are between the locations in the fitting units, which are the
+#' model's divided by `distance_scale`.
+#' @noRd
+conditioning_covariance <- function(object, parameters, distances,
+                                    distance_scale) {
+  correlation <- matern_correlation(
+    distances, phi = parameters$phi / distance_scale, kappa = object$kappa,
+    return_sym_matrix = TRUE
+  )
+  ratio <- nugget_ratio_natural(fitted_nugget_variance(object, parameters),
+                                parameters$sigma2)
+  if (ratio == 0) ratio <- 1e-10
+  diag(correlation) <- diag(correlation) + ratio
+  parameters$sigma2 * correlation
+}
+
 #' Average predictive targets over a common reference population
 #' @noRd
-standardize_prediction_targets <- function(object, prediction_data,
-                                           standardize, spatial, offset,
+standardise_prediction_targets <- function(object, prediction_data,
+                                           standardise, spatial, offset,
                                            random_effects, nugget, transform,
                                            beta) {
   if (is.null(prediction_data)) {
-    stop("Internal error: prediction data are required for standardization",
-         call. = FALSE)
+    riskmap_bug("Prediction data are required for standardisation.")
   }
   plain_data <- as.data.frame(st_drop_geometry(prediction_data))
   n_locations <- nrow(spatial)
@@ -1441,14 +1678,14 @@ standardize_prediction_targets <- function(object, prediction_data,
   # the potentially enormous location-by-reference-population cross-product.
   profiles_per_batch <- max(1L, floor(250000 / n_locations))
   batches <- split(
-    seq_len(nrow(standardize$data)),
-    ceiling(seq_len(nrow(standardize$data)) / profiles_per_batch)
+    seq_len(nrow(standardise$data)),
+    ceiling(seq_len(nrow(standardise$data)) / profiles_per_batch)
   )
   for (batch in batches) {
     profile_data <- plain_data[rep(seq_len(n_locations), times = length(batch)),
                                , drop = FALSE]
-    for (name in standardize$predictors) {
-      profile_data[[name]] <- rep(standardize$data[[name]][batch],
+    for (name in standardise$predictors) {
+      profile_data[[name]] <- rep(standardise$data[[name]][batch],
                                   each = n_locations)
     }
     batch_fixed <- matrix(
@@ -1459,9 +1696,9 @@ standardize_prediction_targets <- function(object, prediction_data,
       profile <- batch[[column]]
       profile_fixed <- batch_fixed[, column]
       profile_link <- sweep(base_link, 1L, profile_fixed, "+")
-      weight <- standardize$weights[[profile]]
+      weight <- standardise$weights[[profile]]
       fixed <- fixed + weight * profile_fixed
-      profile_response <- if (object$family == "gaussian") {
+      profile_response <- if (fit_is_exact(object)) {
         profile_link
       } else {
         matrix(object$link_function$inv(as.numeric(profile_link)),
@@ -1472,16 +1709,14 @@ standardize_prediction_targets <- function(object, prediction_data,
         values <- transform[[name]](profile_link)
         if (!is.numeric(values) || !is.matrix(values) ||
             !identical(dim(values), dim(profile_link))) {
-          stop("Transformation ", shQuote(name),
-               " must return a numeric matrix with the same dimensions as its input",
-               call. = FALSE)
+          abort_input("The function {.val {name}} in {.arg transform} must return a numeric matrix of the same dimensions as its input.", arg = "transform")
         }
         transformed[[name]] <- transformed[[name]] + weight * values
       }
     }
   }
   # This is the expected linear predictor over the reference population. For
-  # nonlinear links, its inverse is intentionally not used as the standardized
+  # nonlinear links, its inverse is intentionally not used as the standardised
   # response; response averaging occurs above on the scientifically relevant
   # response scale.
   link <- sweep(base_link, 1L, fixed, "+")
@@ -1496,16 +1731,57 @@ prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta
   as.numeric(design %*% beta)
 }
 
+#' Whether each row of prediction data gives a finite design row
+#'
+#' A row with log(0) or log(-1) doesn't. A term such as `ns(log(x), 2)` stops
+#' where `log(x)` isn't finite, so when the design can't be built the rows where
+#' a part of a term isn't finite are left out. Every row is taken to be finite
+#' when the design can't be built without them either, so that the prediction
+#' reports why.
+#' @noRd
+prediction_design_is_finite <- function(object, predictors) {
+  finite_rows <- function(rows) {
+    design <- tryCatch(
+      suppressWarnings(prediction_design_matrix(
+        object, predictors[rows, , drop = FALSE], na_action = na.pass
+      )),
+      error = function(error) NULL
+    )
+    if (!is.null(design)) unname(rowSums(!is.finite(design)) == 0)
+  }
+  every <- rep(TRUE, nrow(predictors))
+  finite <- finite_rows(every)
+  if (!is.null(finite)) return(finite)
+  parts <- prediction_parts_are_finite(object, predictors)
+  if (!any(parts)) return(parts)
+  finite <- if (!all(parts)) finite_rows(parts)
+  if (is.null(finite)) return(every)
+  parts[parts] <- finite
+  parts
+}
+
+#' Whether the parts of the model's terms are finite at each row
+#'
+#' The parts are the calls and variables inside the variables of the terms,
+#' such as `log(x)` in `ns(log(x), 2)`, that give a number for each row.
+#' @noRd
+prediction_parts_are_finite <- function(object, predictors) {
+  formula_parts_are_finite(
+    update(interpret_formula(fit_formula(object))$pf, NULL ~ .), predictors
+  )
+}
+
 #' Build a prediction design matrix using the fitted factor structure
 #' @noRd
-prediction_design_matrix <- function(object, predictors) {
-  inter_f <- interpret_formula(object$formula)
+prediction_design_matrix <- function(object, predictors,
+                                     na_action = na.fail) {
+  inter_f <- interpret_formula(fit_formula(object))
   fixed_formula <- update(inter_f$pf, NULL ~ .)
   fitted_frame <- model.frame(fixed_formula, data = object$data,
                               na.action = na.fail)
   fixed_terms <- attr(fitted_frame, "terms")
   model_frame <- model.frame(
-    fixed_terms, data = predictors, na.action = na.fail,
+    fixed_terms, data = predictors, na.action = na_action,
     xlev = stats::.getXlevels(fixed_terms, fitted_frame)
   )
   design <- as.matrix(model.matrix(
@@ -1514,8 +1790,7 @@ prediction_design_matrix <- function(object, predictors) {
   ))
   if (!identical(colnames(design), colnames(object$D)) ||
       ncol(design) != ncol(object$D)) {
-    stop("The prediction data produce a model matrix that does not match the fitted model",
-         call. = FALSE)
+    abort_input(c("{.arg newdata} gives a design matrix that doesn't match the one of the fit.", "i" = "Check that its covariates have the types and factor levels of the data the model was fitted to."), arg = "newdata")
   }
   design
 }
@@ -1527,17 +1802,43 @@ prediction_random_effect_samples <- function(prediction_setup, n_locations,
   if (!include) return(NULL)
   result <- matrix(0, nrow = n_locations, ncol = n_samples)
   for (term in seq_along(prediction_setup$re$samples)) {
-    term_samples <- prediction_setup$re$samples[[term]]
-    for (group in seq_along(term_samples)) {
-      result <- result + outer(
-        prediction_setup$re$D_pred[[term]][, group], term_samples[[group]]
-      )
-    }
+    levels <- prediction_setup$re$levels[[term]]
+    result <- result +
+      prediction_setup$re$samples[[term]][levels, , drop = FALSE]
   }
   result
 }
 
+#' The levels of the random effects at prediction rows
+#'
+#' Each row's level of each `re()` term, as its position among the levels of
+#' the fit, in the order of `object$re`, which are the codes of
+#' `object$ID_re`. A level that isn't in the fit comes after them.
+#' @param values The columns of the `re()` terms, one row per prediction row.
+#' @return A list with a vector of positions for each term, `levels`, and the
+#'   number of levels beyond those of the fit, `n_new`.
+#' @noRd
+prediction_random_effect_levels <- function(object, values) {
+  levels <- lapply(names(object$re), function(term) {
+    known <- match(values[[term]], object$re[[term]])
+    missing <- is.na(known)
+    labels <- as.character(values[[term]])[missing]
+    known[missing] <- length(object$re[[term]]) +
+      match(labels, unique(labels))
+    known
+  })
+  names(levels) <- names(object$re)
+  n_new <- vapply(seq_along(levels), function(term) {
+    max(levels[[term]], 0L) - length(object$re[[term]])
+  }, numeric(1))
+  list(levels = levels, n_new = pmax(n_new, 0))
+}
+
 #' Draw an optional prediction-location nugget component
+#'
+#' The nugget is one value for each location, so the rows of a joint
+#' prediction at one location share their draws, as they share the spatial
+#' effect (`location_index`).
 #' @noRd
 prediction_nugget_samples <- function(object, prediction_setup, n_locations,
                                       n_samples, include) {
@@ -1546,22 +1847,25 @@ prediction_nugget_samples <- function(object, prediction_setup, n_locations,
     object, prediction_setup$par_hat
   )
   if (is.null(tau2) || !is.finite(tau2) || tau2 <= 0) {
-    stop("The fitted model does not contain a positive nugget variance",
-         call. = FALSE)
+    abort_input("{.arg include} can't contain {.val nugget}, because the fit has no positive nugget variance.", arg = "include")
   }
-  sample_independent_gaussian(
-    mean = rep(0, n_locations),
-    standard_deviation = rep(sqrt(tau2), n_locations),
+  location <- prediction_setup$location_index
+  n_distinct <- if (is.null(location)) n_locations else max(location)
+  nugget <- sample_independent_gaussian(
+    mean = rep(0, n_distinct),
+    standard_deviation = rep(sqrt(tau2), n_distinct),
     n_samples = n_samples
   )
+  if (is.null(location)) nugget else nugget[location, , drop = FALSE]
 }
 
 #' Obtain the fitted or fixed nugget variance
 #' @noRd
 fitted_nugget_variance <- function(object, par_hat = coef(object)) {
   if (!is.null(par_hat$tau2)) return(as.numeric(par_hat$tau2))
-  if (is.numeric(object$fix_tau2) && !isTRUE(object$fix_tau2)) {
-    return(as.numeric(object$fix_tau2))
+  held <- fit_fix_tau2(object)
+  if (is.numeric(held) && !isTRUE(held)) {
+    return(as.numeric(held))
   }
   0
 }
@@ -1573,8 +1877,7 @@ aggregate_prediction_values <- function(values, operation, weights) {
   if (is.function(operation)) {
     result <- operation(values, weights)
     if (!is.numeric(result) || length(result) != ncol(values)) {
-      stop("A custom aggregation function must return one numeric value per ",
-           "predictive draw", call. = FALSE)
+      abort_input("A function in {.arg aggregate} must return one number for each predictive draw.", arg = "aggregate")
     }
     return(matrix(as.numeric(result), nrow = 1L))
   }
@@ -1640,18 +1943,7 @@ prediction_coefficient_of_variation <- function(values) {
 #' @noRd
 tidy_prediction_summaries <- function(values, boundary_id, aggregate,
                                       quantity, summaries, thresholds, level) {
-  alpha <- (1 - level) / 2
-  summary_functions <- list(
-    mean = mean,
-    median = median,
-    sd = sd,
-    cv = prediction_coefficient_of_variation,
-    lower = function(x) quantile(x, alpha, names = FALSE),
-    upper = function(x) quantile(x, 1 - alpha, names = FALSE),
-    interval_width = function(x) {
-      diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
-    }
-  )
+  summary_functions <- prediction_summary_functions(level)
   draws <- as.numeric(values)
   ordinary <- drop_prediction_operations(summaries, "exceedance")
   rows <- lapply(names(ordinary), function(name) {
@@ -1664,8 +1956,7 @@ tidy_prediction_summaries <- function(values, boundary_id, aggregate,
       summary_functions[[operation]](draws)
     }
     if (!is.numeric(value) || length(value) != 1L) {
-      stop("Custom summary ", shQuote(name),
-           " must return exactly one numeric value", call. = FALSE)
+      abort_input("The function {.val {name}} in {.arg summaries} must return a single number.", arg = "summaries")
     }
     data.frame(
       boundary_id = boundary_id,
@@ -1715,13 +2006,13 @@ format_missing_location_predictions <- function(prediction_input, include,
   predictions <- prediction_input$output_data
   predictions$fixed <- NA_real_
   predictions$offset <- NA_real_
-  ordinary <- setdiff(names(summaries), c("cv", "exceedance"))
+  ordinary <- drop_prediction_operations(summaries, c("cv", "exceedance"))
   requested_names <- c(
-    paste("spatial", ordinary, sep = "_"),
+    prediction_summary_names("spatial", ordinary),
     if ("random_effects" %in% include)
-      paste("random_effects", ordinary, sep = "_"),
-    if ("nugget" %in% include) paste("nugget", ordinary, sep = "_"),
-    paste("link", ordinary, sep = "_"),
+      prediction_summary_names("random_effects", ordinary),
+    if ("nugget" %in% include) prediction_summary_names("nugget", ordinary),
+    prediction_summary_names("link", ordinary),
     prediction_summary_names("response", summaries, thresholds),
     unlist(lapply(names(transform), prediction_summary_names,
                   summaries = summaries, thresholds = thresholds),
@@ -1838,12 +2129,11 @@ missing_boundary_summaries <- function(n_boundaries, aggregate, include,
   if (length(rows)) do.call(rbind, rows) else empty_prediction_summary()
 }
 
-#' Summarise a location-by-sample prediction matrix
+#' Built-in summaries of one predictive distribution
 #' @noRd
-summarise_prediction_matrix <- function(values, quantity, summaries, level,
-                                        thresholds = NULL) {
+prediction_summary_functions <- function(level) {
   alpha <- (1 - level) / 2
-  summary_functions <- list(
+  list(
     mean = mean,
     median = median,
     sd = sd,
@@ -1854,21 +2144,135 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
       diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
     }
   )
+}
+
+#' Calculate built-in summaries for every row of a prediction matrix
+#'
+#' Gives, for each row, the values of `prediction_summary_functions()`
+#' without calling them row by row. Each complete row is partially sorted
+#' once, and the median and the type 7 quantiles behind `"lower"`, `"upper"`
+#' and `"interval_width"` are formed from those order statistics with the
+#' arithmetic of `median()` and `quantile()`, so they are identical to the
+#' row-by-row values. `"mean"`, `"sd"` and `"cv"` use `rowMeans()` and
+#' `rowSums()`. Like `mean()` and `sd()`, these are within about one unit in
+#' the last place of the exact mean and standard deviation of the draws, but
+#' they round differently, so the two can differ by one unit in the last
+#' place. Rows
+#' with missing values are passed to the row-by-row functions, so they give
+#' the same `NA` values and errors as those functions.
+#' @noRd
+prediction_row_summaries <- function(values, operations, level) {
+  operations <- unique(operations)
+  if (!length(operations)) return(list())
+  complete <- !is.na(rowSums(values))
+  if (!all(complete)) {
+    by_row <- prediction_summary_functions(level)
+    incomplete <- values[!complete, , drop = FALSE]
+    result <- lapply(setNames(nm = operations), function(operation) {
+      value <- rep(NA_real_, nrow(values))
+      value[!complete] <- apply(incomplete, 1L, by_row[[operation]])
+      value
+    })
+    complete_result <- prediction_row_summaries(
+      values[complete, , drop = FALSE], operations, level
+    )
+    for (operation in operations) {
+      result[[operation]][complete] <- complete_result[[operation]]
+    }
+    return(result)
+  }
+
+  result <- list()
+  n_draws <- ncol(values)
+  if (any(c("mean", "sd", "cv") %in% operations)) {
+    result$mean <- rowMeans(values)
+  }
+  if (any(c("sd", "cv") %in% operations)) {
+    result$sd <- if (n_draws > 1L) {
+      deviations <- values - result$mean
+      sqrt(rowSums(deviations * deviations) / (n_draws - 1L))
+    } else {
+      rep(NA_real_, nrow(values))
+    }
+  }
+  if ("cv" %in% operations) {
+    magnitude <- abs(values)
+    largest <- magnitude[cbind(
+      seq_len(nrow(values)), max.col(magnitude, ties.method = "first")
+    )]
+    tolerance <- sqrt(.Machine$double.eps) * pmax(1, largest)
+    result$cv <- result$sd / result$mean
+    result$cv[!is.finite(result$mean) | result$mean <= tolerance] <- NA_real_
+  }
+
+  needs_quantiles <- any(c("lower", "upper", "interval_width") %in% operations)
+  needs_median <- "median" %in% operations
+  if (needs_quantiles || needs_median) {
+    # Positions of the order statistics used by median() and by
+    # quantile(type = 7) at the two interval probabilities
+    alpha <- (1 - level) / 2
+    index <- 1 + max(n_draws - 1, 0) * c(alpha, 1 - alpha)
+    below <- floor(index)
+    above <- ceiling(index)
+    half <- (n_draws + 1L) %/% 2L
+    middle <- if (n_draws %% 2L == 1L) half else half + 0L:1L
+    positions <- unique(c(
+      if (needs_quantiles) c(below, above),
+      if (needs_median) middle
+    ))
+    draws <- t(values)
+    n_statistics <- length(positions) + needs_median
+    statistics <- vapply(seq_len(ncol(draws)), function(i) {
+      sorted <- sort.int(draws[, i], partial = positions)
+      c(
+        sorted[positions],
+        if (needs_median) {
+          if (length(middle) == 1L) sorted[middle] else mean(sorted[middle])
+        }
+      )
+    }, numeric(n_statistics))
+    dim(statistics) <- c(n_statistics, ncol(draws))
+    if (needs_median) result$median <- statistics[n_statistics, ]
+    if (needs_quantiles) {
+      type_seven <- function(j) {
+        low <- statistics[match(below[j], positions), ]
+        high <- statistics[match(above[j], positions), ]
+        weight <- index[j] - below[j]
+        interpolate <- index[j] > below[j] & high != low
+        low[interpolate] <- (1 - weight) * low[interpolate] +
+          weight * high[interpolate]
+        low
+      }
+      result$lower <- type_seven(1L)
+      result$upper <- type_seven(2L)
+      result$interval_width <- result$upper - result$lower
+    }
+  }
+  result[operations]
+}
+
+#' Summarise a location-by-sample prediction matrix
+#' @noRd
+summarise_prediction_matrix <- function(values, quantity, summaries, level,
+                                        thresholds = NULL) {
   ordinary <- drop_prediction_operations(summaries, "exceedance")
+  built_in <- vapply(ordinary, is.character, logical(1))
+  row_summaries <- prediction_row_summaries(
+    values, unlist(ordinary[built_in], use.names = FALSE), level
+  )
   result <- lapply(names(ordinary), function(name) {
     operation <- ordinary[[name]]
     value <- if (is.function(operation)) {
       apply(values, 1L, operation)
     } else {
-      apply(values, 1L, summary_functions[[operation]])
+      row_summaries[[operation]]
     }
     if (!is.numeric(value) || length(value) != nrow(values)) {
-      stop("Custom summary ", shQuote(name),
-           " must return exactly one numeric value", call. = FALSE)
+      abort_input("The function {.val {name}} in {.arg summaries} must return a single number.", arg = "summaries")
     }
     as.numeric(value)
   })
-  names(result) <- paste(quantity, names(ordinary), sep = "_")
+  names(result) <- prediction_summary_names(quantity, ordinary)
   if (prediction_operation_requested(summaries, "exceedance")) {
     exceedance <- lapply(thresholds, function(threshold) {
       rowMeans(values > threshold)
@@ -1885,7 +2289,8 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
 #' @noRd
 prediction_summary_names <- function(quantity, summaries, thresholds = NULL) {
   ordinary <- names(drop_prediction_operations(summaries, "exceedance"))
-  result <- paste(quantity, ordinary, sep = "_")
+  # No names when only the exceedance probabilities were asked for.
+  result <- paste(rep(quantity, length(ordinary)), ordinary, sep = "_")
   if (prediction_operation_requested(summaries, "exceedance")) {
     result <- c(result, paste(
       quantity, "exceedance", prediction_threshold_label(thresholds), sep = "_"
@@ -1895,9 +2300,18 @@ prediction_summary_names <- function(quantity, summaries, thresholds = NULL) {
 }
 
 #' Format thresholds for stable column names
+#'
+#' Each threshold is written on its own, so that its label doesn't depend on
+#' the others, with more digits only where two thresholds would have the same
+#' label.
 #' @noRd
 prediction_threshold_label <- function(thresholds) {
-  format(thresholds, scientific = FALSE, trim = TRUE)
+  for (digits in c(7L, 15L, 17L)) {
+    labels <- vapply(thresholds, format, character(1), digits = digits,
+                     scientific = FALSE)
+    if (!anyDuplicated(labels)) break
+  }
+  labels
 }
 
 #' Restore the block structure of stored fitted conditional samples
@@ -1905,8 +2319,7 @@ prediction_threshold_label <- function(thresholds) {
 stored_conditioning_sample <- function(object) {
   block_sizes <- c(nrow(object$coords), lengths(object$re))
   if (ncol(object$S_samples) != sum(block_sizes)) {
-    stop("Stored conditional samples are inconsistent with the fitted model",
-         call. = FALSE)
+    abort_input("The conditional samples stored in {.arg object} don't match its model.", arg = "object")
   }
   block_ends <- cumsum(block_sizes)
   block_starts <- c(1L, utils::head(block_ends, -1L) + 1L)
@@ -1918,80 +2331,60 @@ stored_conditioning_sample <- function(object) {
   list(samples = blocks)
 }
 
-#' Reconstruct linear-predictor draws from a prediction object
+#' The latent effects of a Gaussian model and their observations
 #'
-#' The public prediction object keeps deterministic contributions in `predictions`
-#' and stochastic contributions in `samples`. Keeping that representation
-#' compact avoids duplicating large matrices, while this helper gives internal
-#' assessment routines the complete draws they need.
+#' The location effects, with covariance `spatial_covariance`, and then the
+#' levels of each `re()` term, in the order of `object$re`, whose codes are in
+#' `object$ID_re`.
+#' @return A list with the observation-by-effect `incidence`, the `covariance`
+#'   of the effects, the location and group indices of the observations
+#'   (`ids`), the number of levels of each term (`n_levels`) and the
+#'   `measurement_variance`.
 #' @noRd
-prediction_link_samples <- function(prediction, include_fixed = TRUE,
-                                    include_offset = TRUE) {
-  samples <- prediction$samples
-  if (is.null(samples) || is.null(samples$spatial)) {
-    stop("Prediction samples were not retained", call. = FALSE)
+gaussian_latent_structure <- function(object, spatial_covariance, par_hat) {
+  n_observations <- length(object$y)
+  indicators <- function(index, n_columns) {
+    design <- matrix(0, nrow = n_observations, ncol = n_columns)
+    design[cbind(seq_len(n_observations), index)] <- 1
+    design
   }
-
-  link <- samples$spatial
-  if (include_fixed) {
-    # With parameter uncertainty the fixed effects differ between draws.
-    link <- if (is.null(samples$fixed)) {
-      sweep(link, 1L, prediction$predictions$fixed, `+`)
-    } else {
-      link + samples$fixed
-    }
+  n_levels <- unname(lengths(object$re))
+  random_ids <- if (length(n_levels)) as.matrix(object$ID_re)
+  designs <- list(indicators(object$ID_coords, nrow(spatial_covariance)))
+  covariances <- list(spatial_covariance)
+  for (term in seq_along(n_levels)) {
+    designs[[term + 1L]] <- indicators(random_ids[, term], n_levels[term])
+    covariances[[term + 1L]] <- diag(
+      par_hat$sigma2_re[[term]], nrow = n_levels[term]
+    )
   }
-  if (include_offset) {
-    link <- sweep(link, 1L, prediction$predictions$offset, `+`)
-  }
-  if (!is.null(samples$random_effects)) {
-    link <- link + samples$random_effects
-  }
-  if (!is.null(samples$nugget)) {
-    link <- link + samples$nugget
-  }
-  link
+  list(
+    incidence = do.call(cbind, designs),
+    covariance = as.matrix(Matrix::bdiag(covariances)),
+    ids = as.matrix(cbind(object$ID_coords, object$ID_re)),
+    n_levels = n_levels,
+    measurement_variance = par_hat$sigma2_me %||% fit_fix_var_me(object) %||% 0
+  )
 }
 
 gaussian_conditioning_distribution <- function(object, spatial_covariance,
                                                par_hat, residual) {
-  n_observations <- length(object$y)
   n_spatial <- nrow(spatial_covariance)
-  random_ids <- as.matrix(object$ID_re)
-  n_random_terms <- if (is.null(object$ID_re)) 0L else ncol(random_ids)
-
-  spatial_design <- matrix(0, nrow = n_observations, ncol = n_spatial)
-  spatial_design[cbind(seq_len(n_observations), object$ID_coords)] <- 1
-  designs <- list(spatial_design)
-  covariances <- list(spatial_covariance)
-  if (n_random_terms) {
-    for (term in seq_len(n_random_terms)) {
-      design <- matrix(0, nrow = n_observations,
-                       ncol = length(object$re[[term]]))
-      design[cbind(seq_len(n_observations), random_ids[, term])] <- 1
-      designs[[term + 1L]] <- design
-      covariances[[term + 1L]] <- diag(
-        par_hat$sigma2_re[[term]], nrow = ncol(design)
-      )
-    }
-  }
-
-  incidence <- do.call(cbind, designs)
-  latent_covariance <- as.matrix(Matrix::bdiag(covariances))
-  measurement_variance <- par_hat$sigma2_me %||% object$fix_var_me %||% 0
-  ids <- as.matrix(cbind(object$ID_coords, object$ID_re))
+  latent <- gaussian_latent_structure(object, spatial_covariance, par_hat)
+  incidence <- latent$incidence
+  latent_covariance <- latent$covariance
   prediction_weights <- gaussian_prediction_weights(
-    Matrix::Matrix(incidence, sparse = TRUE), latent_covariance, ids,
-    measurement_variance
+    Matrix::Matrix(incidence, sparse = TRUE), latent_covariance, latent$ids,
+    latent$measurement_variance
   )
   cross_covariance <- latent_covariance %*% t(incidence)
   gain <- prediction_weights(cross_covariance)
   conditional_mean <- as.numeric(gain %*% residual)
   conditional_covariance <- latent_covariance -
     gain %*% incidence %*% latent_covariance
-  random_rows <- if (n_random_terms) {
+  random_rows <- if (length(latent$n_levels)) {
     split(seq.int(n_spatial + 1L, nrow(latent_covariance)),
-          rep(seq_len(n_random_terms), lengths(object$re)))
+          rep(seq_along(latent$n_levels), latent$n_levels))
   } else {
     list()
   }
@@ -2023,16 +2416,75 @@ gaussian_conditioning_samples <- function(object, spatial_covariance,
   )
 }
 
+#' Draw the random effects of a Gaussian model given its spatial samples
+#'
+#' Given the data, the spatial effects at the prediction locations and the
+#' random effects are jointly Gaussian, with covariance `-C V^-1 C_Z'`, where
+#' `C` and `C_Z` are their covariances with the observations and `V` the
+#' covariance of the observations. The random effects are drawn from their
+#' distribution given the data and the spatial samples.
+#' @param latent The model's latent effects (`gaussian_latent_structure()`).
+#' @param prediction_weights The function giving `C V^-1`.
+#' @param residual The observations less their fixed effects and offset.
+#' @param spatial_samples,spatial_mean The samples of the spatial effects and
+#'   their conditional mean.
+#' @param spatial_cross_covariance The covariance of the spatial effects with
+#'   the observations, `C`.
+#' @param spatial_root The factor of the conditional covariance of the spatial
+#'   effects.
+#' @return A list with a level-by-draw matrix for each `re()` term.
+#' @noRd
+gaussian_random_effect_samples <- function(latent, prediction_weights,
+                                           residual, spatial_samples,
+                                           spatial_mean,
+                                           spatial_cross_covariance,
+                                           spatial_root) {
+  n_effects <- ncol(latent$incidence)
+  rows <- seq.int(n_effects - sum(latent$n_levels) + 1L, n_effects)
+  variance <- diag(latent$covariance)[rows]
+  # One row for each level and one column for each observation
+  cross_covariance <- variance * t(latent$incidence[, rows, drop = FALSE])
+  weights <- prediction_weights(cross_covariance)
+  with_spatial <- weights %*% t(spatial_cross_covariance)
+  spatial_weights <- cholesky_prediction_weights(with_spatial, spatial_root)
+  conditional_covariance <- diag(variance, nrow = length(variance)) -
+    weights %*% t(cross_covariance) - spatial_weights %*% t(with_spatial)
+  root <- factor_covariance(
+    conditional_covariance, "conditional random-effect covariance"
+  )
+  conditional_mean <- as.numeric(weights %*% residual) -
+    spatial_weights %*% (spatial_samples - spatial_mean)
+  samples <- sample_correlated_gaussian(
+    conditional_mean, t(root), ncol(spatial_samples)
+  )
+  term <- rep(seq_along(latent$n_levels), latent$n_levels)
+  lapply(seq_along(latent$n_levels), function(k) {
+    samples[term == k, , drop = FALSE]
+  })
+}
+
 #' Generate conditional spatial-process samples from aligned prediction data
 #'
 #' Prediction variables and geometry remain in one row-aligned `sf` object.
 #' For areal predictions, `groups` defines the independent joint covariance
 #' blocks without splitting the data into parallel lists.
+#' A fresh conditional MCMC run of a non-Gaussian model is seeded with
+#' `mcmc_seed`, after which the caller's random number state is restored, so
+#' the predictive draws that follow start from that state.
+#'
+#' At the observed locations, and in joint predictions with several rows at some
+#' location, the spatial samples have a row for each distinct location, and
+#' `location_index` gives the location of each prediction row, so that the rows
+#' at one location share its samples (`build_prediction_components()`).
+#' Otherwise they have a row for each prediction row. The effect of a level of
+#' an `re()` term that isn't in the fit is drawn from its distribution,
+#' independently of the data.
 #' @noRd
 draw_prediction_samples <- function(object, prediction_data, prediction,
                                     include, control_mcmc = NULL,
                                     groups = NULL,
                                     observed_locations = FALSE,
+                                    mcmc_seed = NULL,
                                     messages = TRUE) {
 
   control_mcmc_supplied <- !is.null(control_mcmc)
@@ -2041,12 +2493,11 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   plain_data <- as.data.frame(st_drop_geometry(prediction_data))
   grid_pred <- if (observed_locations) NULL else st_geometry(prediction_data)
   predictors <- if (observed_locations) NULL else plain_data
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   pred_cov_offset <- NULL
   if (!observed_locations && !is.null(inter_f$offset)) {
     if (!inter_f$offset %in% names(plain_data)) {
-      stop("'newdata' is missing offset column '", inter_f$offset, "'",
-           call. = FALSE)
+      abort_input("{.arg newdata} must have the offset column {.val {inter_f$offset}}.", arg = "newdata")
     }
     pred_cov_offset <- plain_data[[inter_f$offset]]
   }
@@ -2054,12 +2505,10 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   if ("random_effects" %in% include) {
     random_names <- colnames(object$ID_re)
     if (!length(random_names)) {
-      stop("The fitted model does not contain unstructured random effects",
-           call. = FALSE)
+      abort_input("{.arg include} can't contain {.val random_effects}, because the model has no {.fn re} terms.", arg = "include")
     }
     if (prediction != "joint") {
-      stop("Random-effect prediction requires 'type = \"joint\"'",
-           call. = FALSE)
+      abort_input("{.arg joint} must be {.code TRUE} to predict the random effects.", arg = "joint")
     }
     prepare_random_effects(plain_data, random_names)
     re_predictors <- plain_data[random_names]
@@ -2068,15 +2517,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   # ---------------------------------------------------------------------------
   # validate inputs
   # ---------------------------------------------------------------------------
-  stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
+  if (!inherits(object, "RiskMap")) riskmap_bug("{.arg object} must be a {.cls RiskMap} fit.")
 
   model_crs <- st_crs(object$data)
 
   if (is.na(model_crs)) {
-    stop(
-      "The fitted model does not contain a valid coordinate reference system (CRS)",
-      call. = FALSE
-    )
+    abort_input("The data of {.arg object} must have a coordinate reference system.", arg = "object")
   }
 
   crs_label <- function(x) {
@@ -2087,52 +2533,36 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   if (!is.null(grid_pred)) {
     check_data(grid_pred, type = "sfc")
     if (!isTRUE(st_crs(grid_pred) == model_crs)) {
-      stop(
-        "The CRS of 'grid_pred' (", crs_label(grid_pred),
-        ") must match the fitted model CRS (", crs_label(model_crs),
-        "). Transform 'grid_pred' explicitly with sf::st_transform().",
-        call. = FALSE
-      )
+      riskmap_bug("The prediction locations are in {crs_label(grid_pred)}, not in {crs_label(model_crs)} as the fit.")
     }
   }
 
-  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
-    stop("'control_mcmc' must be an output from 'set_control_mcmc()'")
+  check_control(control_mcmc, "set_control_mcmc")
 
-  if (!is.null(control_mcmc$seed)) {
-    restore_seed <- preserve_random_seed()
-    on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
+  if (!type %in% c("marginal", "joint")) {
+    riskmap_bug("{.arg type} must be {.val marginal} or {.val joint}.")
   }
-
-  if (!type %in% c("marginal", "joint"))
-    stop("'type' must be either 'marginal' or 'joint'")
 
   grouped_joint <- !is.null(groups)
   if (grouped_joint) {
     if (type != "joint") {
-      stop("Grouped prediction requires 'type = \"joint\"'", call. = FALSE)
+      riskmap_bug("Grouped prediction needs {.code type = \"joint\"}.")
     }
     if (is.null(grid_pred) || length(groups) != length(grid_pred) ||
         anyNA(groups)) {
-      stop("'groups' must identify every prediction location", call. = FALSE)
+      riskmap_bug("{.arg groups} must give a group for every prediction location.")
     }
-    group_indices <- unname(split(seq_along(groups), groups))
-  } else {
-    group_indices <- list(seq_len(if (is.null(grid_pred)) {
-      nrow(object$coords)
-    } else {
-      length(grid_pred)
-    }))
   }
 
-  if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1)
-    stop("'predictors' must be supplied if 'grid_pred' is supplied")
+  if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1) {
+    riskmap_bug("Covariates must be given with the prediction locations.")
+  }
 
   obs_loc <- is.null(grid_pred)
   if (obs_loc) {
-    if (!is.null(predictors))
-      warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
+    if (!is.null(predictors)) {
+      riskmap_bug("Covariates were given without prediction locations.")
+    }
     predictors <- as.data.frame(st_drop_geometry(object$data))
     grid_pred  <- st_as_sfc(object$data)
   }
@@ -2140,24 +2570,36 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   grp <- coordinates_in_units(grid_pred, object$distance_units)
   n_pred <- nrow(grp)
 
+  # The distinct location of each prediction row, where the rows at one
+  # location have the same draws. A marginal prediction draws each row alone.
+  location_index <- if (obs_loc) {
+    object$ID_coords
+  } else if (type == "joint") {
+    distinct <- index_coordinate_rows(grp)
+    if (nrow(distinct$coordinates) < n_pred) distinct$index
+  }
+  if (!obs_loc && !is.null(location_index)) {
+    grp <- distinct$coordinates
+    groups <- groups[!duplicated(location_index)]
+  }
+  group_indices <- if (grouped_joint) {
+    unname(split(seq_along(groups), groups))
+  }
+
   object$D <- as.matrix(object$D)
   p <- ncol(object$D)
 
-  if (!all(object$cov_offset == 0)) {
-    if (obs_loc){
-      pred_cov_offset <- object$cov_offset
-    } else {
-      if (is.null(pred_cov_offset))
-        stop("'pred_cov_offset' must be specified at each prediction location")
-      if (!inherits(pred_cov_offset, "numeric"))
-        stop("'pred_cov_offset' must be a numeric vector")
-      if (length(pred_cov_offset) != n_pred)
-        stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
-    }
-  } else {
-    if (!is.null(pred_cov_offset))
-      warning("You have set 'pred_cov_offset' but 'object' does not contain a cov_offset so this will be ignored")
+  if (obs_loc) {
+    pred_cov_offset <- object$cov_offset %||% 0
+  } else if (is.null(inter_f$offset)) {
     pred_cov_offset <- 0
+  } else {
+    if (!is.numeric(pred_cov_offset)) {
+      abort_input("The offset column {.val {inter_f$offset}} of {.arg newdata} must be numeric.", arg = "newdata")
+    }
+    if (length(pred_cov_offset) != n_pred) {
+      riskmap_bug("The offset must have one value for each prediction location.")
+    }
   }
 
   # ---------------------------------------------------------------------------
@@ -2165,13 +2607,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   # ---------------------------------------------------------------------------
 
   par_hat <- coef(object)
-  inter_f      <- interpret_formula(object$formula)
+  inter_f      <- interpret_formula(fit_formula(object))
 
   intercept_only <- if (p == 1) prod(object$D[, 1] == 1) == 1 else FALSE
 
   n_re <- length(object$re)
-  if (n_re > 0 && type == "marginal" && !is.null(re_predictors))
-    stop("Random effect predictions require 'type' to be set to 'joint'")
+  if (n_re > 0 && type == "marginal" && !is.null(re_predictors)) {
+    riskmap_bug("Random effects are predicted only with {.code type = \"joint\"}.")
+  }
 
   # ---------------------------------------------------------------------------
   # Build mu_pred (fixed-effects linear predictor at prediction locations)
@@ -2185,12 +2628,11 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
       offset_names <- names(object$cov_offset)
       model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
 
-      if (!is.data.frame(predictors))
-        stop("'predictors' must be a data.frame")
-      if (!all(model_predictors %in% names(predictors)))
-        stop("The column names in 'predictors' do not match the variables in the model formula")
-      if (nrow(predictors) != n_predictors)
-        stop("The number of rows in 'predictors' does not match the number of locations in 'grid_pred'")
+      if (!is.data.frame(predictors) ||
+          !all(model_predictors %in% names(predictors)) ||
+          nrow(predictors) != n_predictors) {
+        riskmap_bug("The covariates must be a data frame with the columns of the model and one row per prediction location.")
+      }
       check_complete_data(predictors, model_predictors)
       prediction_design_matrix(object, predictors)
     }
@@ -2205,42 +2647,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   }
 
   # ---------------------------------------------------------------------------
-  # Random effects (unchanged from original)
+  # The levels of the random effects at the prediction rows
   # ---------------------------------------------------------------------------
-  if (n_re > 0) {
-    ID_g         <- as.matrix(cbind(object$ID_coords, object$ID_re))
-    re_unique    <- object$re
-    n_dim_re_tot <- sapply(seq_len(n_re + 1), function(i) length(unique(ID_g[, i])))
-
-    if (!is.null(re_predictors)) {
-      if (any(is.na(re_predictors))) {
-        warning("Missing values in 're_predictors'; removing affected locations")
-        ind_c       <- complete.cases(re_predictors)
-        re_predictors <- re_predictors[ind_c, , drop = FALSE]
-        grid_pred <- grid_pred[ind_c]
-        grp <- coordinates_in_units(grid_pred, object$distance_units)
-        n_pred <- nrow(grp)
-      }
-      if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
-      if (nrow(re_predictors) != n_pred)  stop("'re_predictors' rows do not match 'grid_pred'")
-      if (ncol(re_predictors) != n_re)    stop("'re_predictors' columns do not match number of random effects")
-
-      n_dim_re <- sapply(seq_len(n_re), function(i) length(unique(object$ID_re[, i])))
-      build_re_design <- function(values, size) {
-        lapply(seq_len(n_re), function(i) {
-          mat <- matrix(0, nrow = size, ncol = n_dim_re[i])
-          for (j in seq_along(object$re[[i]])) {
-            mat[values[, i] == object$re[[i]][j], j] <- 1
-          }
-          mat
-        })
-      }
-      D_re_pred <- build_re_design(re_predictors, n_pred)
-    } else {
-      D_re_pred <- NULL
+  random_levels <- if (n_re > 0 && !is.null(re_predictors)) {
+    if (!is.data.frame(re_predictors) || nrow(re_predictors) != n_pred ||
+        ncol(re_predictors) != n_re) {
+      riskmap_bug("The random-effect levels must be a data frame with one column per random effect and one row per prediction location.")
     }
-  } else {
-    D_re_pred <- NULL
+    prediction_random_effect_levels(object, re_predictors)
   }
 
   # ---------------------------------------------------------------------------
@@ -2252,7 +2666,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   fitting_phi <- par_hat$phi / distance_scale
   fitting_grp <- grp / distance_scale
 
-  conditioning_coords <- if (object$family == "gaussian") {
+  conditioning_coords <- if (fit_is_exact(object)) {
     fitting_coords[object$ID_coords, , drop = FALSE]
   } else {
     fitting_coords
@@ -2265,10 +2679,10 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   batch_marginal <- !obs_loc && type == "marginal" &&
     marginal_batch_size < n_pred
 
-  if (object$family != "gaussian" && !obs_loc && !batch_marginal &&
+  if (!fit_is_exact(object) && !obs_loc && !batch_marginal &&
       !grouped_joint) {
     U_pred <- cross_distances(fitting_grp, fitting_coords)
-  } else if (object$family == "gaussian" && !obs_loc && !batch_marginal &&
+  } else if (fit_is_exact(object) && !obs_loc && !batch_marginal &&
              !grouped_joint) {
     U_pred <- cross_distances(fitting_grp, conditioning_coords)
   }
@@ -2291,14 +2705,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 
   mu <- as.numeric(object$D %*% par_hat$beta + object$cov_offset)
 
-  reuse_fitted_samples <- object$family != "gaussian" &&
+  reuse_fitted_samples <- !fit_is_exact(object) &&
     !control_mcmc_supplied && !is.null(object$S_samples)
   n_samples <- if (reuse_fitted_samples) {
     nrow(object$S_samples)
-  } else if (control_mcmc$linear_model) {
-    control_mcmc$n_sim
   } else {
-    (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+    control_mcmc$n_draws
   }
 
   # ---------------------------------------------------------------------------
@@ -2308,17 +2720,17 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   # glgpm: existing behaviour
   # ---------------------------------------------------------------------------
   tau2 <- fitted_nugget_variance(object, par_hat)
-  nu2 <- tau2 / par_hat$sigma2
+  nu2 <- nugget_ratio_natural(tau2, par_hat$sigma2)
   if (nu2 == 0) nu2 <- 1e-10
   diag(R) <- diag(R) + nu2
 
-  diff.y <- if (object$family == "gaussian") object$y - mu else NULL
+  diff.y <- if (fit_is_exact(object)) object$y - mu else NULL
   shared_gaussian_re_samples <- NULL
 
   # ===========================================================================
   # NON-GAUSSIAN MODELS
   # ===========================================================================
-  if (object$family != "gaussian") {
+  if (!fit_is_exact(object)) {
 
     Sigma     <- par_hat$sigma2 * R
     Sigma_root <- factor_covariance(Sigma, "observation covariance")
@@ -2334,31 +2746,39 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (reuse_fitted_samples) {
       simulation <- stored_conditioning_sample(object)
       if (messages) {
-        message("Reusing conditional samples stored in the fitted model")
+        riskmap_inform("Reusing the conditional samples stored in the fit.")
       }
     } else {
+      progress_step(paste0("Running {format(mcmc_iterations(control_mcmc), ",
+                           "big.mark = ',')} iterations of the Langevin ",
+                           "sampler"),
+                    messages)
       simulation <- laplace_sampling_mcmc(
         y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
         sigma2_re = par_hat$sigma2_re,
         invlink = if (identical(object$link_function$name, "canonical")) {
           NULL
         } else {
-          object$link_function$inv
+          object$link_function[c("inv", "d1", "d2")]
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
-        messages = messages
+        seed = mcmc_seed, family_parameters = fit_family_values(object)
       )
+      progress_step_done(messages)
     }
 
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
     } else if (batch_marginal) {
+      bar <- progress_bar("Predicting at locations", nrow(fitting_grp),
+                          messages)
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights,
         t(simulation$samples$S), par_hat$sigma2, fitting_phi,
-        object$kappa, n_samples, marginal_batch_size
+        object$kappa, n_samples, marginal_batch_size, progress = bar
       )
+      progress_done(bar)
     } else if (grouped_joint) {
       out$S_samples <- grouped_joint_prediction(
         prediction_coordinates = fitting_grp,
@@ -2399,6 +2819,11 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     # GAUSSIAN MODEL
     # =========================================================================
     blockwise_random_effects <- grouped_joint && !is.null(re_predictors)
+    # Without measurement error or random effects, the observations are the
+    # effects of the locations themselves.
+    held_variance <- fit_fix_var_me(object)
+    observed_exactly <- !is.null(held_variance) && held_variance == 0 &&
+      n_re == 0L
     if (blockwise_random_effects) {
       spatial_covariance <- par_hat$sigma2 * R
       latent_samples <- gaussian_conditioning_samples(
@@ -2426,36 +2851,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         n_samples = n_samples
       )
       shared_gaussian_re_samples <- latent_samples$random_effects
-    } else if (!is.null(object$fix_var_me) && object$fix_var_me > 0 || is.null(object$fix_var_me)) {
-      m        <- length(object$y)
-      s_unique <- unique(object$ID_coords)
-      ID_g     <- as.matrix(cbind(object$ID_coords, object$ID_re))
-      n_dim_re_tot <- sapply(seq_len(n_re + 1), function(i) length(unique(ID_g[, i])))
-      C_g      <- matrix(0, nrow = m, ncol = sum(n_dim_re_tot))
-      for (i in seq_len(m)) {
-        ind_s_i <- which(s_unique == ID_g[i, 1])
-        C_g[i, seq_len(n_dim_re_tot[1])][ind_s_i] <- 1
-      }
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          select_col <- sum(n_dim_re_tot[seq_len(j)])
-          for (i in seq_len(m)) {
-            ind_re_j_i <- which(re_unique[[j]] == ID_g[i, j + 1])
-            C_g[i, select_col + seq_len(n_dim_re_tot[j + 1])][ind_re_j_i] <- 1
-          }
-        }
-      }
-      C_g      <- Matrix(C_g, sparse = TRUE, doDiag = FALSE)
-      Sigma_g  <- matrix(0, nrow = sum(n_dim_re_tot), ncol = sum(n_dim_re_tot))
-      Sigma_g[seq_len(n_dim_re_tot[1]), seq_len(n_dim_re_tot[1])] <- par_hat$sigma2 * R
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          sc <- sum(n_dim_re_tot[seq_len(j)])
-          diag(Sigma_g[sc + seq_len(n_dim_re_tot[j+1]), sc + seq_len(n_dim_re_tot[j+1])]) <- par_hat$sigma2_re[j]
-        }
-      }
-      prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
-                                                         par_hat$sigma2_me)
+    } else if (!observed_exactly) {
+      latent <- gaussian_latent_structure(object, par_hat$sigma2 * R, par_hat)
+      prediction_weights <- gaussian_prediction_weights(
+        Matrix(latent$incidence, sparse = TRUE, doDiag = FALSE),
+        latent$covariance, latent$ids, latent$measurement_variance
+      )
       if (!batch_marginal && !grouped_joint) {
         A <- prediction_weights(C)
       }
@@ -2473,11 +2874,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (blockwise_random_effects) {
       # Samples were generated above from one shared fitted latent state.
     } else if (batch_marginal) {
+      bar <- progress_bar("Predicting at locations", nrow(fitting_grp),
+                          messages)
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights, diff.y,
         par_hat$sigma2, fitting_phi, object$kappa, n_samples,
-        marginal_batch_size
+        marginal_batch_size, progress = bar
       )
+      progress_done(bar)
     } else if (grouped_joint) {
       out$S_samples <- grouped_joint_prediction(
         prediction_coordinates = fitting_grp,
@@ -2516,57 +2920,37 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   }
 
   # ---------------------------------------------------------------------------
-  # Random effect posterior samples (unchanged from original)
+  # Samples of the random effects, one matrix for each term
   # ---------------------------------------------------------------------------
 
-  if (n_re > 0 && !is.null(re_predictors)) {
-    out$re          <- list()
-    out$re$D_pred   <- D_re_pred
-    out$re$samples  <- list()
-    re_names        <- colnames(object$ID_re)
-    if (object$family == "gaussian" && !is.null(shared_gaussian_re_samples)) {
-      re_samples <- do.call(rbind, shared_gaussian_re_samples)
-    } else if (object$family == "gaussian") {
-      C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
-      add  <- 0
-      for (i in seq_along(n_dim_re_tot[-1])) {
-        C_Z[, add + seq_len(n_dim_re_tot[i+1])] <- par_hat$sigma2_re[i] *
-          C_Z[, add + seq_len(n_dim_re_tot[i+1])]
-        add <- n_dim_re_tot[i+1]
-      }
-      W_Z          <- prediction_weights(Matrix::t(C_Z))
-      A_Z          <- cholesky_prediction_weights(W_Z %*% t(C), Sc_root)
-      Sigma_Z_cond <- diag(rep(par_hat$sigma2_re, n_dim_re_tot[-1])) -
-        W_Z %*% C_Z -
-        A_Z %*% C %*% t(W_Z)
-      Scr_Z        <- t(factor_covariance(
-        Sigma_Z_cond, "conditional random-effect covariance"
-      ))
-      mu_Z_cond    <- A_Z %*% (out$S_samples - mu_cond_S)
-      mu_Z_cond <- mu_Z_cond + as.numeric(W_Z %*% diff.y)
-      re_samples <- sample_correlated_gaussian(
-        mu_Z_cond, Scr_Z, n_samples
+  out["re"] <- list(NULL)
+  if (!is.null(random_levels)) {
+    re_samples <- if (!is.null(shared_gaussian_re_samples)) {
+      shared_gaussian_re_samples
+    } else if (fit_is_exact(object)) {
+      gaussian_random_effect_samples(
+        latent, prediction_weights, residual = diff.y,
+        spatial_samples = out$S_samples, spatial_mean = mu_cond_S,
+        spatial_cross_covariance = C, spatial_root = Sc_root
       )
     } else {
-      re_samples <- matrix(0, nrow = sum(n_dim_re_tot[-1]), ncol = n_samples)
-      add <- 0
-      for (i in seq_len(n_re)) {
-        rows <- add + seq_len(n_dim_re_tot[i + 1])
-        re_samples[rows, ] <- t(simulation$samples[[i + 1]])
-        add <- add + n_dim_re_tot[i+1]
-      }
+      lapply(seq_len(n_re), function(term) {
+        t(simulation$samples[[term + 1L]])
+      })
     }
-    add <- 0
-    for (i in seq_len(n_re)) {
-      for (j in seq_len(n_dim_re_tot[1 + i])) {
-        add <- add + 1
-        out$re$samples[[re_names[[i]]]][[as.character(re_unique[[i]][[j]])]] <- re_samples[add, ]
-      }
+    # The levels that aren't in the fit, independent of the data.
+    for (term in which(random_levels$n_new > 0)) {
+      n_new <- random_levels$n_new[term]
+      re_samples[[term]] <- rbind(re_samples[[term]], sample_independent_gaussian(
+        mean = rep(0, n_new),
+        standard_deviation = rep(sqrt(par_hat$sigma2_re[[term]]), n_new),
+        n_samples = n_samples
+      ))
     }
-  } else {
-    out$re <- list(D_pred = NULL, samples = NULL)
+    out$re <- list(levels = random_levels$levels, samples = re_samples)
   }
 
+  out["location_index"] <- list(location_index)
   out$obs_loc  <- obs_loc
   if (obs_loc){
     out$ID_coords <- object$ID_coords
@@ -2582,649 +2966,47 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   return(out)
 }
 
-.anpit_area <- function(curve, u = seq(0, 1, length.out = length(curve))) {
-  if (length(curve) != length(u)) stop("'curve' and 'u' must have the same length")
-  if (length(curve) < 2) return(NA_real_)
-
-  dx <- diff(u)
-  y <- abs(curve - u)
-  sum(dx * (utils::head(y, -1) + utils::tail(y, -1)) / 2)
-}
-
-##' @title Plot Training/Test Splits
-##'
+##' @title Map a simulation
 ##' @description
-##' Plots every observation used by \code{\link{assess_prediction}}, coloured
-##' by whether it fell in the training or test set for a given iteration,
-##' faceted by iteration when there is more than one. Mimics the visual style
-##' of \code{spatialsample::autoplot()} (used directly for
-##' \code{method = "cluster"}), for the \code{"user"} and \code{"regularized"}
-##' methods, whose splits aren't necessarily a complete partition of the data
-##' and so aren't well suited to colouring by fold membership alone.
+##' Maps one component of one simulation from [simulate_glgpm()] over its
+##' prediction grid, by default the mean, with the sampling locations overlaid
+##' when data were also simulated. `plot()` of the simulation does the same.
 ##'
-##' @param data_split A list with a \code{splits} element, each entry itself a
-##' list with an \code{sf} \code{data} (the training set) and an \code{sf}
-##' \code{data_test} (the test set) - the structure built internally by
-##' \code{assess_prediction()} for \code{method = "user"} and
-##' \code{method = "regularized"}.
-##' @param alpha Point transparency, passed to \code{ggplot2::geom_sf()}.
-##' Defaults to \code{0.6}, matching \code{spatialsample::autoplot()}.
-##' @return A \code{ggplot} object.
-##' @noRd
-plot_folds <- function(data_split, alpha = 0.6) {
-  n_iter <- length(data_split$splits)
-
-  combined <- do.call(rbind, lapply(seq_len(n_iter), function(i) {
-    split_i <- data_split$splits[[i]]
-    rbind(
-      cbind(split_i$data,      set = "Training", iteration = i),
-      cbind(split_i$data_test, set = "Testing",  iteration = i)
-    )
-  }))
-
-  p <- ggplot(data = combined, aes(color = .data$set, fill = .data$set)) +
-    geom_sf(alpha = alpha) +
-    guides(colour = guide_legend("Set"), fill = guide_legend("Set")) +
-    theme_minimal()
-
-  if (n_iter > 1) {
-    p <- p + facet_wrap(vars(.data$iteration))
-  }
-
-  p + coord_sf()
-}
-
-##' @title Assess Predictive Performance via Spatial Cross-Validation
-##'
-##' @description
-##' This function evaluates the predictive performance of spatial models fitted
-##' to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
-##'
-##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS)
-##'  and its scaled version (SCRPS), which quantify the sharpness and calibration
-##'  of probabilistic forecasts (Bolin & Wallin, 2023);
-##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT)
-##' for Gaussian outcomes, Average nonrandomized PIT (AnPIT) curves for discrete
-##' outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve
-##' and the reference line (Giorgi *et al.* 2026).
-##'
-##' Cross-validation can be performed using either spatial clustering, regularized
-##' subsampling with a minimum inter-point distance or a user-defined test set.
-##' For each fold or subset, models can be refitted or evaluated with fixed parameters,
-##' offering flexibility in model validation. The function also provides visualizations
-##' of the spatial distribution of test folds.
-##'
-##' @param object A list of `RiskMap` objects, each representing a model fitted with `glgpm()`.
-##' @param method Character; either `"cluster"`, `"regularized"` or `"user"` for the
-##' cross-validation method:
-##' \describe{
-##'  - The `"cluster"` method uses spatial clustering as implemented
-##' by the \code{spatial_clustering_cv} function from the `spatialsample` package.
-##'  - The `"regularized"` method selects a subsample of the dataset by imposing a minimum distance,
-##'  set by the `min_dist` argument, for a randomly selected subset of locations using
-##'  the `subsample.distance` function from the `spatialEco` package.
-##'  - The `"user"` method takes a user-defined test set defined by `user_split`
-##'  }
-##' @param fold Integer; required when `method = "cluster"` - number of folds for cross-validation.
-##' @param min_dist Numeric; required when `method = "regularized"` - minimum distance in kilometers for regularized subsampling.
-##' @param size Integer; the size of the test set, required when `method = "regularized"`.
-##' @param user_split Required when `method = "user"`. A user-defined cross-validation split. Either:
-##'   * a matrix with \code{nrow = n} (number of observations) and
-##'     \code{ncol = iter} (number of iterations), where entries of \code{1}
-##'     indicate membership in the test set for that iteration and \code{0}
-##'     indicate training set; or
-##'   * a list of length \code{iter}, where each element is either a vector of
-##'     indices of the dataset to use as the test set, or a list with components
-##'     \code{in_id} (training indices) and \code{out_id} (test indices).
-##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
-##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"PIT"`,
-##' to specify the predictive performance metrics to compute. `"PIT"` computes
-##' the PIT for Gaussian models or the AnPIT curve for discrete models, and
-##' also the scalar score `"PIT_area"`, the integrated absolute deviation
-##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
-##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
-##' or re-estimate for each fold. Defaults to `TRUE`.
-##' @param control_mcmc Control settings for simulation, an output from `set_control_mcmc()`.
-##' If it carries a `seed`, the random splits generated for `method = "cluster"`
-##' or `method = "regularized"` are reproducible; ignored for `method = "user"`,
-##' which is already deterministic. The caller's random number generator state
-##' is restored on exit.
-##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
-##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
-##' @param ... Additional arguments passed to clustering or subsampling functions.
-##'
-##' @return A list of class `RiskMap_cross_validation`, containing:
-##' \describe{
-##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
-##'   \item{model}{A named list, one per model, each containing:
-##'     \describe{
-##'       \item{metric}{A list with CRPS, SCRPS, and/or PIT_area metrics for each fold if requested.}
-##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"PIT"`) A list of PIT values for test data.}
-##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"PIT"`) A list of AnPIT curves for test data.}
-##'     }
-##'   }
-##' }
-##'
-##' @seealso \code{\link{plot.RiskMap_cross_validation}}
-##'
-##' @references
-##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
-##' proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
-##'
-##' Giorgi, E., Fronterre, C. & Diggle, P. J. (2026). A decay-adjusted spatio-temporal
-##' model to account for the impact of mass drug administration on neglected
-##' tropical disease prevalence. *Journal of the Royal Statistical Society Series
-##' A: Statistics in Society*.\doi{10.1093/jrsssa/qnag100}.
-##'
-##' @importFrom spatialEco subsample.distance
-##' @importFrom spatialsample spatial_clustering_cv autoplot
-##'
-##' @examples
-##'
-##' data(italy_sim)
-##'
-##' fit <- glgpm(
-##'   formula = y ~ gp(),
-##'   data = italy_sim[1:100,],
-##'   family = "gaussian",
-##'   messages = FALSE
-##' )
-##'
-##' # cluster method
-##' cross_validation <-
-##'   assess_prediction(
-##'     list(fit),
-##'     method = "cluster",
-##'     fold = 2
-##'   )
-##'
-##' summary(cross_validation)
-##'
-##' # regularized method
-##' cross_validation <-
-##'   assess_prediction(
-##'     list(fit),
-##'     method = "regularized",
-##'     size = 5,
-##'     min_dist = 1
-##'   )
-##'
-##' summary(cross_validation)
-##'
-##' # user method with a matrix
-##'  cross_validation <-
-##'   assess_prediction(
-##'   list(fit),
-##'   method = "user",
-##'   user_split = matrix(
-##'     sample(c(rep(1, 50), rep(0, 50))),
-##'     ncol = 1)
-##'   )
-##'
-##' summary(cross_validation)
-##'
-##' # user method with a list
-##'  cross_validation <-
-##'   assess_prediction(
-##'   list(fit),
-##'   method = "user",
-##'   user_split = list(
-##'     sample(100, 50))
-##'   )
-##'
-##' summary(cross_validation)
-##'
-##' @export
-assess_prediction <- function(object,
-                              method,
-                              fold = NULL,
-                              min_dist = NULL,
-                              size = NULL,
-                              user_split = NULL,
-                              iter = 1,
-                              metrics = c("PIT", "CRPS", "SCRPS"),
-                              keep_par_fixed = TRUE,
-                              control_mcmc = set_control_mcmc(),
-                              plot_fold = TRUE,
-                              messages = TRUE,
-                              ...) {
-
-  ## ─────────────────────────── helpers ─────────────────────────── ##
-  is_list_of_riskmap <- function(x) {
-    is.list(x) && all(vapply(x, inherits, logical(1), what = "RiskMap"))
-  }
-
-  crps_gaussian <- function(y, mu, sigma) {
-    if (sigma == 0) return(0)
-    z <- (y - mu) / sigma
-    2 * dnorm(z) + z * (2 * pnorm(z) - 1) - 1 / sqrt(pi)
-  }
-  crps_discrete <- function(y, Fk) {
-    k <- seq_along(Fk) - 1
-    sum((Fk - as.numeric(k >= y))^2)
-  }
-  exp_crps_discrete <- function(Fk, pk) {
-    k <- seq_along(pk) - 1
-    sum(pk * vapply(k, crps_discrete, numeric(1), Fk = Fk))
-  }
-  u_val <- seq(0, 1, length.out = 1000)
-
-  ## ────────────────────── sanity checks (unchanged) ─────────────────────── ##
-  if (!is_list_of_riskmap(object))
-    stop("'object' must be a list of fitted models of class 'RiskMap'.")
-
-  if (!all(metrics %in% c("CRPS", "SCRPS", "PIT")))
-    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'PIT'")
-
-  if (!method %in% c("cluster", "regularized", "user"))
-    stop("'method' must be either 'cluster', 'regularized' or 'user'")
-
-  if (method == "cluster"){
-    if (is.null(fold)) stop("when 'method' is 'cluster' you must supply 'fold'")
-    check_positive_integer(fold, "fold")
-  }
-
-  if (method == "regularized") {
-    if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
-    if (is.null(size))     stop("when 'method' is 'regularized' you must supply 'size'")
-    check_positive_number(min_dist, "")
-    check_positive_integer(size, "size")
-  }
-
-  if (method == "user"){
-    if (is.null(user_split)) stop("when 'method' is 'user' you must supply 'user_split'")
-  }
-
-  check_logical(keep_par_fixed)
-
-  check_positive_integer(iter, "iter")
-
-  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
-    stop("'control_mcmc' must come from 'set_control_mcmc()'")
-
-  check_logical(plot_fold)
-
-  check_logical(messages)
-
-  get_CRPS  <- "CRPS"  %in% metrics
-  get_SCRPS <- "SCRPS" %in% metrics
-  get_PIT <- "PIT" %in% metrics
-
-  ## ───────────────────────────── data & splits ───────────────────────────── ##
-
-  # add names to any unnamed models
-  if (is.null(names(object))) {
-    names(object) <- paste("Model", seq_along(object))
-  } else {
-    unnamed <- which(names(object) == "")
-    if (length(unnamed) > 0) {
-      names(object)[unnamed] <- paste("Model", unnamed)
-    }
-  }
-
-  object1 <- object[[1]]
-  data_sf <- object1$data
-  n_obs   <- nrow(data_sf)
-  data_geom <- st_geometry(data_sf)
-
-  for (h in seq_along(object)) {
-    fit_data <- object[[h]]$data
-    if (nrow(fit_data) != n_obs) {
-      stop("All models in 'object' supplied must have the same number of observations")
-    }
-    fit_geom <- st_geometry(fit_data)
-    if (!identical(fit_geom, data_geom)) {
-      stop("All models in 'object' must have data in the same row order and geometry")
-    }
-  }
-
-  # Validates one vector of row indices for a 'user_split' entry: non-missing
-  # numeric, non-empty, whole numbers, no duplicates, in range. `what` names
-  # whichever vector the caller actually supplied, so it reads sensibly for
-  # both call sites below (a bare vector of test indices, or an explicit
-  # 'in_id'/'out_id').
-  validate_split_vector <- function(v, what) {
-    if (!is.numeric(v) || anyNA(v))
-      stop(what, " must be a non-missing numeric vector of row indices")
-    if (length(v) == 0)
-      stop(what, " must be non-empty")
-    if (any(v != round(v)))
-      stop(what, " must contain whole numbers")
-    if (anyDuplicated(v))
-      stop(what, " must not contain duplicate indices")
-    if (!all(v %in% seq_len(n_obs)))
-      stop(what, " must be row indices between 1 and the number of observations")
-    invisible(TRUE)
-  }
-
-  # Validates one user-supplied 'user_split' entry: either a bare vector of
-  # test indices (the shorthand form - training indices are its computed
-  # complement, which can never independently be invalid) or an explicit
-  # list(in_id = ..., out_id = ...) pair, both directly supplied by the
-  # caller. For the latter, also checks train and test don't overlap - an
-  # overlap would silently leak a held-out observation into training.
-  validate_split_indices <- function(out_id, index, in_id = NULL) {
-    tag <- sprintf("user_split[[%d]]", index)
-
-    if (is.null(in_id)) {
-      validate_split_vector(out_id, sprintf("'%s' test indices", tag))
-      in_id <- setdiff(seq_len(n_obs), out_id)
-      if (length(in_id) == 0)
-        stop("'", tag, "' must leave at least one observation for training")
-    } else {
-      validate_split_vector(in_id, sprintf("'%s's 'in_id'", tag))
-      validate_split_vector(out_id, sprintf("'%s's 'out_id'", tag))
-      if (length(intersect(in_id, out_id)) > 0)
-        stop("'", tag, "'s 'in_id' and 'out_id' must not overlap")
-    }
-
-    list(in_id = as.integer(in_id), out_id = as.integer(out_id))
-  }
-
-  make_splits_from_user <- function(usr, n_iter_expected) {
-    spl <- vector("list", n_iter_expected)
-    if (is.matrix(usr)) {
-      if (nrow(usr) != n_obs)
-        stop("'user_split' matrix must have the same number of rows as the data in the model")
-      if (ncol(usr) != n_iter_expected)
-        stop("'user_split' matrix must have a number of columns equal to 'iter'")
-      if (anyNA(usr))
-        stop("'user_split' matrix must not contain missing values")
-      if (!all(usr %in% c(0, 1)))
-        stop("'user_split' matrix must only contain 0s (training) and 1s (test)")
-      for (i in seq_len(n_iter_expected)) {
-        out_id <- which(usr[, i] == 1)
-        in_id  <- which(usr[, i] == 0)
-        if (length(in_id) == 0 || length(out_id) == 0)
-          stop("Column ", i, " of 'user_split' must contain at least one training (0) ",
-               "and one test (1) observation")
-        spl[[i]] <- list(in_id = in_id, out_id = out_id,
-                         data = data_sf[in_id, ],
-                         data_test = data_sf[out_id, ])
-      }
-    } else if (inherits(usr, "list")) {
-      if (length(usr) != n_iter_expected)
-        stop("'user_split' list must have the same length as 'iter'")
-      for (i in seq_len(n_iter_expected)) {
-        ui <- usr[[i]]
-        if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
-          validated <- validate_split_indices(ui$out_id, i, ui$in_id)
-          in_id  <- validated$in_id
-          out_id <- validated$out_id
-        } else if (is.numeric(ui)) {
-          validated <- validate_split_indices(ui, i)
-          in_id  <- validated$in_id
-          out_id <- validated$out_id
-        } else {
-          stop("Each element of 'user_split' must be a vector of test indices or a list(in_id=..., out_id=...).")
-        }
-        spl[[i]] <- list(in_id = in_id, out_id = out_id,
-                         data = data_sf[in_id, ],
-                         data_test = data_sf[out_id, ])
-      }
-    } else {
-      stop("'user_split' must be a matrix or a list")
-    }
-    list(splits = spl)
-  }
-
-  if (!is.null(control_mcmc$seed)) {
-    restore_seed <- preserve_random_seed()
-    on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
-  }
-
-  if (method == "user") {
-    data_split <- make_splits_from_user(user_split, iter)
-    n_iter <- iter
-
-    if (isTRUE(plot_fold)) print(plot_folds(data_split))
-  } else if (method == "cluster") {
-    data_split <- spatial_clustering_cv(data = data_sf, v = fold, repeats = iter, ...)
-    # ensure out_id present
-    all_ids <- seq_len(nrow(data_sf))
-    for (i in seq_along(data_split$splits)) {
-      if (is.null(data_split$splits[[i]]$out_id) || all(is.na(data_split$splits[[i]]$out_id))) {
-        in_id <- data_split$splits[[i]]$in_id
-        data_split$splits[[i]]$out_id <- setdiff(all_ids, in_id)
-      }
-    }
-    n_iter <- iter * fold
-    if (plot_fold) print(autoplot(data_split))
-  } else { # regularized
-    data_split <- list(splits = vector("list", iter))
-    for (i in seq_len(iter)) {
-      locations_sf <- data_sf[!duplicated(st_as_text(data_sf$geometry)), ]
-      data_split$splits[[i]] <- list()
-      data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = size, d = min_dist * 1000, ...)
-      test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
-      in_test   <- st_as_text(data_sf$geometry) %in% test_geom
-      data_split$splits[[i]]$out_id <- which(in_test)
-      data_split$splits[[i]]$in_id  <- which(!in_test)
-      data_split$splits[[i]]$data   <- data_sf[!in_test, ]
-    }
-    n_iter <- iter
-    if (isTRUE(plot_fold)) print(plot_folds(data_split))
-  }
-
-  ## ───────────────────────── initialise output ───────────────────────── ##
-  n_models    <- length(object)
-  model_names <- names(object)
-  out <- list(test_set = vector("list", n_iter), model = list())
-
-  ## ─────────────────────────── iterate over models ───────────────────────── ##
-  for (h in seq_len(n_models)) {
-
-    fit0      <- object[[h]]
-    fit_data_sf <- fit0$data
-    par_hat   <- coef(fit0)
-    den_name  <- as.character(fit0$call$denominator)
-    fam       <- fit0$family
-    linkfun   <- switch(fam,
-                        gaussian = identity,
-                        binomial = plogis,
-                        poisson  = exp)
-
-    if (messages) {
-      message(sprintf("\nModel '%s' (%s)", h, model_names[h]))
-    }
-
-    ## containers for this model
-    if (get_CRPS)   CRPS  <- vector("list", n_iter)
-    if (get_SCRPS) { y_CRPS <- vector("list", n_iter); SCRPS <- vector("list", n_iter) }
-    if (get_PIT) {
-      PIT_area <- vector("list", n_iter)
-      if (fam == "gaussian") PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
-    }
-
-    ## ─────────────────── iterate over CV splits (refit as needed) ─────────────────── ##
-    for (i in seq_len(n_iter)) {
-
-      in_id  <- data_split$splits[[i]]$in_id
-      out_id <- data_split$splits[[i]]$out_id
-
-      ## ----- refit or slice -----
-      if (!keep_par_fixed) {
-
-        message("\nRe-estimating model for subset ", i)
-        model_crs <- st_crs(fit0$data)
-
-        refit_args <- list(
-          formula        = fit0$formula,
-          data           = fit_data_sf[in_id, ],
-          family         = fam,
-          model_crs      = model_crs,
-          distance_units = fit0$distance_units,
-          control_mcmc   = control_mcmc,
-          control_mcml   = attr(fit0, "control_mcml") %||%
-            set_control_mcml(),
-          fix_var_me     = fit0$fix_var_me,
-          messages       = FALSE,
-          start_pars     = par_hat
-        )
-        ## 'denominator' is passed as an unquoted column name (NSE); include it
-        ## when the original model was fitted with one
-        if (length(den_name) == 1 && nzchar(den_name)) {
-          refit_args$denominator <- as.name(den_name)
-        }
-        refit_i <- do.call(glgpm, refit_args)
-      } else {
-        ## quick slice without re-fitting
-        refit_i <- fit0
-        keep <- in_id
-        refit_i$data  <- refit_i$data [keep, ]
-        refit_i$units_m  <- refit_i$units_m[keep]
-        keep_coord <- unique(refit_i$ID_coords[keep])
-        refit_i$coords   <- refit_i$coords[keep_coord, , drop = FALSE]
-        refit_i$y        <- refit_i$y      [keep]
-        refit_i$D        <- refit_i$D      [keep, , drop = FALSE]
-        if (!is.null(refit_i$cov_offset))
-          refit_i$cov_offset <- refit_i$cov_offset[keep]
-        if (!is.null(refit_i$ID_re)) {
-          re_terms <- names(refit_i$ID_re)
-          random_effects_i <- prepare_random_effects(refit_i$data, re_terms)
-          refit_i$ID_re <- as.data.frame(random_effects_i$ID_re)
-          colnames(refit_i$ID_re) <- random_effects_i$names_re
-          refit_i$re <- random_effects_i$re_unique_f
-        }
-        ## recompute ID_coords mapping
-        refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
-      }
-
-      ## ----- held-out set and offsets -----
-      data_test_i <- fit_data_sf[out_id, ]
-      keep_test <- complete.cases(st_drop_geometry(data_test_i))
-      data_test_i <- data_test_i[keep_test, ]
-      out_id_i <- out_id[keep_test]
-      if (h == 1) out$test_set[[i]] <- data_test_i
-
-      if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
-
-      ## ----- prediction over test set -----
-      included_components <- if (
-        is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0
-      ) "nugget" else character()
-      prediction_i <- predict(
-        refit_i,
-        newdata = data_test_i,
-        type = "marginal",
-        include = included_components,
-        control_mcmc = control_mcmc,
-        keep_samples = TRUE,
-        messages = FALSE
-      )
-      eta_samp <- prediction_link_samples(prediction_i)
-      if (fam == "gaussian") {
-        sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
-        eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
-      }
-      mu_samp <- linkfun(eta_samp)
-
-      n_pred <- nrow(eta_samp)
-      n_draw <- ncol(eta_samp)
-      if (get_CRPS)   CRPS [[i]] <- numeric(n_pred)
-      if (get_SCRPS) { y_CRPS[[i]] <- numeric(n_pred); SCRPS[[i]] <- numeric(n_pred) }
-
-      if (get_PIT) {
-        if (fam == "gaussian") {
-          PIT_i <- numeric(n_pred)
-        } else {
-          AnPIT_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
-          npit_fun <- function(y, u, Fk) {
-            F_y1 <- if (y == 0) 0 else Fk[y]
-            F_y  <- Fk[y + 1]
-            ifelse(u <= F_y1, 0,
-                   ifelse(u <= F_y, (u - F_y1) / (F_y - F_y1), 1))
-          }
-        }
-      }
-
-      units_m_i <- fit0$units_m[out_id_i]
-      y_i       <- fit0$y      [out_id_i]
-
-      for (j in seq_len(n_pred)) {
-        if (fam == "gaussian") {
-          mu_j <- mean(mu_samp[j, ])
-          sd_j <- sd(mu_samp[j, ])
-          if (get_CRPS)  CRPS[[i]][j] <- sd_j * crps_gaussian(y_i[j], mu_j, sd_j)
-          if (get_SCRPS) {
-            y_CRPS[[i]][j] <- sd_j / sqrt(pi)
-            SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
-          }
-          if (get_PIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
-        } else {
-          if (fam == "binomial") {
-            y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
-            support <- 0:units_m_i[j]
-          } else { # Poisson
-            lambda  <- units_m_i[j] * mu_samp[j, ]
-            y_samp  <- rpois(n_draw, lambda)
-            support <- 0:max(max(y_samp), y_i[j], qpois(0.999, mean(lambda)))
-          }
-          pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
-          Fk <- cumsum(pk)
-          if (get_CRPS)  CRPS[[i]][j] <- crps_discrete(y_i[j], Fk)
-          if (get_SCRPS) {
-            y_CRPS[[i]][j] <- exp_crps_discrete(Fk, pk)
-            SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
-          }
-          if (get_PIT) {
-            AnPIT_i[, j] <- vapply(u_val, npit_fun, numeric(1), y = y_i[j], Fk = Fk)
-          }
-        }
-      }
-
-      if (get_PIT) {
-        if (fam == "gaussian") {
-          PIT[[i]] <- PIT_i
-          PIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
-        } else {
-          AnPIT[[i]] <- rowMeans(AnPIT_i)
-          PIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
-        }
-      }
-
-    } # end i loop
-
-    ## ─────────────── finalise output for this model ─────────────── ##
-    out$model[[model_names[h]]] <- list(metric = list())
-    if (get_CRPS)  out$model[[model_names[h]]]$metric$CRPS  <- CRPS
-    if (get_SCRPS) out$model[[model_names[h]]]$metric$SCRPS <- SCRPS
-    if (get_PIT) {
-      out$model[[model_names[h]]]$metric$PIT_area <- PIT_area
-      if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
-    }
-
-  } # end h loop
-
-  class(out) <- "RiskMap_cross_validation"
-  return(out)
-}
-
-##' @title Plot Method for RiskMap_simulation Objects
-##' @description
-##' Maps the linear predictor of one simulation from [simulate_glgpm()] over
-##' its prediction grid, with the sampling locations overlaid when data were
-##' also simulated.
-##'
-##' @param x Output from [simulate_glgpm()] including a surface.
+##' @param x The result of [simulate_glgpm()], including a surface.
 ##' @param simulation A single simulation number to plot, defaulting to one.
-##' @inheritParams plot.RiskMap_simulated_surface
+##' @param ... For `plot()`, the arguments of `plot_simulation()`. For
+##'   `plot_simulation()`, arguments passed to the ggplot2 fill scale, as in
+##'   [plot_simulated_surface()].
+##' @inheritParams plot_simulated_surface
 ##'
-##' @return A \code{ggplot} object.
+##' @return A `ggplot` object.
 ##' @details
-##' The returned object can be modified further
+##' The colours and the legend follow [plot_prediction()]. A prediction grid
+##' that is regular in the CRS of the model is drawn with tiles, and other
+##' prediction locations as points. The returned object can be modified further
 ##' with standard \pkg{ggplot2} functions.
 ##'
-##' @seealso [simulated_surface()], [plot.RiskMap_simulated_surface()]
-##' @method plot RiskMap_simulation
+##' @seealso [simulated_surface()], [plot_simulated_surface()]
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:50, ]
+##' fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+##'              messages = FALSE)
+##' grid <- create_grid(create_convex_hull(example_data), spacing = 20)
+##' simulation <- simulate_glgpm(fit, nsim = 2, what = c("data", "surface"),
+##'                              prediction_grid = grid, seed = 1)
+##' plot_simulation(simulation, simulation = 2)
+##' # The same map
+##' plot(simulation, simulation = 2)
 ##' @export
-plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
-                                    reverse_palette = FALSE, ...) {
-  out <- plot(simulated_surface(x, simulation),
-              palette = palette,
-              reverse_palette = reverse_palette,
-              ...) +
+plot_simulation <- function(x, simulation = 1, quantity = "mean",
+                            palette = NULL, limits = NULL, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_simulation", "plot_simulation",
+                    "simulate_glgpm")
+  surface <- simulated_surface(x, simulation)
+  out <- plot_simulated_surface(surface, quantity = quantity,
+                                palette = palette, limits = limits, ...) +
     ggtitle(paste("Simulation", simulation))
 
   if (!is.null(x$locations$data)) {
@@ -3239,20 +3021,26 @@ plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
   out
 }
 
-##' Map values over a regular grid of points
+##' @rdname plot_simulation
+##' @method plot RiskMap_simulation
+##' @export
+plot.RiskMap_simulation <- function(x, ...) plot_simulation(x, ...)
+
+##' Map values over a grid of points
 ##'
-##' Draws each grid point as a tile, styled with `add_map_layers()`. Shared by
-##' the plot methods for grid predictions and simulated surfaces.
+##' Draws each point of a regular grid as a tile, with the fill scale and legend
+##' of the prediction maps of [plot_prediction()]. Other points, such as those of
+##' a grid that is regular in another CRS, are drawn as points, as those maps do.
 ##'
-##' @param grid An `sf` or `sfc` object of points on a regular grid.
+##' @param grid An `sf` or `sfc` object of points.
 ##' @param values Numeric vector of values to map, one per point in `grid`.
 ##' @param legend_title Character string used as the fill legend title.
-##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
-##' `add_map_layers()`.
+##' @param colours,limits,role,probability,... Passed to
+##'   `prediction_fill_scale()`.
 ##' @return A `ggplot` object.
 ##' @noRd
-plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
-                      limits, north_arrow, scale_bar, ...) {
+plot_grid <- function(grid, values, legend_title, colours, limits, role,
+                      probability, ...) {
   grid_coordinates <- st_coordinates(grid)
   plot_data <- data.frame(x = grid_coordinates[, 1],
                           y = grid_coordinates[, 2],
@@ -3270,26 +3058,27 @@ plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
     tile_height <- tile_width
   }
 
-  # extent of the tiles, not just their centres
-  extent <- c(xmin = min(plot_data$x) - tile_width / 2,
-              xmax = max(plot_data$x) + tile_width / 2,
-              ymin = min(plot_data$y) - tile_height / 2,
-              ymax = max(plot_data$y) + tile_height / 2)
-
-  out <- ggplot(plot_data) +
+  tiles <- if (tiles_cover(grid_coordinates, tile_width * tile_height)) {
     geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
               width = tile_width, height = tile_height)
+  } else {
+    geom_point(aes(x = .data$x, y = .data$y, fill = .data$value),
+               shape = 21, colour = "transparent", size = 1.8)
+  }
 
-  add_map_layers(out,
-                 extent = extent,
-                 crs = st_crs(grid),
-                 legend_title = legend_title,
-                 palette = palette,
-                 reverse_palette = reverse_palette,
-                 limits = limits,
-                 north_arrow = north_arrow,
-                 scale_bar = scale_bar,
-                 ...)
+  ggplot(plot_data) +
+    tiles +
+    prediction_fill_scale(colours = colours, limits = limits, values = values,
+                          breaks = NULL, role = role,
+                          probability = probability, ...) +
+    # the extent of the tiles, not just their centres
+    coord_sf(crs = st_crs(grid),
+             xlim = range(plot_data$x) + c(-1, 1) * tile_width / 2,
+             ylim = range(plot_data$y) + c(-1, 1) * tile_height / 2) +
+    # Set through labs() so that users can replace it with labs(fill = ...).
+    labs(x = NULL, y = NULL, fill = legend_title) +
+    theme_void() +
+    theme(legend.position = "top", legend.justification = "center")
 }
 
 ##' Spacing between the points of a regular grid along one axis
@@ -3303,160 +3092,258 @@ grid_spacing <- function(coordinates) {
   resolution(coordinates, zero = FALSE)
 }
 
-##' Convert a palette specification into a vector of colours
+##' Whether tiles on the points of a grid are large enough to map it
 ##'
-##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
-##' character vector of two or more valid colours.
-##' @param reverse_palette Logical; reverse the order of the colours.
-##' @return A character vector of colours.
+##' The smallest gap between the coordinates of points that are not on a
+##' regular grid is far below the distance between neighbours, so tiles of that
+##' size can't be seen.
+##'
+##' @param coordinates Matrix of the coordinates of the points.
+##' @param tile_area The area of a tile.
+##' @return `TRUE` or `FALSE`.
 ##' @noRd
-palette_colours <- function(palette, reverse_palette = FALSE) {
-  stopifnot("'palette' must be a character vector" = is.character(palette))
-  check_logical(reverse_palette)
-
-  if (length(palette) == 1) {
-    # hcl.colors() ignores case, spaces and punctuation in palette names
-    normalise_name <- function(name) tolower(gsub("[^[:alnum:]]", "", name))
-    if (!normalise_name(palette) %in% normalise_name(grDevices::hcl.pals())) {
-      stop("'palette' must be one of grDevices::hcl.pals() or a vector of two or more colours")
-    }
-    colours <- grDevices::hcl.colors(256, palette = palette)
-  } else {
-    valid_colour <- vapply(palette, function(colour) {
-      !inherits(try(grDevices::col2rgb(colour), silent = TRUE), "try-error")
-    }, logical(1))
-    if (!all(valid_colour)) {
-      stop("'palette' contains invalid colours: ",
-           paste(shQuote(palette[!valid_colour]), collapse = ", "))
-    }
-    colours <- palette
-  }
-  if (reverse_palette) colours <- rev(colours)
-  colours
+tiles_cover <- function(coordinates, tile_area) {
+  coordinates <- index_coordinate_rows(coordinates)$coordinates
+  n_points <- nrow(coordinates)
+  if (n_points < 2L) return(TRUE)
+  # The distance of at most 200 points, spread over the rows, to their nearest
+  # neighbours, which is quick on large grids.
+  points <- unique(round(seq(1, n_points, length.out = 200L)))
+  squared_distance <- vapply(points, function(i) {
+    min((coordinates[-i, 1L] - coordinates[i, 1L])^2 +
+          (coordinates[-i, 2L] - coordinates[i, 2L])^2)
+  }, numeric(1))
+  tile_area > 0.25 * stats::median(squared_distance)
 }
 
-##' Add the fill scale, map extent, north arrow and scale bar shared by the
-##' prediction maps
-##'
-##' @param map A `ggplot` object.
-##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`) giving
-##' the extent of the data in `crs`.
-##' @param crs The coordinate reference system of the data.
-##' @param legend_title Character string used as the fill legend title.
-##' @param palette,reverse_palette Passed to `palette_colours()`.
-##' @param limits `NULL` or a numeric vector of length two for the colour scale.
-##' @param north_arrow,scale_bar Logical; whether to add each annotation.
-##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
-##' @return The `ggplot` object with the layers added.
-##' @noRd
-add_map_layers <- function(map, extent, crs, legend_title, palette,
-                           reverse_palette, limits, north_arrow, scale_bar, ...) {
-  check_logical(north_arrow)
-  check_logical(scale_bar)
-  map <- map +
-    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette),
-                         limits = limits, ...) +
-    coord_sf(crs = crs,
-             xlim = as.numeric(extent[c("xmin", "xmax")]),
-             ylim = pad_map_extent(extent, north_arrow, scale_bar)) +
-    labs(x = NULL, y = NULL, fill = legend_title)
-
-  if (north_arrow) {
-    map <- map +
-      ggspatial::annotation_north_arrow(location = "tr", which_north = "true",
-                                        height = unit(1, "cm"),
-                                        width = unit(1, "cm"))
-  }
-  if (scale_bar) {
-    map <- map + ggspatial::annotation_scale(location = "bl")
-  }
-  map
-}
-
-##' Extend the vertical extent of a map to make room for annotations
-##'
-##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`).
-##' @param north_arrow Logical; add space above the data for a north arrow.
-##' @param scale_bar Logical; add space below the data for a scale bar.
-##' @return Numeric vector of length two giving the padded y limits.
-##' @noRd
-pad_map_extent <- function(extent, north_arrow, scale_bar) {
-  height <- unname(extent["ymax"] - extent["ymin"])
-  # roughly the height of each annotation on a typical map
-  top_padding <- if (north_arrow) 0.15 * height else 0
-  bottom_padding <- if (scale_bar) 0.08 * height else 0
-  unname(c(extent["ymin"] - bottom_padding, extent["ymax"] + top_padding))
-}
-
-##' @title Plot Method for RiskMap_simulated_surface Objects
+##' @title Map a simulated surface
 ##' @description
-##' Maps the linear predictor of a surface extracted with
-##' [simulated_surface()] over its prediction grid.
+##' Maps one component of a surface extracted with [simulated_surface()] over
+##' its prediction grid, by default the mean. `plot()` of the surface does the
+##' same.
 ##'
-##' @param x Output from [simulated_surface()].
-##' @param palette Either the name of a palette from [grDevices::hcl.pals()]
-##' (e.g. `"viridis"`, `"Blues"`, `"Spectral"`) or a character vector of two or
-##' more colours to interpolate between. Defaults to `"viridis"`.
-##' @param reverse_palette Logical; if `TRUE`, reverse the order of the palette
-##' colours. Defaults to `FALSE`.
-##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()],
-##' e.g. `name`, `breaks` or `limits`.
+##' @param x The result of [simulated_surface()].
+##' @param quantity The simulated component to map, one of `"mean"` (the
+##'   default), `"linear_predictor"`, `"spatial_effect"`, `"nugget"` and
+##'   `"group_effect"`, as in [simulated_values()]. The mean is the prevalence
+##'   for a binomial model, the mean per unit exposure for a Poisson or
+##'   negative binomial model and the mean of the response for a Gaussian
+##'   model. The nugget and the group effect are zero when the model has
+##'   none.
+##' @param palette Colour palette. `NULL` selects the defaults of
+##'   [plot_prediction()], a calm-to-alarm sequential palette for the
+##'   mean and a palette centred at zero for the linear predictor and the
+##'   effects. A character vector of colours or the name of an HCL palette
+##'   accepted by [grDevices::hcl.colors()] can be supplied. Prefix a named
+##'   palette with `"-"` to reverse it, for example `"-Viridis"`.
+##' @param limits `NULL` (the default) or a numeric vector of two increasing
+##'   numbers giving the range of the colour scale, for example to map several
+##'   simulations on a common scale.
+##' @param ... For `plot()`, the arguments of `plot_simulated_surface()`. For
+##'   `plot_simulated_surface()`, arguments passed to the ggplot2 fill scale,
+##'   for example `transform = "sqrt"` for skewed values. The map sets
+##'   `colours`, `limits`, `breaks`, `labels`, `oob`, `na.value` and `guide`
+##'   itself. To change them, add another fill scale to the map with `+`.
 ##'
-##' @return A \code{ggplot} object.
+##' @return A `ggplot` object.
 ##' @details
-##' The returned object can be modified further
-##' with standard \pkg{ggplot2} functions.
+##' The colours and the legend follow [plot_prediction()], and the
+##' legend title names the mapped component. A prediction grid that is regular
+##' in the CRS of the model is drawn with tiles, and other prediction locations
+##' as points. The returned object can be modified further with standard
+##' \pkg{ggplot2} functions.
 ##'
-##' @seealso [simulated_surface()], [plot.RiskMap_simulation()]
+##' @seealso [simulated_surface()], [plot_simulation()]
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:50, ]
+##' fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+##'              messages = FALSE)
+##' grid <- create_grid(create_convex_hull(example_data), spacing = 20)
+##' simulation <- simulate_glgpm(fit, nsim = 2, what = c("data", "surface"),
+##'                              prediction_grid = grid, seed = 1)
+##' surface <- simulated_surface(simulation, simulation = 2)
+##' plot_simulated_surface(surface, quantity = "spatial_effect")
+##' # The same map
+##' plot(surface, quantity = "spatial_effect")
+##' @export
+plot_simulated_surface <- function(x, quantity = "mean", palette = NULL,
+                                   limits = NULL, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_simulated_surface", "plot_simulated_surface",
+                    "simulated_surface")
+  # The fill scale would reject these less clearly.
+  dot_names <- names(match.call(expand.dots = FALSE)$...)
+  if ("reverse_palette" %in% dot_names) {
+    abort_input("{.arg reverse_palette} is no longer an argument. Prefix a named palette with {.code -} to reverse it, as in {.code palette = \"-Viridis\"}, or give a reversed vector of colours.", arg = "reverse_palette")
+  }
+  set_by_map <- intersect(dot_names, c("colours", "colors", "limits", "breaks",
+                                       "labels", "oob", "na.value", "guide"))
+  if (length(set_by_map)) {
+    abort_input(c("{.arg {set_by_map}} can't be given, because the map sets {cli::qty(length(set_by_map))}{?it/them} itself.", "i" = "Add another fill scale to the map with {.code +} to change {cli::qty(length(set_by_map))}{?it/them}."), arg = set_by_map[[1L]])
+  }
+  components <- c("mean", "linear_predictor", "spatial_effect", "nugget",
+                  "group_effect")
+  # A surface has every component, the nugget and the group effect being zero
+  # when the model has none.
+  available <- intersect(components, names(x))
+  if (!is.character(quantity) || length(quantity) != 1L || is.na(quantity) ||
+      !quantity %in% available) {
+    supplied <- describe_value(quantity)
+    abort_input("{.arg quantity} must be one of {.or {.val {available}}}, not {supplied}.", arg = "quantity")
+  }
+  values <- x[[quantity]]
+  family <- attr(x, "family", exact = TRUE)
+  traits <- if (!is.null(family)) family_traits(family)
+  role <- if (quantity == "mean") "level" else "signed"
+  limits <- check_plot_limits(limits)
+  # Default limits end on round values so the legend labels both ends.
+  colour_limits <- if (role == "signed") {
+    limits %||% (c(-1, 1) * max(abs(pretty(range(values, na.rm = TRUE), n = 4))))
+  } else {
+    limits %||% range(pretty(range(values, na.rm = TRUE), n = 4))
+  }
+  colours <- if (is.null(palette)) prediction_role_palette(role) else
+    prediction_plot_palette(palette)
+  label <- switch(quantity,
+                  mean = traits$response_quantity %||% "mean",
+                  linear_predictor = "linear predictor",
+                  spatial_effect = "spatial effect",
+                  nugget = "nugget effect",
+                  group_effect = "group effect")
+  plot_grid(x,
+            values = values,
+            legend_title = paste0(toupper(substring(label, 1L, 1L)),
+                                  substring(label, 2L)),
+            colours = colours,
+            limits = colour_limits,
+            role = role,
+            probability = quantity == "mean" && isTRUE(traits$probability),
+            ...)
+}
+
+##' @rdname plot_simulated_surface
 ##' @method plot RiskMap_simulated_surface
 ##' @export
-plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
-                                           reverse_palette = FALSE, ...) {
-  stopifnot("'x' must be of class RiskMap_simulated_surface" =
-              inherits(x, "RiskMap_simulated_surface"))
-
-  plot_grid(x,
-            values = x$linear_predictor,
-            legend_title = "linear_predictor",
-            palette = palette,
-            reverse_palette = reverse_palette,
-            limits = NULL,
-            north_arrow = FALSE,
-            scale_bar = FALSE,
-            ...)
+plot.RiskMap_simulated_surface <- function(x, ...) {
+  plot_simulated_surface(x, ...)
 }
 
 ##' @title Assess Simulations
 ##'
 ##' @description Evaluates models using joint data and surface simulations.
 ##'
-##' @param obj_sim Output from [simulate_glgpm()] with both data and surface.
-##'   The current assessment interface supports generating models without
-##'   grouped `re()` effects or custom inverse links.
+##' @param simulation Output from [simulate_glgpm()] with both data and surface,
+##'   from a generating model without grouped `re()` effects. The generating
+##'   model can have any link.
 ##' @param models A named list of fitted models returned by [glgpm()] or model
 ##'   specifications returned by [specify_glgpm()]. Each object defines a
 ##'   candidate model specification and is refitted to every simulated dataset;
-##'   its estimated parameter values are not reused.
-##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
-##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
-##'   to compute both from a single fit-and-predict pass over the simulations.
-##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
-##' @param target_transform A function that converts a numeric matrix of linear
-##'   predictors to a numeric matrix of scientific targets with the same
-##'   dimensions. For example, use [plogis()] for prevalence from a binomial
-##'   logit model or [exp()] for the mean of a Poisson log-link model.
-##' @param area_summary A function that combines a numeric vector of grid-cell
-##'   targets within one area and returns one finite numeric value, such as
-##'   [base::mean()] or [base::sum()]. Required only when `spatial_scale`
-##'   includes `"area"`.
+##'   its estimated parameter values are not reused. Parameters that a fit holds
+##'   with `fixed_pars` stay held in its refits, as does the size `theta` of a
+##'   negative binomial specification. The response of a candidate must be a
+##'   plain column name, and its other columns can have any name. When the
+##'   models are classified, none can be called `"Class"`.
+##' @param spatial_scale The scale(s) at which predictions are assessed:
+##'   `"location"`, the locations of the prediction grid, `"area"`, or
+##'   `c("location", "area")` to compute both from a single fit-and-predict
+##'   pass over the simulations.
+##' @param target A function that converts a numeric matrix of means to a
+##'   numeric matrix of the scientific target, with the same dimensions. The
+##'   mean is the probability for a binomial model, the mean per unit exposure
+##'   for a Poisson model and the value itself for a Gaussian model. The
+##'   default, [identity()], scores the mean itself, such as prevalence. Other
+##'   targets are functions of the mean, such as [qlogis()] to score
+##'   prevalence on the logit scale, or `function(mu) pnorm((-2 - mu) / sd)`
+##'   for the proportion of children stunted from a Gaussian model of
+##'   height-for-age z-scores with residual standard deviation `sd`. See
+##'   Details.
+##' @param aggregate How the targets at the locations within an area are
+##'   combined into the target of the area, as in [predict.RiskMap()]: one
+##'   of `"mean"`, `"median"`, `"sum"`, `"min"` and `"max"`, or a function
+##'   that receives a location-by-draw matrix and the location weights and
+##'   returns one number for each draw. Locations have equal weights.
+##'   Required only when `spatial_scale` includes `"area"`.
 ##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale` includes `"area"`.
-##' @param col_names Column name in `boundaries` containing unique region names. If `NULL`, defaults to `"region"`.
-##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
-##' @param categories A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.
+##' @param label The name of the column of `boundaries` that holds distinct
+##'   names of the areas. If `NULL`, the areas are named `"reg1"`, `"reg2"`
+##'   and so on, in a column `"region"`.
+##' @param objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
+##' @param breaks A numeric vector of at least three finite, increasing class
+##'   boundaries for classification, as in [plot_prediction()]. A class includes
+##'   its upper boundary, the lowest class also includes the first boundary, and
+##'   values beyond the boundaries belong to the end classes, so every value has
+##'   a class. Required if `objective` includes `"classify"`.
+##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
+##' @param seed Optional non-negative integer that makes the assessment
+##'   reproducible; see Details. The caller's random number state is restored
+##'   on exit. When `NULL` (the default), the seeds of the simulations are
+##'   drawn from the session's random number generator.
+##' @param messages Logical, whether to report on the assessment, with a
+##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##'
-##' @return A list of class `RiskMap_assess_simulation`. `pred_objective` holds one element per
-##'   requested `spatial_scale` (`"grid"` and/or `"area"`), each in turn holding `mse` and/or
-##'   `classify` per the requested `pred_objective`.
+##' @return A list of class `RiskMap_assess_simulation`:
+##' \describe{
+##'   \item{objective}{One element per requested `spatial_scale`
+##'   (`"location"` and/or `"area"`), each holding `mse`, a matrix with one row per
+##'   model and one column per simulation, and/or `classify`, the
+##'   classification metrics of each model and simulation.}
+##'   \item{fits}{A data frame with one row per model and simulation, giving
+##'   the `status` of the fit (`"ok"` or `"failed"`), the error `message` of a
+##'   failed fit and any `warnings`. A fit with a warning, such as one that found
+##'   no maximum of the likelihood, is `"ok"` and has results.}
+##'   \item{estimates}{A list with, for each model, a matrix of the parameter
+##'   estimates, one row per simulation.}
+##'   \item{n_sim, spatial_scale}{The number of simulations and the spatial
+##'   scales assessed.}
+##' }
+##'
+##' @details
+##' Every model is scored on the scale of the mean, each through its own
+##' inverse link, so the links of the generating model and of the candidates
+##' need not agree. The true target at each grid location is `target()`
+##' applied to the simulated mean, which is the generating model's inverse
+##' link of the simulated linear predictor. That linear predictor includes the
+##' covariates, any offset and, when the generating model has one, the
+##' realised nugget. Each candidate is refitted to every simulated dataset,
+##' its predictive draws of the linear predictor are mapped to the mean
+##' through the inverse link of the refitted model, and `target()` is then
+##' applied to those draws. A probit candidate on simulations from a logit
+##' model is thus scored on the same prevalence as the truth. Candidates
+##' predict with their own covariates and offset, and those with a nugget
+##' include it in their predictions when the generating model has one. At a
+##' prediction location that is also a sampled location, the true nugget is the
+##' one of the data, so the prediction is of the spatial effect and that nugget
+##' given the data. At any other location the nugget is a new one, as in
+##' [predict.RiskMap()], and when areas are assessed the locations with the same
+##' coordinates share it. Binomial, Poisson and negative binomial candidates are
+##' refitted with the denominators or exposures of the generating model, whatever
+##' their own.
+##'
+##' For classification, the true class of a location or area is the class of its
+##' true target, and the predicted class is the most probable one, which holds
+##' the largest share of the predictive draws, with ties going to the lowest
+##' class. `breaks` divide the truth and the draws in the same way.
+##'
+##' The target receives the mean rather than the linear predictor, which is
+##' what the `transform` argument of [predict.RiskMap()] receives, because
+##' models with different links share no linear-predictor scale. Every link is
+##' monotone, so a target defined on the linear predictor of a given link can
+##' be written as a function of the mean, as [qlogis()] gives the logit scale.
+##'
+##' The target of an area is `aggregate` applied to the targets at the grid
+##' locations that fall within it, with equal weight, unlike the exact
+##' fractional coverage used by [predict.RiskMap()] with `boundaries`. Areas
+##' without grid locations are left out of the area-level assessment, with a
+##' warning. Predictive draws are joint within each area, which is all that
+##' area-level targets need.
+##'
+##' Each simulation has its own seed, derived from `seed` or, without one,
+##' from the current random number generator state, and shared by all models
+##' so that their fits and predictions use common random numbers. A fit or prediction that fails does not stop the
+##' assessment: its results are missing, and the failure is recorded in
+##' `fits` and reported in a warning, as are warnings from the fits.
 ##'
 ##' @examples
 ##' library(sf)
@@ -3479,45 +3366,55 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##' assessment <- assess_simulation(
 ##'   simulations,
 ##'   models = list(candidate = model),
-##'   spatial_scale = c("grid", "area"),
-##'   target_transform = exp,
-##'   area_summary = mean,
+##'   spatial_scale = c("location", "area"),
+##'   aggregate = "mean",
 ##'   boundaries = boundary,
-##'   pred_objective = "mse",
+##'   objective = "mse",
 ##'   messages = FALSE
 ##' )
 ##'
+##' @seealso The methods for the result are
+##'   [print()][print.RiskMap_assess_simulation()] and
+##'   [summary()][summary.RiskMap_assess_simulation()]. [specify_glgpm()] and
+##'   [simulate_glgpm()] make the simulations. [assessment] says which function
+##'   answers which question about a model.
 ##' @export
-assess_simulation <- function(obj_sim,
-                       models,
-                       control_mcmc = set_control_mcmc(),
-                       spatial_scale,
-                       messages = TRUE,
-                       target_transform = NULL,
-                       area_summary = NULL,
-                       boundaries = NULL,
-                       col_names = NULL,
-                       pred_objective = c("mse", "classify"),
-                       categories = NULL) {
+assess_simulation <- function(simulation,
+                              models,
+                              spatial_scale,
+                              target = identity,
+                              aggregate = NULL,
+                              boundaries = NULL,
+                              label = NULL,
+                              objective = c("mse", "classify"),
+                              breaks = NULL,
+                              control_mcmc = set_control_mcmc(),
+                              seed = NULL,
+                              messages = getOption("RiskMap.messages", TRUE)) {
+  check_supplied(simulation)
+  check_supplied(models)
+  check_supplied(spatial_scale)
 
-  if (!inherits(obj_sim, "RiskMap_simulation")) {
-    stop("'obj_sim' must be output from simulate_glgpm()")
+  if (!inherits(simulation, "RiskMap_simulation")) {
+    abort_input("{.arg simulation} must be made by {.fn simulate_glgpm}, not {.obj_type_friendly {simulation}}.", arg = "simulation")
   }
-  if (!is.character(pred_objective) || length(pred_objective) == 0 ||
-      anyDuplicated(pred_objective) ||
-      !all(pred_objective %in% c("mse", "classify"))) {
-    stop("'pred_objective' must be either 'mse', 'classify' or c('mse', 'classify')")
+  if (!is.character(objective) || length(objective) == 0 ||
+      anyDuplicated(objective) ||
+      !all(objective %in% c("mse", "classify"))) {
+    abort_input("{.arg objective} must be {.val mse}, {.val classify} or both.", arg = "objective")
   }
   if (!is.character(spatial_scale) || length(spatial_scale) == 0 ||
       anyDuplicated(spatial_scale) ||
-      !all(spatial_scale %in% c("grid", "area"))) {
-    stop("'spatial_scale' must be set to 'grid', 'area', or c('grid', 'area')")
+      !all(spatial_scale %in% c("location", "area"))) {
+    abort_input("{.arg spatial_scale} must be {.val location}, {.val area} or both.", arg = "spatial_scale")
   }
+  check_control(control_mcmc, "set_control_mcmc")
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
-  want_grid <- "grid" %in% spatial_scale
+  want_grid <- "location" %in% spatial_scale
   want_area <- "area" %in% spatial_scale
-  want_mse <- "mse" %in% pred_objective
-  want_classify <- "classify" %in% pred_objective
+  want_mse <- "mse" %in% objective
+  want_classify <- "classify" %in% objective
 
   if (!is.list(models) || !length(models) ||
       is.null(names(models)) || any(!nzchar(names(models))) ||
@@ -3526,108 +3423,181 @@ assess_simulation <- function(obj_sim,
         inherits(model, "RiskMap") ||
           inherits(model, "RiskMap_simulation_model")
       }, logical(1)))) {
-    stop("'models' must be a non-empty, uniquely named list of objects returned by glgpm() or specify_glgpm().")
+    abort_input("{.arg models} must be a non-empty list, with distinct names, of fits from {.fn glgpm} or models from {.fn specify_glgpm}.", arg = "models")
   }
 
   if (want_area) {
     if (is.null(boundaries)) {
-      stop("if spatial_scale includes 'area' then an sf object of the area(s) must be passed to
-           'boundaries'")
+      abort_input("{.arg boundaries} must be given when {.arg spatial_scale} includes {.val area}.", arg = "boundaries")
     }
     check_data(boundaries, "polygon")
   }
 
-  obj_sim <- simulation_assessment_data(obj_sim)
-  if (!is.function(target_transform)) {
-    stop("'target_transform' must be a function that transforms the linear predictor.")
+  sims <- simulation_assessment_data(simulation)
+  if (!is.function(target)) {
+    abort_input("{.arg target} must be a function of the mean, such as {.fn identity} for prevalence.", arg = "target")
   }
 
-  apply_target_transform <- function(x, context) {
+  apply_target <- function(x, context) {
     result <- tryCatch(
-      target_transform(x),
+      target(x),
       error = function(e) {
-        stop("'target_transform' failed for ", context, ": ",
-             conditionMessage(e), call. = FALSE)
+        abort_input("{.arg target} failed for {context}.", arg = "target", parent = e)
       }
     )
     if (!is.numeric(result) || !is.matrix(result) ||
         !identical(dim(result), dim(x)) || anyNA(result) ||
         any(!is.finite(result))) {
-      stop("'target_transform' must return a finite numeric matrix with the same dimensions as its input (failed for ",
-           context, ").", call. = FALSE)
+      abort_input("{.arg target} must return a finite numeric matrix of the same dimensions as its input, and didn't for {context}.", arg = "target")
     }
     result
   }
 
   if (want_classify) {
-    if (is.null(categories)) stop("if 'pred_objective' is 'classify', a value for 'categories' must be specified")
-    if (!is.numeric(categories) || length(categories) < 3 ||
-        anyNA(categories) || any(!is.finite(categories)) ||
-        any(diff(categories) <= 0)) {
-      stop("'categories' must contain at least three unique, strictly increasing values.")
+    if (is.null(breaks)) {
+      abort_input("{.arg breaks} must be given when {.arg objective} includes {.val classify}.", arg = "breaks")
+    }
+    if (!is.numeric(breaks) || length(breaks) < 3 ||
+        anyNA(breaks) || any(!is.finite(breaks)) ||
+        any(diff(breaks) <= 0)) {
+      abort_input("{.arg breaks} must be at least three finite, strictly increasing numbers.", arg = "breaks")
     }
   }
-  n_sim <- length(obj_sim$data_sim)
+  n_sim <- length(sims$data_sim)
   n_models <- length(models)
 
-  if(want_area && !is.function(area_summary)) {
-    stop("'area_summary' must be a function when 'spatial_scale' includes 'area'.")
-  }
-
-  apply_area_summary <- function(x, context) {
-    result <- tryCatch(
-      area_summary(x),
-      error = function(e) {
-        stop("'area_summary' failed for ", context, ": ",
-             conditionMessage(e), call. = FALSE)
-      }
-    )
-    if (!is.numeric(result) || length(result) != 1L || is.na(result) ||
-        !is.finite(result)) {
-      stop("'area_summary' must return one finite numeric value (failed for ",
-           context, ").", call. = FALSE)
+  if (want_area) {
+    aggregations <- c("mean", "median", "sum", "min", "max")
+    if (is.null(aggregate)) {
+      abort_input("{.arg aggregate} must be given when {.arg spatial_scale} includes {.val area}, as one of {.or {.val {aggregations}}} or a function.", arg = "aggregate")
     }
-    as.numeric(result)
+    if (!is.function(aggregate) &&
+        (!is.character(aggregate) || length(aggregate) != 1L ||
+           is.na(aggregate) || !aggregate %in% aggregations)) {
+      supplied <- describe_value(aggregate)
+      abort_input("{.arg aggregate} must be one of {.or {.val {aggregations}}} or a function, not {supplied}.", arg = "aggregate")
+    }
   }
   model_names <- names(models)
+  if (want_classify && "Class" %in% model_names) {
+    abort_input("{.arg models} can't have a model called {.val Class}, the name under which the result holds the classes.", arg = "models")
+  }
+  # Each candidate is refitted to the simulated response, which is in a column
+  # of its own, so that a covariate can have any name.
+  formulas <- lapply(model_names, function(name) {
+    formula <- fit_formula(models[[name]])
+    if (!is.symbol(formula[[2L]])) {
+      response <- paste(deparse(formula[[2L]]), collapse = " ")
+      abort_input(c("The response of the model {.val {name}} must be a plain column name, not {.code {response}}.", "i" = "Every model is refitted to the simulated response itself."), arg = "models")
+    }
+    update(formula, .riskmap_response ~ .)
+  })
+  grid <- sims$grid
+  include_nugget <- sims$nugget_over_grid
 
-  include_covariates <- obj_sim$include_covariates
-  include_cov_offset <- obj_sim$include_cov_offset
-  include_nugget <- obj_sim$nugget_over_grid
-
-  no_comp <- NULL
-
-  # A joint prediction is required for area-level aggregation, since it needs
-  # spatially correlated samples across the grid; it also carries everything
-  # a marginal grid-level assessment needs, so requesting both scales still
-  # only takes one fit-and-predict pass over the simulations (#109).
-  type <- if (want_area) "joint" else "marginal"
+  # Every candidate needs complete covariates at every grid location, so that
+  # its predictions line up with the true surface
+  for (i in seq_len(n_models)) {
+    template_i <- models[[i]]
+    if (template_i$family != sims$family) {
+      abort_input("The model {.val {model_names[i]}} has the {template_i$family} family, but the simulations have the {sims$family} family.", arg = "models")
+    }
+    re_names <- if (inherits(template_i, "RiskMap")) names(template_i$re) else
+      template_i$re_terms
+    required <- setdiff(get_formula_terms(formulas[[i]]),
+                        c(".riskmap_response", re_names))
+    missing_columns <- setdiff(required, names(grid))
+    if (length(missing_columns) > 0) {
+      abort_input("The prediction grid of {.arg simulation} has no {cli::qty(length(missing_columns))}column{?s} {.val {missing_columns}}, which the model {.val {model_names[i]}} uses.", arg = "models")
+    }
+    n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
+    if (n_incomplete > 0) {
+      abort_input(c("The model {.val {model_names[i]}} needs complete values of {.val {required}} on the prediction grid, but {n_incomplete} grid location{?s} {?has/have} missing values.", "i" = "Remove them from the prediction grid before simulating."), arg = "models")
+    }
+    # A fit is checked as predict() checks new data, with its own terms.
+    finite <- if (inherits(template_i, "RiskMap")) {
+      prediction_design_is_finite(template_i, st_drop_geometry(grid))
+    } else {
+      fixed_effects_are_finite(template_i$fixed_terms, grid)
+    }
+    if (!all(finite)) {
+      n_infinite <- sum(!finite)
+      # As text, whose length sets the plurals, not its value.
+      locations <- as.character(which(!finite))
+      abort_input(c("The model {.val {model_names[i]}} has a covariate that isn't a finite number, such as {.code log(0)}, at {n_infinite} location{?s} of the prediction grid.", "i" = "{?It is location/They are locations} {locations}. Remove {?it/them} from the prediction grid before simulating."), arg = "models")
+    }
+  }
 
   if (want_area) {
     n_reg <- nrow(boundaries)
 
-    if(is.null(col_names)) {
+    if(is.null(label)) {
       boundaries$region <- paste0("reg", 1:n_reg)
-      col_names <- "region"
-      names_reg <- boundaries$region
-    } else {
-      names_reg <- boundaries[[col_names]]
-      if(n_reg != length(names_reg)) {
-        stop("The names in the column identified by 'col_names' do not
-         provide a unique set of names, but there are duplicates")
-      }
+      label <- "region"
+    } else if (!is.character(label) || length(label) != 1L || is.na(label) ||
+               !label %in% names(boundaries)) {
+      supplied <- describe_value(label)
+      abort_input("{.arg label} must name a column of {.arg boundaries}, not {supplied}.", arg = "label")
     }
-    boundaries <- st_transform(boundaries, st_crs(obj_sim$lp_grid_sim))
-    inter <- st_intersects(boundaries, obj_sim$lp_grid_sim)
+    names_reg <- boundaries[[label]]
+    if (anyDuplicated(names_reg)) {
+      abort_input("The column {.val {label}} of {.arg boundaries} must hold distinct names of areas.", arg = "label")
+    }
+    boundaries <- st_transform(boundaries, st_crs(grid))
+    inter <- st_intersects(boundaries, grid)
+    empty <- lengths(inter) == 0
+    if (all(empty)) {
+      abort_input("No location of the prediction grid of {.arg simulation} falls within the areas of {.arg boundaries}.", arg = "boundaries")
+    }
+    if (any(empty)) {
+      empty_names <- names_reg[empty]
+      riskmap_warn("No grid locations fall within {.val {empty_names}}, so {cli::qty(length(empty_names))}{?it is/they are} left out of the assessment of areas.")
+    }
+    areas <- which(!empty)
+    # Joint predictive draws are needed only within each area; areas that
+    # share grid locations form one block
+    groups <- prediction_boundary_groups(
+      list(prediction_row = unlist(inter[areas]),
+           area_id = rep(areas, lengths(inter[areas]))),
+      nrow(grid)
+    )
   }
 
-  n_samples <- (control_mcmc$n_sim-control_mcmc$burnin)/control_mcmc$thin
-  n_pred <- nrow(obj_sim$lp_grid_sim)
-
   if (want_classify) {
-    category_labels <- paste0("(", utils::head(categories, -1), ",",
-                              categories[-1], "]")
+    category_labels <- paste0("(", utils::head(breaks, -1), ",",
+                              breaks[-1], "]")
     categories_class <- factor(category_labels, levels = category_labels)
+  }
+
+  true_target_grid_sim <- apply_target(
+    sims$mean_sim, "the simulated true surface"
+  )
+
+  # Applies 'aggregate' to the targets of each area, one column per draw, with
+  # equal weights for its locations
+  summarise_areas <- function(target, context) {
+    t(vapply(areas, function(h) {
+      locations <- inter[[h]]
+      values <- tryCatch(
+        aggregate_prediction_values(target[locations, , drop = FALSE],
+                                    aggregate, rep(1, length(locations))),
+        error = function(e) {
+          abort_input("{.arg aggregate} failed for the area {.val {names_reg[h]}} in {context}.", arg = "aggregate", parent = e)
+        }
+      )
+      if (!is.numeric(values) || length(values) != ncol(target) ||
+          any(!is.finite(values))) {
+        abort_input("{.arg aggregate} must give one finite number for each draw, and didn't for the area {.val {names_reg[h]}} in {context}.", arg = "aggregate")
+      }
+      as.numeric(values)
+    }, numeric(ncol(target))))
+  }
+
+  if (want_area) {
+    true_target_area_sim <- matrix(NA_real_, nrow = n_reg, ncol = n_sim)
+    true_target_area_sim[areas, ] <- summarise_areas(
+      true_target_grid_sim, "the true simulations"
+    )
   }
 
   # One `mse`/`classify` store per requested spatial scale, all sharing the
@@ -3661,150 +3631,181 @@ assess_simulation <- function(obj_sim,
     store
   }
 
-  out <- list(pred_objective = list())
-  if(want_grid) out$pred_objective$grid <- init_objective_store()
-  if(want_area) out$pred_objective$area <- init_objective_store()
+  out <- list(objective = list())
+  if(want_grid) out$objective$location <- init_objective_store()
+  if(want_area) out$objective$area <- init_objective_store()
 
-  # Update one model/simulation result. The helper below keeps every category
-  # in the confusion matrix, including categories absent from this simulation.
-  update_classify_store <- function(store, model_name, sim_index, true_vals, samples) {
-    metrics <- simulation_classification_metrics(
-      true_vals, samples, categories, levels(categories_class)
-    )
-    store$classify[[model_name]]$by_cat[[sim_index]] <- metrics$by_cat
-    store$classify[[model_name]]$CC[sim_index] <- metrics$overall_cc
+  # Scores of one model on one simulation at one spatial scale. The
+  # classification keeps every category in the confusion matrix, including
+  # categories absent from this simulation.
+  score_targets <- function(true_vals, samples) {
+    scores <- list()
+    if (want_mse) scores$mse <- mean((rowMeans(samples) - true_vals)^2)
+    if (want_classify) {
+      scores$classify <- simulation_classification_metrics(
+        true_vals, samples, breaks, levels(categories_class)
+      )
+    }
+    scores
+  }
+
+  store_scores <- function(store, i, j, scores) {
+    if (want_mse) store$mse[i, j] <- scores$mse
+    if (want_classify) {
+      store$classify[[model_names[i]]]$by_cat[[j]] <- scores$classify$by_cat
+      store$classify[[model_names[i]]]$CC[j] <- scores$classify$overall_cc
+    }
     store
   }
 
-  lp_true_sim <- as.matrix(st_drop_geometry(obj_sim$lp_grid_sim[, grepl("^lp_sim_[0-9]+$",
-                                                                       names(obj_sim$lp_grid_sim))]))
-
-  true_target_grid_sim <- apply_target_transform(
-    lp_true_sim, "the simulated true surface"
-  )
-
-  if(want_area) {
-    true_target_area_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
-    for(i in 1:n_reg) {
-      for(j in 1:n_sim) {
-        if(length(inter[[i]]) == 0) {
-          warning(paste("No points on the grid fall within", boundaries[[col_names]][i],
-                        "and no predictions are carried out for this area"))
-          no_comp <- c(no_comp, i)
-        } else {
-          true_target_area_sim[i,j] <- apply_area_summary(
-            true_target_grid_sim[inter[[i]], j],
-            paste0("area '", boundaries[[col_names]][i],
-                   "' in true simulation ", j)
-          )
-        }
-      }
-    }
+  # One seed per simulation, shared by the models so that their fits and
+  # predictions use common random numbers. Each simulation's results then do
+  # not depend on the others, which also allows running them separately.
+  if (!is.null(seed)) {
+    restore_seed <- preserve_random_seed()
+    on.exit(restore_seed(), add = TRUE)
+    set.seed(seed)
   }
+  sim_seeds <- sample.int(.Machine$integer.max, n_sim)
+  restore_after_tasks <- preserve_random_seed()
+  on.exit(restore_after_tasks(), add = TRUE, after = FALSE)
+  # The fits of a simulation take their seed from the first draw of its
+  # stream, and its predictions use that stream from the start.
+  fit_seeds <- vapply(sim_seeds, function(sim_seed) {
+    set.seed(sim_seed)
+    sample.int(.Machine$integer.max, 1L)
+  }, integer(1))
 
-  for(i in 1:n_models) {
-    if (messages) message("Model: ", model_names[i], "\n")
-
-    template_i <- models[[i]]
-    if (template_i$family != obj_sim$family) {
-      stop("Model '", model_names[i], "' uses family '", template_i$family,
-           "', but the simulations use family '", obj_sim$family, "'.")
-    }
-    f_i <- update(template_i$formula, y ~ .)
-
-    for(j in 1:n_sim) {
-      if (messages) message("Processing simulation no. ", j)
-
-      # Fit, predict and score one model/simulation pair at a time. Keeping
-      # these objects local avoids retaining every fit and posterior sample
-      # matrix until the complete assessment has finished.
-      if (messages) message("Estimation")
+  # Fits, predicts and scores one model on one simulation. A failure leaves
+  # that pair's results missing instead of stopping the assessment, and
+  # warnings are recorded with the fit.
+  assess_pair <- function(i, j) {
+    set.seed(sim_seeds[j])
+    fit_warnings <- character()
+    result <- tryCatch(withCallingHandlers({
       refit_args <- assessment_refit_args(
-        template_i, f_i, obj_sim$data_sim[[j]], control_mcmc
+        models[[i]], formulas[[i]], sims$data_sim[[j]], control_mcmc
       )
-      fit_ij <- do.call(glgpm, refit_args)
+      refit_args$seed <- fit_seeds[j]
+      refit_args$return_samples <- FALSE
+      fit_ij <- without_crs_check(do.call(glgpm, refit_args))
 
-      if (messages) message("Prediction over the grid")
-      prediction_ij <- predict(
-        fit_ij,
-        newdata = obj_sim$lp_grid_sim,
-        type = type,
-        include = if (include_nugget) "nugget" else character(),
-        control_mcmc = control_mcmc,
-        keep_samples = TRUE,
-        messages = FALSE
-      )
-      lp_samples_ij <- prediction_link_samples(
-        prediction_ij,
-        include_fixed = include_covariates,
-        include_offset = include_cov_offset
-      )
-      n_samples <- ncol(lp_samples_ij)
-
-      # Grid-cell-level target samples are shared by both scales: grid
-      # objectives use them directly, area objectives aggregate them by
-      # region below.
-      target_samples_ij <- apply_target_transform(
-        lp_samples_ij,
-        paste0("model '", model_names[i], "', simulation ", j)
-      )
-
-      if(want_grid) {
-        mean_target_grid_ij <- apply(target_samples_ij, 1, mean)
-
-        if(want_mse) {
-          out$pred_objective$grid$mse[i,j] <-
-            mean((mean_target_grid_ij - true_target_grid_sim[,j])^2)
-        }
-        if(want_classify) {
-          out$pred_objective$grid <- update_classify_store(
-            out$pred_objective$grid, model_names[i], j,
-            true_target_grid_sim[,j], target_samples_ij)
-        }
+      include_ij <- if (include_nugget && fitted_nugget_variance(fit_ij) > 0) {
+        "nugget"
+      } else {
+        character()
       }
+      prediction_data <- suppressMessages(
+        validate_prediction_data(fit_ij, grid, include_ij)
+      )$model_data
+      # The response draws are the linear-predictor draws mapped through the
+      # refitted model's own inverse link (the identity for a Gaussian fit),
+      # so each model reaches the scale of the simulated mean through its own
+      # link.
+      response_draws <- assessment_response_draws(
+        fit_ij, prediction_data, include_ij, control_mcmc,
+        groups = if (want_area) groups
+      )
+      context <- paste0("model '", model_names[i], "', simulation ", j)
+      target_ij <- apply_target(response_draws, context)
 
-      if(want_area) {
-        target_area_samples_ij <- matrix(NA, nrow = n_reg, ncol = n_samples)
-        mean_target_area_ij <- rep(NA,n_reg)
-        for(h in 1:n_reg) {
-          if(length(inter[[h]]) > 0) {
-            ind_grid_h <- inter[[h]]
-            target_area_samples_ij[h,] <- vapply(
-              seq_len(n_samples),
-              function(sample_index) {
-                apply_area_summary(
-                  target_samples_ij[ind_grid_h, sample_index],
-                  paste0("area '", boundaries[[col_names]][h], "', model '",
-                         model_names[i], "', simulation ", j,
-                         ", predictive sample ", sample_index)
-                )
-              },
-              numeric(1)
-            )
-            mean_target_area_ij[h] <- mean(target_area_samples_ij[h,])
-          }
-        }
+      scores <- list(status = "ok", message = NA_character_,
+                     estimate = estimated_coef(fit_ij))
+      if (want_grid) {
+        scores$location <- score_targets(true_target_grid_sim[, j], target_ij)
+      }
+      if (want_area) {
+        scores$area <- score_targets(true_target_area_sim[areas, j],
+                                     summarise_areas(target_ij, context))
+      }
+      scores
+    }, warning = function(w) {
+      fit_warnings <<- c(fit_warnings, condition_text(w))
+      invokeRestart("muffleWarning")
+    }), error = function(e) {
+      list(status = "failed", message = condition_text(e))
+    })
+    result$warnings <- unique(fit_warnings)
+    result
+  }
 
-        if(want_mse) {
-          out$pred_objective$area$mse[i,j] <-
-            mean((mean_target_area_ij - true_target_area_sim[,j])^2)
-        }
-        if(want_classify) {
-          out$pred_objective$area <- update_classify_store(
-            out$pred_objective$area, model_names[i], j,
-            true_target_area_sim[,j], target_area_samples_ij)
-        }
+  assess_one_simulation <- function(j, report) {
+    lapply(seq_len(n_models), function(i) {
+      result <- assess_pair(i, j)
+      report()
+      result
+    })
+  }
+
+  if (messages) {
+    riskmap_inform("Refitting {n_models} model{?s} to {n_sim} simulation{?s}.")
+  }
+  bar <- progress_bar("Refitting models to simulations", n_sim * n_models,
+                      messages)
+  results <- riskmap_map(seq_len(n_sim), assess_one_simulation,
+                         progress = bar, weights = rep(n_models, n_sim),
+                         reports_progress = TRUE,
+                         labels = paste("Simulation", seq_len(n_sim)))
+  progress_done(bar)
+
+  fits <- data.frame(
+    model = rep(model_names, times = n_sim),
+    simulation = rep(seq_len(n_sim), each = n_models),
+    status = NA_character_, message = NA_character_, warnings = NA_character_
+  )
+  estimates <- setNames(vector("list", n_models), model_names)
+  for (j in seq_len(n_sim)) {
+    results_j <- results[[j]]
+    for (i in seq_len(n_models)) {
+      result_ij <- results_j[[i]]
+      row <- (j - 1L) * n_models + i
+      fits$status[row] <- result_ij$status
+      fits$message[row] <- result_ij$message %||% NA_character_
+      if (length(result_ij$warnings) > 0) {
+        fits$warnings[row] <- paste(result_ij$warnings, collapse = " | ")
+      }
+      if (!identical(result_ij$status, "ok")) next
+
+      if (is.null(estimates[[i]])) {
+        estimates[[i]] <- matrix(
+          NA_real_, n_sim, length(result_ij$estimate),
+          dimnames = list(paste0("sim_", seq_len(n_sim)),
+                          names(result_ij$estimate))
+        )
+      }
+      estimates[[i]][j, ] <- result_ij$estimate
+      if (want_grid) {
+        out$objective$location <- store_scores(out$objective$location, i, j,
+                                                result_ij$location)
+      }
+      if (want_area) {
+        out$objective$area <- store_scores(out$objective$area, i, j,
+                                                result_ij$area)
       }
     }
   }
-  if(want_classify) {
-    if(want_grid) out$pred_objective$grid$classify$Class <- categories_class
-    if(want_area) out$pred_objective$area$classify$Class <- categories_class
+
+  n_failed <- sum(fits$status != "ok")
+  if (n_failed > 0) {
+    first <- which(fits$status != "ok")[1]
+    riskmap_warn(c("{n_failed} of {nrow(fits)} model fits failed, and their results are missing.", "i" = "The first failure, for model {.val {fits$model[first]}} and simulation {fits$simulation[first]}, was {.val {fits$message[first]}}.", "i" = "See the {.code fits} element of the result."))
   }
+  n_warned <- sum(!is.na(fits$warnings))
+  if (n_warned > 0) {
+    first <- which(!is.na(fits$warnings))[1]
+    riskmap_warn(c("{n_warned} of {nrow(fits)} model fits gave warnings.", "i" = "The first, for model {.val {fits$model[first]}} and simulation {fits$simulation[first]}, was {.val {fits$warnings[first]}}.", "i" = "See the {.code fits} element of the result."))
+  }
+
+  if(want_classify) {
+    if(want_grid) out$objective$location$classify$Class <- categories_class
+    if(want_area) out$objective$area$classify$Class <- categories_class
+  }
+  out$fits <- fits
+  out$estimates <- estimates
   out$n_sim <- n_sim
   out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
-  return(out)
+  stamp_version(out)
 }
 
 ##' Build a refit call from a fitted assessment-model template
@@ -3817,7 +3818,7 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
   fitted_template <- inherits(template, "RiskMap")
   args <- list(
     formula = formula,
-    family = template$family,
+    family = fit_family_argument(template),
     data = data,
     distance_units = template$distance_units,
     control_mcmc = control_mcmc,
@@ -3826,18 +3827,179 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
     } else {
       set_control_mcml()
     },
-    fix_var_me = if (fitted_template) template$fix_var_me else NULL,
+    # A template from specify_glgpm() holds the family's parameters it
+    # gives, as a size of the negative binomial family.
+    fixed_pars = if (fitted_template) {
+      fit_fixed_pars(template)
+    } else {
+      template$family_parameters
+    },
     messages = FALSE
   )
-  if (template$family != "gaussian") {
-    args$denominator <- quote(units_m)
-    if (fitted_template && identical(template$link_function$name, "custom")) {
-      args$invlink <- template$link_function[c("inv", "d1", "d2")]
-    } else if (!fitted_template && isTRUE(template$custom_link)) {
+  if (!family_traits(template$family)$exact) {
+    args$denominator <- quote(.riskmap_denominator)
+    if (fitted_template) {
+      args$invlink <- refit_invlink(template)
+    } else if (isTRUE(template$custom_link)) {
       args$invlink <- template$invlink
     }
   }
   args
+}
+
+##' Predictive draws of the mean of one refit in an assessment of simulations
+##'
+##' Draws from `prediction_sample_components()`, except at the locations of the
+##' grid that are also sampled sites of the fit when the nugget is included.
+##' The simulated truth there has the nugget that the observations of the site
+##' have, so the spatial effect and the nugget are replaced by draws of the
+##' latent effect of the site, which is their sum, given the data. The nugget
+##' of any other location is a new one, as in [predict.RiskMap()], which joint
+##' draws share among the locations with the same coordinates.
+##'
+##' @param fit A `RiskMap` fit.
+##' @param grid The prediction locations, in the CRS of the fit.
+##' @param include `"nugget"`, or `character()` for draws without it.
+##' @param control_mcmc The control of the draws.
+##' @param groups The blocks within which draws are joint, or `NULL` for
+##'   marginal draws.
+##' @return A matrix of draws of the mean, one row per location.
+##' @noRd
+assessment_response_draws <- function(fit, grid, include, control_mcmc,
+                                      groups = NULL) {
+  coordinates <- coordinates_in_units(grid, fit$distance_units)
+  # The index of each distinct point, the sites of the fit first, and the site
+  # of each location, NA where the location isn't sampled.
+  point <- index_coordinate_rows(rbind(fit$coords, coordinates))$index[
+    nrow(fit$coords) + seq_len(nrow(grid))
+  ]
+  site <- ifelse(point > nrow(fit$coords), NA, point)
+  sampled <- if ("nugget" %in% include) which(!is.na(site)) else integer()
+
+  exact <- fit_is_exact(fit)
+  if (length(sampled) && !exact) {
+    # The conditional samples of the latent effects, which the predictions at
+    # the other locations then reuse, so that the draws are joint.
+    site_effects <- prepare_prediction(
+      fit, fit$data, "marginal", character(), control_mcmc, messages = FALSE,
+      observed_locations = TRUE
+    )$S_samples
+    # The columns of the random effects, which are not predicted, aren't used.
+    fit$S_samples <- cbind(t(site_effects),
+                           matrix(0, ncol(site_effects), sum(lengths(fit$re))))
+    control_mcmc <- NULL
+  }
+  components <- prediction_sample_components(
+    fit, grid, if (is.null(groups)) "marginal" else "joint", include,
+    control_mcmc, messages = FALSE, groups = groups
+  )
+  # Draws that are joint share a nugget among the locations with the same
+  # coordinates, as the truth does.
+  first <- match(point, point)
+  repeated <- if ("nugget" %in% include && !is.null(groups)) {
+    which(first != seq_along(first))
+  } else {
+    integer()
+  }
+  if (!length(sampled) && !length(repeated)) return(components$response)
+
+  link <- components$link
+  link[repeated, ] <- link[repeated, , drop = FALSE] -
+    components$nugget[repeated, , drop = FALSE] +
+    components$nugget[first[repeated], , drop = FALSE]
+  if (exact && length(sampled)) {
+    drawn <- gaussian_site_draws(fit, coordinates, groups, sampled,
+                                 n_samples = ncol(link))
+    site_effects <- drawn$site_effects
+    rows <- drawn$rows
+    link[rows, ] <- link[rows, , drop = FALSE] + drawn$spatial -
+      components$spatial[rows, , drop = FALSE]
+  }
+  if (length(sampled)) {
+    link[sampled, ] <- components$fixed[sampled] + components$offset[sampled] +
+      site_effects[site[sampled], , drop = FALSE]
+  }
+  if (exact) return(link)
+  matrix(fit$link_function$inv(as.numeric(link)), nrow = nrow(link))
+}
+
+##' Draws of the latent effects of a Gaussian fit at its sites
+##'
+##' The latent effect of a site is the sum of the spatial effect and the nugget
+##' there. Its draws are joint over the sites given the data. With `groups`, the
+##' spatial effect of each block that holds a sampled site is drawn again given
+##' them, so that the draws remain joint within the block.
+##'
+##' @param coordinates The prediction locations, in the distance units of the
+##'   fit.
+##' @param sampled The rows of `coordinates` that are sampled sites.
+##' @param n_samples The number of draws.
+##' @inheritParams assessment_response_draws
+##' @return A list of `site_effects`, one row per site, and of the draws
+##'   `spatial` of the spatial effect at `rows`, the rows that share a block
+##'   with a sampled site.
+##' @noRd
+gaussian_site_draws <- function(fit, coordinates, groups, sampled, n_samples) {
+  pars <- coef(fit)
+  distance_scale <- attr(fit, "distance_scale") %||% 1
+  site_coordinates <- fit$coords / distance_scale
+  phi <- pars$phi / distance_scale
+  covariance <- pars$sigma2 * matern_correlation(
+    pairwise_distances(site_coordinates), phi = phi, kappa = fit$kappa,
+    return_sym_matrix = TRUE
+  )
+  diag(covariance) <- diag(covariance) + fitted_nugget_variance(fit, pars)
+  residual <- fit$y - as.numeric(as.matrix(fit$D) %*% pars$beta +
+                                   fit$cov_offset)
+  if (is.null(fit$ID_re)) fit$ID_re <- matrix(0L, length(fit$y), 0L)
+  distribution <- gaussian_conditioning_distribution(fit, covariance, pars,
+                                                     residual)
+  # Without measurement error the data leave the effects of the sites no
+  # variance, or only that of the groups, so a jitter is expected.
+  measurement_variance <- pars$sigma2_me %||% fit_fix_var_me(fit) %||% 0
+  conditional_root <- factor_covariance(
+    distribution$covariance[distribution$spatial_rows,
+                            distribution$spatial_rows, drop = FALSE],
+    "conditional covariance of the sites", warn = measurement_variance > 0
+  )
+  site_effects <- sample_correlated_gaussian(
+    distribution$mean[distribution$spatial_rows], t(conditional_root),
+    n_samples
+  )
+  if (is.null(groups)) {
+    return(list(site_effects = site_effects, rows = integer(),
+                spatial = matrix(0, 0, n_samples)))
+  }
+
+  rows <- which(groups %in% groups[sampled])
+  root <- factor_covariance(covariance, "covariance of the sites")
+  spatial <- grouped_joint_prediction(
+    prediction_coordinates = coordinates[rows, , drop = FALSE] / distance_scale,
+    conditioning_coordinates = site_coordinates,
+    group_indices = unname(split(seq_along(rows), groups[rows])),
+    weight_function = function(cross_covariance) {
+      cholesky_prediction_weights(cross_covariance, root)
+    },
+    conditional_signal = site_effects, marginal_variance = pars$sigma2,
+    phi = phi, kappa = fit$kappa, n_samples = n_samples
+  )
+  list(site_effects = site_effects, rows = rows, spatial = spatial)
+}
+
+##' The class of each value
+##'
+##' Every value has a class. A class includes its upper break, the lowest class
+##' also includes the first break, and values beyond the breaks belong to the
+##' end classes, as in the maps of [plot_prediction()].
+##'
+##' @param values A numeric vector or matrix.
+##' @param breaks The class boundaries.
+##' @return The numbers of the classes, in the shape of `values`.
+##' @noRd
+simulation_class <- function(values, breaks) {
+  classes <- findInterval(values, breaks, left.open = TRUE, all.inside = TRUE)
+  dim(classes) <- dim(values)
+  classes
 }
 
 ##' Classification metrics for one simulated dataset
@@ -3849,11 +4011,12 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
 ##' @return A list containing category-specific metrics and overall accuracy.
 ##' @noRd
 simulation_classification_metrics <- function(true_values, samples, breaks, labels) {
-  true_class <- cut(true_values, breaks = breaks, labels = labels)
-  true_class <- factor(true_class, levels = labels)
+  true_class <- factor(labels[simulation_class(true_values, breaks)],
+                       levels = labels)
 
-  probabilities <- do.call(cbind, lapply(seq_len(length(breaks) - 1L), function(i) {
-    rowMeans(breaks[i] < samples & samples <= breaks[i + 1L])
+  sample_class <- simulation_class(samples, breaks)
+  probabilities <- do.call(cbind, lapply(seq_along(labels), function(i) {
+    rowMeans(sample_class == i)
   }))
   predicted_class <- factor(labels[max.col(probabilities, ties.method = "first")],
                             levels = labels)
@@ -3878,13 +4041,63 @@ simulation_classification_metrics <- function(true_values, samples, breaks, labe
     )
   })
 
-  valid <- !is.na(true_class)
-  overall_cc <- if (any(valid)) {
-    mean(true_class[valid] == predicted_class[valid])
+  list(by_cat = do.call(rbind, by_category),
+       overall_cc = mean(true_class == predicted_class))
+}
+
+##' @title Print an Assessment of Simulations
+##'
+##' @description Prints a short description of an assessment from
+##' [assess_simulation()]. Use [summary.RiskMap_assess_simulation()] for its
+##' results.
+##'
+##' @param x An object of class `RiskMap_assess_simulation`.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
+##'
+##' @return Invisibly returns `x`.
+##'
+##' @method print RiskMap_assess_simulation
+##' @export
+print.RiskMap_assess_simulation <- function(x, ...) {
+  check_dots_unused(...)
+  model_names <- unique(x$fits$model %||% character())
+  n_models <- length(model_names)
+  objectives <- unique(unlist(lapply(x$objective, names)))
+  objective_names <- c(mse = "mean squared error",
+                       classify = "classification")
+  objectives <- ifelse(objectives %in% names(objective_names),
+                       objective_names[objectives], objectives)
+  scales <- c(location = "at the locations", area = "in areas")[x$spatial_scale]
+  models <- if (n_models) {
+    paste0(n_models, if (n_models == 1L) " model" else " models", " (",
+           paste(model_names, collapse = ", "), ") refitted to ")
   } else {
-    NA_real_
+    "Models refitted to "
   }
-  list(by_cat = do.call(rbind, by_category), overall_cc = overall_cc)
+  failed <- if (!is.null(x$fits)) sum(x$fits$status != "ok") else 0L
+  warned <- sum(!is.na(x$fits$warnings))
+  out_print(c(
+    out_rule("Assessment of simulations"),
+    out_text(paste0(models, out_count(x$n_sim, "simulation"),
+                    ", assessed ", paste(scales[!is.na(scales)],
+                                         collapse = " and "),
+                    " by ", paste(objectives, collapse = " and "), ".")),
+    out_bullets(c(
+      if (failed > 0L) {
+        c("!" = paste0(failed, " of ", nrow(x$fits), " model fits failed."))
+      },
+      if (warned > 0L) {
+        c("!" = paste0(warned, " of ", nrow(x$fits),
+                       " model fits gave warnings."))
+      }
+    )),
+    "",
+    out_bullets(c(i = paste0(out_fun("summary",
+                                     "summary.RiskMap_assess_simulation"),
+                             " gives the results.")))
+  ))
+  invisible(x)
 }
 
 ##' @title Summarize Simulation Results
@@ -3892,27 +4105,43 @@ simulation_classification_metrics <- function(true_values, samples, breaks, labe
 ##' @description Summarizes the results of model evaluations from a `RiskMap_assess_simulation` object. Provides average metrics for classification by category and overall correct classification (CC) summary.
 ##'
 ##' @param object An object of class `RiskMap_assess_simulation`, as returned by `assess_simulation`.
-##' @param ... Additional arguments (not used).
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##'
-##' @return A list containing summary data for each model:
-##' - `by_cat_summary`: A data frame with average sensitivity, specificity, PPV, NPV, and CC by category.
-##' - `CC_summary`: A numeric vector with mean, 2.5th percentile, and 97.5th percentile for CC across simulations.
+##' @return A list of class `summary.RiskMap_assess_simulation` with one
+##' element per assessed spatial scale (`location` and/or `area`), each holding:
+##' - `mse`: a data frame with, for each model, the number of simulations
+##'   (`n_sim`), the number with a result (`n_valid`), and the mean and
+##'   standard deviation of the MSE across simulations (`MSE_mean`, `MSE_sd`);
+##' - `classify`: for each model, `classify_res`, the average sensitivity,
+##'   specificity, PPV, NPV and CC by category across simulations, `n_valid`,
+##'   the number of simulations with a defined value of each metric, `n_sim`,
+##'   and `cc_summary`, the mean, standard deviation and 2.5% and 97.5%
+##'   quantiles of the overall proportion of correct classification.
+##'
+##' It also holds `fits`, the number of model fits (`n`), of failed fits
+##' (`failed`) and of fits with warnings (`warned`).
 ##'
 ##' @method summary RiskMap_assess_simulation
 ##' @export
 summary.RiskMap_assess_simulation <- function(object, ...) {
-  stopifnot(inherits(object, "RiskMap_assess_simulation"))
+  check_dots_unused(...)
+  check_class(object, "RiskMap_assess_simulation")
 
   if (identical(object$n_sim, 1L)) {
-    warning("The assessment contains one simulation. Point estimates are shown, ",
-            "but across-simulation uncertainty cannot be estimated.", call. = FALSE)
+    riskmap_warn("The assessment has one simulation, so point estimates are shown without their uncertainty across simulations.")
   }
 
-  # `object$pred_objective` holds one element per requested spatial scale
-  # ("grid" and/or "area"); each is summarized the same way.
+  # `object$objective` holds one element per requested spatial scale
+  # ("location" and/or "area"); each is summarized the same way.
   results <- list()
-  for (scale in intersect(c("grid", "area"), names(object$pred_objective))) {
-    results[[scale]] <- summarize_pred_objective(object$pred_objective[[scale]])
+  for (scale in intersect(c("location", "area"), names(object$objective))) {
+    results[[scale]] <- summarise_objective(object$objective[[scale]])
+  }
+  if (!is.null(object$fits)) {
+    results$fits <- c(n = nrow(object$fits),
+                      failed = sum(object$fits$status != "ok"),
+                      warned = sum(!is.na(object$fits$warnings)))
   }
 
   # Assign class for S3 print method
@@ -3922,16 +4151,16 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
 
 ##' Summarize one spatial scale's `mse`/`classify` results
 ##'
-##' @param pred_objective The `mse`/`classify` element of a
+##' @param objective The `mse`/`classify` element of a
 ##'   `RiskMap_assess_simulation` object for a single spatial scale.
 ##' @return A list with `mse` and/or `classify` summaries.
 ##' @noRd
-summarize_pred_objective <- function(pred_objective) {
+summarise_objective <- function(objective) {
   results <- list()
 
-  # Check for "mse" in pred_objective
-  if ("mse" %in% names(pred_objective)) {
-    mse_data <- pred_objective$mse
+  # Check for "mse" in objective
+  if ("mse" %in% names(objective)) {
+    mse_data <- objective$mse
 
     # Check if mse_data is a matrix
     if (is.matrix(mse_data)) {
@@ -3947,13 +4176,13 @@ summarize_pred_objective <- function(pred_objective) {
 
       results$mse <- mse_summary
     } else {
-      stop("mse_data must be a matrix.")
+      abort_input("The mean squared errors in {.arg object} must be a matrix.", arg = "object")
     }
   }
 
-  # Check for "classify" in pred_objective
-  if ("classify" %in% names(pred_objective)) {
-    classify_data <- pred_objective$classify
+  # Check for "classify" in objective
+  if ("classify" %in% names(objective)) {
+    classify_data <- objective$classify
 
     name_models <- setdiff(names(classify_data), "Class")
     results$classify <- list()
@@ -4024,32 +4253,33 @@ summarize_simulation_metric <- function(x, n_sim = length(x)) {
 ##' @description Prints a concise summary of simulation results from a `RiskMap_assess_simulation` object, including average metrics by category and a summary of overall correct classification (CC).
 ##'
 ##' @param x An object of class `summary.RiskMap_assess_simulation`, as returned by `summary.RiskMap_assess_simulation`.
-##' @param ... Additional arguments (not used).
-##'
-##' @return Invisibly returns `x`.
-##'
-##'
-##' Print Simulation Results
-##'
-##' Prints a concise summary of simulation results from a `summary.RiskMap_assess_simulation` object,
-##' including average metrics by category and a summary of overall correct classification (CC).
-##'
-##' @param x An object of class `summary.RiskMap_assess_simulation`, as returned by `summary.RiskMap_assess_simulation`.
-##' @param ... Additional arguments (not used).
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##'
 ##' @return Invisibly returns `x`.
 ##'
 ##' @method print summary.RiskMap_assess_simulation
 ##' @export
 print.summary.RiskMap_assess_simulation <- function(x, ...) {
-  cat("Summary of Simulation Results\n\n")
-
-  scale_label <- c(grid = "Grid", area = "Area")
-  for (scale in intersect(c("grid", "area"), names(x))) {
-    if (length(x) > 1) cat(sprintf("== %s-level results ==\n\n", scale_label[[scale]]))
-    print_pred_objective(x[[scale]])
+  check_dots_unused(...)
+  failed <- if (!is.null(x$fits) && x$fits[["failed"]] > 0) {
+    c("!" = paste0(x$fits[["failed"]], " of ", x$fits[["n"]],
+                   " model fits failed, so their results are missing."))
   }
-
+  warned <- if ("warned" %in% names(x$fits) && x$fits[["warned"]] > 0) {
+    c("!" = paste0(x$fits[["warned"]], " of ", x$fits[["n"]],
+                   " model fits gave warnings, which the `fits` of the ",
+                   "assessment hold."))
+  }
+  scale_label <- c(location = "Locations", area = "Areas")
+  scales <- intersect(c("location", "area"), names(x))
+  results <- unlist(lapply(scales, function(scale) {
+    c(if (length(scales) > 1L) c("", out_rule(scale_label[[scale]])),
+      format_objective(x[[scale]]))
+  }))
+  out_print(c(out_rule("Results of the simulation study"),
+              out_bullets(c(failed, warned)),
+              results))
   invisible(x)
 }
 
@@ -4067,51 +4297,38 @@ print_text_table <- function(df) {
   invisible(df)
 }
 
-##' Print one spatial scale's `mse`/`classify` summary
+##' The lines of one spatial scale's `mse`/`classify` summary
 ##'
 ##' @param x An element of a `summary.RiskMap_assess_simulation` object, as
-##'   returned by `summarize_pred_objective()`.
-##' @return Invisibly returns `x`.
+##'   returned by `summarise_objective()`.
+##' @return A character vector of lines.
 ##' @noRd
-print_pred_objective <- function(x) {
-  if (!is.null(x$mse)) {
-    cat("Mean Squared Error (MSE):\n")
-    print_text_table(x$mse)
-    cat("\n")
+format_objective <- function(x) {
+  table <- function(df) out_capture(print_text_table(df))
+  mse <- if (!is.null(x$mse)) {
+    c("", out_heading("Mean squared error"), table(x$mse))
   }
-
-  if (!is.null(x$classify)) {
-    cat("Classification Results:\n")
-
-    # Iterate over each model in classify results
-    for (model_name in names(x$classify)) {
-      model_data <- x$classify[[model_name]]
-
-      cat(sprintf("\nModel: %s\n", model_name))
-
-      cat("\nAverages across simulations by Category:\n")
-      print_text_table(model_data$classify_res)
-
-      cat("\nNumber of valid simulations by Category and metric ",
-          sprintf("(out of %d):\n", model_data$n_sim), sep = "")
-      print_text_table(model_data$n_valid)
-
-      cat("\nProportion of Correct Classification (CC) across categories:\n")
-      cc_summary <- model_data$cc_summary
-      if (cc_summary$n_valid >= 2L) {
-        cat(sprintf("Mean: %.3f, SD: %.3f, 95%% simulation interval: [%.3f, %.3f] ",
-                    cc_summary$mean, cc_summary$sd,
-                    cc_summary$lower, cc_summary$upper))
-      } else {
-        cat(sprintf("Mean: %.3f, uncertainty unavailable ", cc_summary$mean))
-      }
-      cat(sprintf("(n_valid = %d of %d)\n",
-                  cc_summary$n_valid, cc_summary$n_sim))
+  classify <- unlist(lapply(names(x$classify), function(model_name) {
+    model_data <- x$classify[[model_name]]
+    cc <- model_data$cc_summary
+    correct <- if (cc$n_valid >= 2L) {
+      sprintf(paste0("Mean %.3f, SD %.3f and 95%% simulation interval %.3f ",
+                     "to %.3f, from %d of %d simulations."),
+              cc$mean, cc$sd, cc$lower, cc$upper, cc$n_valid, cc$n_sim)
+    } else {
+      sprintf(paste0("Mean %.3f, with uncertainty unavailable from %d of %d ",
+                     "simulations."), cc$mean, cc$n_valid, cc$n_sim)
     }
-    cat("\n")
-  }
-
-  invisible(x)
+    c("", out_heading(paste("Classification by", model_name)),
+      out_text("Averages over the simulations by category"),
+      table(model_data$classify_res),
+      out_text(paste0("Valid simulations by category and metric, of ",
+                      model_data$n_sim)),
+      table(model_data$n_valid),
+      out_text("Proportion of correct classification across categories"),
+      out_text(correct, indent = 2L))
+  }))
+  c(mse, classify)
 }
 
 #' Name of the response variable, used to label prediction maps

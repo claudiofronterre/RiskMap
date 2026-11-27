@@ -5,61 +5,147 @@
 \title{Assess Simulations}
 \usage{
 assess_simulation(
-  obj_sim,
+  simulation,
   models,
-  control_mcmc = set_control_mcmc(),
   spatial_scale,
-  messages = TRUE,
-  target_transform = NULL,
-  area_summary = NULL,
+  target = identity,
+  aggregate = NULL,
   boundaries = NULL,
-  col_names = NULL,
-  pred_objective = c("mse", "classify"),
-  categories = NULL
+  label = NULL,
+  objective = c("mse", "classify"),
+  breaks = NULL,
+  control_mcmc = set_control_mcmc(),
+  seed = NULL,
+  messages = getOption("RiskMap.messages", TRUE)
 )
 }
 \arguments{
-\item{obj_sim}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} with both data and surface.
-The current assessment interface supports generating models without
-grouped \code{re()} effects or custom inverse links.}
+\item{simulation}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} with both data and surface,
+from a generating model without grouped \code{re()} effects. The generating
+model can have any link.}
 
 \item{models}{A named list of fitted models returned by \code{\link[=glgpm]{glgpm()}} or model
 specifications returned by \code{\link[=specify_glgpm]{specify_glgpm()}}. Each object defines a
 candidate model specification and is refitted to every simulated dataset;
-its estimated parameter values are not reused.}
+its estimated parameter values are not reused. Parameters that a fit holds
+with \code{fixed_pars} stay held in its refits, as does the size \code{theta} of a
+negative binomial specification. The response of a candidate must be a
+plain column name, and its other columns can have any name. When the
+models are classified, none can be called \code{"Class"}.}
 
-\item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
+\item{spatial_scale}{The scale(s) at which predictions are assessed:
+\code{"location"}, the locations of the prediction grid, \code{"area"}, or
+\code{c("location", "area")} to compute both from a single fit-and-predict
+pass over the simulations.}
 
-\item{spatial_scale}{The scale(s) at which predictions are assessed: \code{"grid"}, \code{"area"}, or \code{c("grid", "area")}
-to compute both from a single fit-and-predict pass over the simulations.}
+\item{target}{A function that converts a numeric matrix of means to a
+numeric matrix of the scientific target, with the same dimensions. The
+mean is the probability for a binomial model, the mean per unit exposure
+for a Poisson model and the value itself for a Gaussian model. The
+default, \code{\link[=identity]{identity()}}, scores the mean itself, such as prevalence. Other
+targets are functions of the mean, such as \code{\link[=qlogis]{qlogis()}} to score
+prevalence on the logit scale, or \code{function(mu) pnorm((-2 - mu) / sd)}
+for the proportion of children stunted from a Gaussian model of
+height-for-age z-scores with residual standard deviation \code{sd}. See
+Details.}
 
-\item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
-
-\item{target_transform}{A function that converts a numeric matrix of linear
-predictors to a numeric matrix of scientific targets with the same
-dimensions. For example, use \code{\link[=plogis]{plogis()}} for prevalence from a binomial
-logit model or \code{\link[=exp]{exp()}} for the mean of a Poisson log-link model.}
-
-\item{area_summary}{A function that combines a numeric vector of grid-cell
-targets within one area and returns one finite numeric value, such as
-\code{\link[base:mean]{base::mean()}} or \code{\link[base:sum]{base::sum()}}. Required only when \code{spatial_scale}
-includes \code{"area"}.}
+\item{aggregate}{How the targets at the locations within an area are
+combined into the target of the area, as in \code{\link[=predict.RiskMap]{predict.RiskMap()}}: one
+of \code{"mean"}, \code{"median"}, \code{"sum"}, \code{"min"} and \code{"max"}, or a function
+that receives a location-by-draw matrix and the location weights and
+returns one number for each draw. Locations have equal weights.
+Required only when \code{spatial_scale} includes \code{"area"}.}
 
 \item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale} includes \code{"area"}.}
 
-\item{col_names}{Column name in \code{boundaries} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
+\item{label}{The name of the column of \code{boundaries} that holds distinct
+names of the areas. If \code{NULL}, the areas are named \code{"reg1"}, \code{"reg2"}
+and so on, in a column \code{"region"}.}
 
-\item{pred_objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
+\item{objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
 
-\item{categories}{A numeric vector of thresholds defining categories for classification. Required if \code{pred_objective = "classify"}.}
+\item{breaks}{A numeric vector of at least three finite, increasing class
+boundaries for classification, as in \code{\link[=plot_prediction]{plot_prediction()}}. A class includes
+its upper boundary, the lowest class also includes the first boundary, and
+values beyond the boundaries belong to the end classes, so every value has
+a class. Required if \code{objective} includes \code{"classify"}.}
+
+\item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
+
+\item{seed}{Optional non-negative integer that makes the assessment
+reproducible; see Details. The caller's random number state is restored
+on exit. When \code{NULL} (the default), the seeds of the simulations are
+drawn from the session's random number generator.}
+
+\item{messages}{Logical, whether to report on the assessment, with a
+progress bar as described in \link{riskmap_progress}.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 }
 \value{
-A list of class \code{RiskMap_assess_simulation}. \code{pred_objective} holds one element per
-requested \code{spatial_scale} (\code{"grid"} and/or \code{"area"}), each in turn holding \code{mse} and/or
-\code{classify} per the requested \code{pred_objective}.
+A list of class \code{RiskMap_assess_simulation}:
+\describe{
+\item{objective}{One element per requested \code{spatial_scale}
+(\code{"location"} and/or \code{"area"}), each holding \code{mse}, a matrix with one row per
+model and one column per simulation, and/or \code{classify}, the
+classification metrics of each model and simulation.}
+\item{fits}{A data frame with one row per model and simulation, giving
+the \code{status} of the fit (\code{"ok"} or \code{"failed"}), the error \code{message} of a
+failed fit and any \code{warnings}. A fit with a warning, such as one that found
+no maximum of the likelihood, is \code{"ok"} and has results.}
+\item{estimates}{A list with, for each model, a matrix of the parameter
+estimates, one row per simulation.}
+\item{n_sim, spatial_scale}{The number of simulations and the spatial
+scales assessed.}
+}
 }
 \description{
 Evaluates models using joint data and surface simulations.
+}
+\details{
+Every model is scored on the scale of the mean, each through its own
+inverse link, so the links of the generating model and of the candidates
+need not agree. The true target at each grid location is \code{target()}
+applied to the simulated mean, which is the generating model's inverse
+link of the simulated linear predictor. That linear predictor includes the
+covariates, any offset and, when the generating model has one, the
+realised nugget. Each candidate is refitted to every simulated dataset,
+its predictive draws of the linear predictor are mapped to the mean
+through the inverse link of the refitted model, and \code{target()} is then
+applied to those draws. A probit candidate on simulations from a logit
+model is thus scored on the same prevalence as the truth. Candidates
+predict with their own covariates and offset, and those with a nugget
+include it in their predictions when the generating model has one. At a
+prediction location that is also a sampled location, the true nugget is the
+one of the data, so the prediction is of the spatial effect and that nugget
+given the data. At any other location the nugget is a new one, as in
+\code{\link[=predict.RiskMap]{predict.RiskMap()}}, and when areas are assessed the locations with the same
+coordinates share it. Binomial, Poisson and negative binomial candidates are
+refitted with the denominators or exposures of the generating model, whatever
+their own.
+
+For classification, the true class of a location or area is the class of its
+true target, and the predicted class is the most probable one, which holds
+the largest share of the predictive draws, with ties going to the lowest
+class. \code{breaks} divide the truth and the draws in the same way.
+
+The target receives the mean rather than the linear predictor, which is
+what the \code{transform} argument of \code{\link[=predict.RiskMap]{predict.RiskMap()}} receives, because
+models with different links share no linear-predictor scale. Every link is
+monotone, so a target defined on the linear predictor of a given link can
+be written as a function of the mean, as \code{\link[=qlogis]{qlogis()}} gives the logit scale.
+
+The target of an area is \code{aggregate} applied to the targets at the grid
+locations that fall within it, with equal weight, unlike the exact
+fractional coverage used by \code{\link[=predict.RiskMap]{predict.RiskMap()}} with \code{boundaries}. Areas
+without grid locations are left out of the area-level assessment, with a
+warning. Predictive draws are joint within each area, which is all that
+area-level targets need.
+
+Each simulation has its own seed, derived from \code{seed} or, without one,
+from the current random number generator state, and shared by all models
+so that their fits and predictions use common random numbers. A fit or prediction that fails does not stop the
+assessment: its results are missing, and the failure is recorded in
+\code{fits} and reported in a warning, as are warnings from the fits.
 }
 \examples{
 library(sf)
@@ -82,12 +168,18 @@ boundary <- st_sf(
 assessment <- assess_simulation(
   simulations,
   models = list(candidate = model),
-  spatial_scale = c("grid", "area"),
-  target_transform = exp,
-  area_summary = mean,
+  spatial_scale = c("location", "area"),
+  aggregate = "mean",
   boundaries = boundary,
-  pred_objective = "mse",
+  objective = "mse",
   messages = FALSE
 )
 
+}
+\seealso{
+The methods for the result are
+\link[=print.RiskMap_assess_simulation]{print()} and
+\link[=summary.RiskMap_assess_simulation]{summary()}. \code{\link[=specify_glgpm]{specify_glgpm()}} and
+\code{\link[=simulate_glgpm]{simulate_glgpm()}} make the simulations. \link{assessment} says which function
+answers which question about a model.
 }

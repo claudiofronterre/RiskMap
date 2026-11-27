@@ -26,10 +26,15 @@ use_direct_gaussian_covariance <- function(n_observations, latent_dimension,
   correctness_requires_direct || n_observations <= 3 * latent_dimension
 }
 
+##' Fit a Gaussian model through the covariance of its observations
+##'
+##' `parameters` is the model's parameter table and `start` the starting
+##' values on their natural scale (`glgpm_lm()`), taken to the working scale
+##' by `working_start()`.
 ##' @noRd
 glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
-                            fix_var_me, fix_tau2, start_beta,
-                            start_cov_pars, messages) {
+                            fix_var_me, fix_tau2, parameters, start,
+                            messages) {
   n <- length(y)
   p <- ncol(D)
   n_loc <- nrow(coords)
@@ -52,12 +57,7 @@ glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
   if (identical(fix_var_me, 0)) {
     latent_design <- do.call(cbind, c(list(spatial_design), random_designs))
     if (qr(latent_design)$rank < n) {
-      stop(
-        "The model with 'fix_var_me = 0' has a structurally singular ",
-        "observed covariance. Repeated observations require a positive ",
-        "measurement-error variance or additional independent effects.",
-        call. = FALSE
-      )
+      abort_input(c("With the measurement error variance held at 0 in {.arg fixed_pars}, the covariance of the observations is singular, whatever the parameters.", "i" = "Repeated observations need a positive measurement error variance or more independent effects."), arg = "fixed_pars")
     }
   }
 
@@ -75,22 +75,7 @@ glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
     ind_sigma2_re <- next_index + seq_len(n_re)
   }
 
-  covariance_start <- start_cov_pars
-  start_index <- 2L
-  start <- c(start_beta, log(covariance_start[1:2]))
-  if (isTRUE(fix_tau2)) {
-    start_index <- start_index + 1L
-    start <- c(start, log(covariance_start[start_index] /
-                            covariance_start[1L]))
-  }
-  if (is.null(fix_var_me)) {
-    start_index <- start_index + 1L
-    start <- c(start, log(covariance_start[start_index]))
-  }
-  if (n_re > 0L) {
-    re_start <- covariance_start[start_index + seq_len(n_re)]
-    start <- c(start, log(re_start))
-  }
+  start <- working_start(parameters, start)
 
   distances <- pairwise_distances(coords)
   identity_n <- diag(n)
@@ -238,26 +223,17 @@ glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
   }
 
   objective <- safe_optimizer_objective(function(par) -log_likelihood(par))
-  estimate <- nlminb(
-    start, objective,
-    function(par) -gradient(par),
-    function(par) -hessian(par),
-    control = list(trace = 1 * messages)
-  )
+  optimised <- optimise_gaussian(start, objective, gradient, hessian,
+                                 held_index(parameters), messages)
+  estimate <- optimised$fit
   score <- gradient(estimate$par)
-  information <- -hessian(estimate$par)
-  information_root <- factor_covariance(
-    information, "observed information matrix"
-  )
+  information <- optimised$information
+  information_root <- optimised$root
 
   out <- list(
-    estimate = structure_estimate(
-      estimate$par, colnames(D), fix_tau2,
-      sigma2_me = is.null(fix_var_me),
-      re_names = if (n_re > 0L) colnames(ID_re) else NULL
-    ),
+    estimate = working_estimate(parameters, estimate$par),
     grad_MLE = score,
-    covariance = chol2inv(information_root),
+    covariance = optimised$covariance,
     log_lik = -estimate$objective,
     link_function = NULL,
     units_m = NULL,

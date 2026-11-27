@@ -23,13 +23,12 @@ gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
-control_mcmc <- set_control_mcmc(n_sim = 1000,
-                                 burnin = 200,
-                                 seed = 12345)
+control_mcmc <- set_control_mcmc(n_draws = 80,
+                                 burnin = 200)
+fixture_seed <- 12345
 fixture_control_mcml <- set_control_mcml(
-  initial_samples = 500, max_samples = 500, max_stages = 1,
-  min_effective_samples = 1, max_pareto_k = 100,
-  max_mcse_ratio = 0.99, score_probability = 0.999999
+  initial_draws = 500, validation_draws = 500, max_draws = 500,
+  max_stages = 1
 )
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),
@@ -40,7 +39,7 @@ gaussian_model <- glgpm(y ~ cov + gp() + re(i),
 gaussian_offset_model <- glgpm(y ~ cov + gp(nugget = TRUE) + offset(offset),
                                data = gaussian_data,
                                family = "gaussian",
-                               fix_var_me = 0,
+                               fixed_pars = list(sigma2_me = 0),
                                messages = FALSE)
 
 gaussian_intercept_model <- glgpm(y ~ gp(),
@@ -55,7 +54,7 @@ binomial_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 binomial_model <- suppressWarnings(glgpm(
   y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-  denominator = denominator, control_mcmc = control_mcmc,
+  denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, messages = FALSE
 ))
 
@@ -65,7 +64,7 @@ poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 poisson_model <- suppressWarnings(glgpm(
   y ~ cov + gp() + re(i), data = poisson_data, family = "poisson",
-  denominator = denominator, control_mcmc = control_mcmc,
+  denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, return_samples = TRUE,
   messages = FALSE
 ))
@@ -82,14 +81,39 @@ prediction_data$i <- rep(gaussian_model$re[[1]],
                          length.out = nrow(prediction_data))
 prediction_data$population <- seq_len(nrow(prediction_data))
 
+# A reference of independent uniform PIT values, for tests of the scores of
+# fits that are mocks without a working model (`working_model()`).
+independent_reference <- function(fit, test_sets, predictive, n_curves, ...) {
+  rows <- unlist(lapply(predictive, `[[`, "rows"))
+  pit <- withr::with_seed(1, matrix(runif(n_curves * length(rows)), n_curves))
+  curves <- pit_curves(pit, pit, area_levels())
+  list(curves = curves[, seq(1L, ncol(curves), by = 10L), drop = FALSE],
+       areas = pit_area(curves, area_levels()))
+}
+
 cross_validation <- assess_prediction(
-  list(model_a = gaussian_model,
-       model_b = gaussian_offset_model),
-  method = "cluster",
-  fold = 2,
-  plot_fold = FALSE,
+  list(model_a = gaussian_model, model_b = gaussian_offset_model),
+  list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),
   messages = FALSE
 )
+
+# A cross-validation in which `models` are binomial models of binary outcomes.
+# Their scores become those of one trial, a PIT interval from 0 for y = 0 or to
+# 1 for y = 1 with the Brier score as the CRPS, with y the parity of the row.
+# The CRPS is computed from F(0) = 1 - p as `count_crps()` computes it. The
+# calibration is left as it is.
+binary_scores <- function(x, models) {
+  for (model in models) {
+    rows <- x$scores$model == model
+    y <- x$scores$row[rows] %% 2
+    below <- 1 - seq(0.2, 0.6, length.out = sum(rows))
+    x$scores$pit_lower[rows] <- ifelse(y == 0, 0, below)
+    x$scores$pit_upper[rows] <- ifelse(y == 0, below, 1)
+    x$scores$CRPS[rows] <- (below - (y == 0))^2
+    x$family[model] <- "binomial"
+  }
+  x
+}
 
 surface <- grid
 surface$cov <- rnorm(nrow(grid))
