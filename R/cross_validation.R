@@ -464,9 +464,10 @@ inform_binary_models <- function(binary) {
 
 ##' Whether each model of a cross-validation is of binary outcomes
 ##'
-##' A binomial model whose scored test observations all have one trial, for
-##' which the PIT area, its limit and the band are not a check of calibration.
-##' The result keeps no denominators, so they are read from the scores
+##' A model whose denominators are numbers of trials, the binomial, and whose
+##' scored test observations all have one trial, for which the PIT area, its
+##' limit and the band are not a check of calibration. The result keeps no
+##' denominators, so they are read from the scores
 ##' (`score_counts()`). An observation with one trial has a PIT interval that
 ##' starts at 0, for y = 0, or ends at 1, for y = 1, and its CRPS is the Brier
 ##' score, the square of 1 minus the end of the interval for y = 0 or of its
@@ -483,7 +484,8 @@ binary_models <- function(x) {
   families <- x$family
   if (!is.null(names(families))) families <- families[models]
   binary <- vapply(seq_along(models), function(k) {
-    if (!identical(unname(families[k]), "binomial")) return(FALSE)
+    # Only a family whose denominators are numbers of trials has trials.
+    if (!family_traits(families[[k]])$whole_denominator) return(FALSE)
     scores <- x$scores[x$scores$model == models[k], , drop = FALSE]
     scores <- scores[is.finite(scores$pit_lower), , drop = FALSE]
     if (!nrow(scores)) return(FALSE)
