@@ -562,6 +562,12 @@ test_that("the summary gives the numbers behind each finding", {
   flagged <- binomial_model
   optimizer <- attr(flagged, "optimizer")
   optimizer$mcml_boundary <- "nugget variance (tau2)"
+  # The fixture's scale is too long for the dispersed starts to run.
+  optimizer$mcml_maxima_check <- data.frame(
+    start = c("fitted", "short"), log_phi = log(c(3, 0.5)),
+    log_likelihood = c(-100, -101), independent_log_likelihood = NA_real_,
+    independent_se = NA_real_, chosen = c(TRUE, FALSE)
+  )
   attr(flagged, "optimizer") <- optimizer
   checked <- check_computation(flagged)
   summarised <- summary(checked)
