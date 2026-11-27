@@ -219,3 +219,25 @@ test_that("sampler controls and location indices are validated", {
     "consecutive indices", class = "riskmap_error_internal"
   )
 })
+
+test_that("a link whose functions call compiled code keeps the chain moving", {
+  # Rcpp's RNGScope reloads R's seed on entry, so a compiled call inside the
+  # link's functions repeated the chain's draws until the sampler handed the
+  # random number state back around each call of its likelihood.
+  plain <- list(inv = function(eta) stats::pnorm(eta))
+  nested <- list(inv = function(eta) {
+    invisible(cpp_link_log_likelihood(matrix(0, 1, 1), 0, 1, 0L))
+    stats::pnorm(eta)
+  })
+  fit_with <- function(invlink) suppressWarnings(glgpm(
+    y ~ gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, invlink = invlink,
+    fixed_pars = list(sigma2 = 0.5, phi = 2000), seed = fixture_seed,
+    control_mcmc = set_control_mcmc(n_draws = 100, burnin = 200, thin = 2),
+    messages = FALSE
+  ))
+  with_plain <- fit_with(plain)
+  with_nested <- fit_with(nested)
+  expect_gt(attr(with_nested, "mcmc")$acceptance_rate[["sampling"]], 0.2)
+  expect_identical(with_nested$S_samples, with_plain$S_samples)
+})
