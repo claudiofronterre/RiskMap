@@ -196,9 +196,10 @@ The simulated datasets go through the same cross-validation as the data, with
 their parameters estimated again, so the area of a correct model is above
 \code{PIT_area_limit} in about one dataset in twenty. When the test sets are a few
 spatial clusters, it is above the limit, or its curve outside the band,
-somewhat more often. The time of the simulation grows with the cube of the
-number of observations, and with a few thousand observations it takes
-minutes for each model.
+somewhat more often. The time of the simulation grows about with the cube of
+the number of observations and its memory with the square, so with a few
+thousand observations it takes minutes for each model, and with many
+thousands much longer.
 
 For binary outcomes, with a single trial in each observation, the area, its
 limit and the band almost never point to miscalibration, even for a wrong

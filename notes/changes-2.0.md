@@ -1946,7 +1946,10 @@ the covariance parameters are estimated again, as the best of 200 candidate
 points around the estimates (a Halton sequence on the logarithmic scale, spread by
 the inverse of their expected information), from all the observations, or from
 each training set when `refit = TRUE`, and the coefficients by generalised least
-squares. The leave-out errors of the test observations are in closed form, and
+squares. Parameters and coefficients that the fit holds are known in the simulated
+datasets, as they are for the data, and a coefficient that a training set can't
+estimate, such as one of a level that only its test rows have, is left out there,
+as a refit leaves it out. The leave-out errors of the test observations are in closed form, and
 their normal PIT values are turned into counts by the predictive distribution of
 the data. `PIT_area_expected` is the mean of the areas, `PIT_area_limit` their
 95% order statistic and the band the joint envelope of the curves and of that of
@@ -1980,7 +1983,8 @@ seconds for 500 and 1,000 observations and 52 seconds for 2,001, with clusters
 and with leave-one-out alike. Its time grows about with the cube of the number
 of observations, so above 2,000 it uses 100 candidates, which about halves it,
 and above 1,500 `assess_prediction()` says that it can take a minute or more for
-each model. It shows a step with a spinner while it runs. The
+each model. Its memory grows with the square of the number of observations. It
+shows a step with a spinner while it runs. The
 predictive draws of the test sets are no longer kept for it.
 - The result of `assess_prediction()` is a list with `scores`, a data frame with
 a row for each model and test observation (`model`, `test_set`, `row`, `CRPS`,

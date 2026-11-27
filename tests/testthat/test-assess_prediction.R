@@ -579,13 +579,15 @@ test_that("the reference re-estimates the parameters as the assessment does", {
       independent_reference(...)
     },
     glgpm = function(...) gaussian_intercept_model,
-    predict_test_set = mock_constant(0)
+    predict_test_set = mock_constant(0),
+    reference_candidates = function(n_observations) n_observations
   )
   fit <- gaussian_intercept_model
   assess(fit, list(1:2, 3))
   assess(fit, list(1:2, 3), refit = TRUE)
   expect_identical(vapply(arguments, `[[`, TRUE, "refit"), c(FALSE, TRUE))
-  expect_identical(arguments[[1]]$n_candidates, reference_candidates(10))
+  # The number of observations decides the number of candidates.
+  expect_identical(arguments[[1]]$n_candidates, length(fit$y))
 })
 
 test_that("the reference shows a step while it runs", {

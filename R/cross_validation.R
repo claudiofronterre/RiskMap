@@ -176,9 +176,10 @@
 ##' their parameters estimated again, so the area of a correct model is above
 ##' `PIT_area_limit` in about one dataset in twenty. When the test sets are a few
 ##' spatial clusters, it is above the limit, or its curve outside the band,
-##' somewhat more often. The time of the simulation grows with the cube of the
-##' number of observations, and with a few thousand observations it takes
-##' minutes for each model.
+##' somewhat more often. The time of the simulation grows about with the cube of
+##' the number of observations and its memory with the square, so with a few
+##' thousand observations it takes minutes for each model, and with many
+##' thousands much longer.
 ##'
 ##' For binary outcomes, with a single trial in each observation, the area, its
 ##' limit and the band almost never point to miscalibration, even for a wrong
@@ -430,7 +431,7 @@ inform_assessment <- function(models, n_sets, refit) {
 ##' @noRd
 inform_reference_time <- function(n_observations) {
   if (n_observations <= 1500L) return(invisible(NULL))
-  riskmap_inform("With {n_observations} observations, simulating the calibration of a correct model can take a minute or more for each model.")
+  riskmap_inform("With {n_observations} observations, simulating the calibration of a correct model can take a minute or more for each model, and its time grows about with the cube of the number of observations.")
 }
 
 ##' Whether each row of the data can be used by every model
@@ -494,7 +495,8 @@ assess_one_model <- function(fit, name, test_sets, complete_rows, refit,
 ##' A step shows while the reference is simulated, which takes minutes with
 ##' many observations.
 ##' @param assessed The result of `assess_one_model()`.
-##' @param seeds The seeds of the reference, one for each test set.
+##' @param seeds The seeds of the reference, one for each test set, of which
+##'   `calibration_reference()` uses the first.
 ##' @return The result of `assess_calibration()`.
 ##' @noRd
 calibrate_one_model <- function(fit, name, assessed, test_sets, refit, seeds,

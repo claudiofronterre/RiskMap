@@ -130,10 +130,12 @@ reference_candidates <- function(n_observations) {
 ##' likelihood at the conditional mode of the linear predictor given the data
 ##' (`conditional_weights()`), so that a count is about as informative as it
 ##' is in the fit.
-##' @return A list with the `design` matrix, the covariance parameters `theta`,
-##'   the names of those that the fit estimates, `free`, a function that gives
-##'   the `covariance` of the records at any `theta`, and its `derivatives` at
-##'   `theta` with respect to the logarithms of the free parameters.
+##' @return A list with the `design` matrix of the coefficients that the fit
+##'   estimates (those it holds are known, as they are for the data), the
+##'   covariance parameters `theta`, the names of those that the fit estimates,
+##'   `free`, a function that gives the `covariance` of the records at any
+##'   `theta`, and a function that gives its `derivative` at `theta` with
+##'   respect to the logarithm of a free parameter.
 ##' @noRd
 working_model <- function(fit) {
   parameters <- coef(fit)
@@ -158,7 +160,9 @@ working_model <- function(fit) {
              if (nugget > 0) c(tau2 = nugget),
              if (measurement > 0) c(sigma2_me = measurement), variances_re)
   held <- fit_fixed_pars(fit)
-  held_names <- setdiff(names(held), "sigma2_re")
+  held_beta <- names(held$beta) %||% if (!is.null(held$beta)) colnames(design)
+  design <- design[, !colnames(design) %in% held_beta, drop = FALSE]
+  held_names <- setdiff(names(held), c("beta", "sigma2_re"))
   if (!is.null(held$sigma2_re)) {
     terms <- names(held$sigma2_re)
     held_effects <- if (is.null(terms)) {
@@ -195,7 +199,7 @@ working_model <- function(fit) {
     (covariance(up) - covariance(down)) / (2 * step)
   }
   list(design = design, theta = theta, free = free, covariance = covariance,
-       derivatives = lapply(free, derivative))
+       derivative = derivative)
 }
 
 ##' Candidate points of the covariance parameters of a working model
@@ -216,8 +220,9 @@ candidate_points <- function(working, n, stretch = 1.4) {
   n_free <- length(working$free)
   if (!n_free || n < 2L) return(out[1L, , drop = FALSE])
   precision <- chol2inv(chol(working$covariance(working$theta)))
-  scaled <- lapply(working$derivatives, function(derivative) {
-    precision %*% derivative
+  # One derivative at a time, since each is as large as the covariance.
+  scaled <- lapply(working$free, function(name) {
+    precision %*% working$derivative(name)
   })
   information <- diag(0.1, n_free)
   for (i in seq_len(n_free)) {
@@ -310,7 +315,7 @@ candidate_errors <- function(working, sets, n_simulations, n_candidates,
     ZQZ <- colSums(simulated * QZ)
     if (!refit) {
       # Q (y - X beta), with beta from all the observations.
-      residual <- QZ - QX %*% solve(XQX, XQZ)
+      residual <- QZ - QX %*% gls_coefficients(XQX, XQZ)
       log_likelihood <- -(log_determinant + colSums(simulated * residual)) / 2
       better <- which(log_likelihood > best[1L, ])
       if (!length(better)) next
@@ -328,7 +333,7 @@ candidate_errors <- function(working, sets, n_simulations, n_candidates,
         CZ <- conditional %*% QZ[left_out, , drop = FALSE]
         information <- XQX - crossprod(QX[left_out, , drop = FALSE], CX)
         score <- XQZ - crossprod(QX[left_out, , drop = FALSE], CZ)
-        beta <- solve(information, score)
+        beta <- gls_coefficients(information, score, XQX)
         log_likelihood <- -(log_determinant +
                               2 * sum(log(diag(root_left_out))) + ZQZ -
                               colSums(QZ[left_out, , drop = FALSE] * CZ) -
@@ -347,6 +352,30 @@ candidate_errors <- function(working, sets, n_simulations, n_candidates,
     }
   }
   uniforms
+}
+
+##' Coefficients of generalised least squares, from their information and score
+##'
+##' Zero for a coefficient that the observations can't estimate, such as one of
+##' a level that a training set doesn't have, which a refit leaves out. The
+##' information of a training set is the difference of two larger ones, so such
+##' a coefficient has an information of rounding size rather than zero. It is
+##' found by a pivoted Cholesky factor of the information scaled by that of all
+##' the observations, `full`.
+##' @noRd
+gls_coefficients <- function(information, score, full = information) {
+  if (!nrow(information)) return(score)
+  scale <- 1 / sqrt(diag(full))
+  root <- suppressWarnings(
+    chol(information * outer(scale, scale), pivot = TRUE, tol = 1e-9)
+  )
+  keep <- attr(root, "pivot")[seq_len(attr(root, "rank"))]
+  root <- root[seq_along(keep), seq_along(keep), drop = FALSE]
+  beta <- matrix(0, nrow(information), ncol(score))
+  beta[keep, ] <- scale[keep] * backsolve(
+    root, forwardsolve(t(root), scale[keep] * score[keep, , drop = FALSE])
+  )
+  beta
 }
 
 ##' The joint band of a curve, from curves simulated from the model

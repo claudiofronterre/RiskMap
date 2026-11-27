@@ -164,10 +164,11 @@ test_that("the working model has the covariance of the fit", {
   expect_equal(working$covariance(working$theta), covariance,
                ignore_attr = TRUE)
   # The derivatives are on the logarithmic scale.
-  expect_equal(working$derivatives[[1]], spatial, ignore_attr = TRUE,
+  expect_equal(working$derivative("sigma2"), spatial, ignore_attr = TRUE,
                tolerance = 1e-6)
-  expect_equal(working$derivatives[[3]], diag(p$sigma2_me, 10),
+  expect_equal(working$derivative("sigma2_me"), diag(p$sigma2_me, 10),
                ignore_attr = TRUE, tolerance = 1e-6)
+  expect_identical(colnames(working$design), c("(Intercept)", "cov"))
   # A nugget, a measurement error held at zero, and a held scale.
   nugget <- working_model(gaussian_offset_model)
   expect_identical(nugget$free, c("sigma2", "phi", "tau2"))
@@ -175,6 +176,11 @@ test_that("the working model has the covariance of the fit", {
                 family = "gaussian", fixed_pars = list(phi = 2, tau2 = 0.1),
                 messages = FALSE)
   expect_identical(working_model(held)$free, c("sigma2", "sigma2_me"))
+  # Held coefficients are known, so they aren't estimated.
+  slope <- glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+                 fixed_pars = list(beta = c(cov = 0.5), phi = 2),
+                 messages = FALSE)
+  expect_identical(colnames(working_model(slope)$design), "(Intercept)")
   # Counts are observed with the inverse of their curvature.
   counts <- working_model(binomial_model)
   p <- coef(binomial_model)
@@ -252,6 +258,45 @@ test_that("the leave-out errors of simulated datasets are those of direct refits
     expect_equal(out, matrix(direct(refit), ncol = n_simulations),
                  tolerance = 1e-8)
   }
+})
+
+test_that("held parameters are known in the simulated datasets", {
+  # Every parameter held, so the errors are those of the prediction with them.
+  fit <- glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+               fixed_pars = list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                                 sigma2_me = 0.1),
+               messages = FALSE)
+  working <- working_model(fit)
+  expect_identical(ncol(working$design), 0L)
+  expect_length(working$free, 0L)
+  sets <- list(list(test = c(2, 5), left_out = c(2, 5, 7)))
+  for (refit in c(FALSE, TRUE)) {
+    set.seed(4)
+    out <- candidate_errors(working, sets, 3L, 20L, refit)
+    set.seed(4)
+    V <- working$covariance(working$theta)
+    z <- t(chol(V)) %*% matrix(rnorm(30), 10)
+    train <- setdiff(1:10, c(2, 5, 7))
+    weights <- V[c(2, 5), train] %*% solve(V[train, train])
+    sd <- sqrt(diag(V[c(2, 5), c(2, 5)] - weights %*% V[train, c(2, 5)]))
+    expect_equal(out, pnorm((z[c(2, 5), ] - weights %*% z[train, ]) / sd),
+                 tolerance = 1e-8)
+  }
+})
+
+test_that("a coefficient that a training set can't estimate is left out", {
+  # A column that is zero on the training rows of the first test set.
+  working <- working_model(gaussian_model)
+  sets <- list(list(test = c(2, 5), left_out = c(2, 5, 7)),
+               list(test = 1:3, left_out = 1:3))
+  wider <- working
+  wider$design <- cbind(working$design, as.numeric(1:10 %in% c(2, 5, 7)))
+  set.seed(5)
+  out <- candidate_errors(wider, sets, 4L, 6L, TRUE)
+  set.seed(5)
+  narrower <- candidate_errors(working, sets, 4L, 6L, TRUE)
+  expect_equal(out[1:2, ], narrower[1:2, ], tolerance = 1e-8)
+  expect_false(isTRUE(all.equal(out[3:5, ], narrower[3:5, ])))
 })
 
 test_that("calibration_reference() is reproducible and keeps the session's numbers", {
@@ -336,6 +381,29 @@ test_that("counts have the PIT of counts from their predictive distributions", {
     curves <- pit_curves(t(lower), t(upper), area_levels())
     expect_equal(out$curves, curves[, seq(1, 1001, by = 10)], label = name)
     expect_true(all(is.finite(out$areas) & out$areas > 0), label = name)
+  }
+})
+
+test_that("counts drawn at known parameters have a calibrated reference", {
+  skip_on_cran()
+  # With every parameter held the simulated PIT values are uniform, so the
+  # counts have their predictive distributions, whose average curve is the
+  # identity line.
+  held <- function(family, data) {
+    suppressWarnings(glgpm(
+      y ~ gp(), data = data, family = family, denominator = denominator,
+      fixed_pars = list(beta = 0.2, sigma2 = 0.5, phi = 2),
+      control_mcmc = control_mcmc, seed = fixture_seed, messages = FALSE
+    ))
+  }
+  for (family in c("binomial", "poisson")) {
+    fit <- held(family, if (family == "binomial") binomial_data else poisson_data)
+    set.seed(29)
+    inputs <- reference_inputs(fit, list(1:5, 6:10))
+    out <- calibration_reference(fit, inputs$test_sets, inputs$predictive,
+                                 999L, c(3L, 1L), n_candidates = 8L)
+    expect_lt(max(abs(colMeans(out$curves) - calibration_levels())), 0.03,
+              label = family)
   }
 })
 
