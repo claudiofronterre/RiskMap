@@ -348,7 +348,8 @@ fit_check_monte_carlo <- function(mcml) {
       fit_check_row(
         name, "PROBLEM",
         paste0("The bound of ", bound, " standard errors may not hold, because ",
-               "the Newton correction of the estimate did not converge."),
+               "the Newton correction of the estimate did not converge and ",
+               "was not applied."),
         "Refit with a larger `max_draws` in `set_control_mcml()`."
       )
     } else {

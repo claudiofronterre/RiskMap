@@ -519,9 +519,9 @@ sample's radius, further Newton steps are taken with the score from the same
 validation sample, each in the fitting sample's curvature at the current
 point, until a step is below a tenth of the radius (at most four more steps).
 The estimate is then certified in the curvature at the last step. If the steps
-stop short by more than the certificate tolerates, they are discarded, the
-stage is not certified, and the next stage starts from the estimate of the
-first step. The check does not act where the validation sample's radius is
+stop short by more than the certificate tolerates, they are discarded with the
+first step, the stage is not certified, and the next stage starts from the
+fitted estimate (see the next item). The check does not act where the validation sample's radius is
 below 1e-6 statistical standard errors, as when the spatial variance is held
 at zero and the likelihood is exact, because the predicted residual is then
 the rounding error of the differences divided by the radius. Fits where the
@@ -532,6 +532,34 @@ step. On a simulated survey with a log spatial variance of -4.56 at the
 maximum, the standard error of the log variance moved from 14.5 to 29.5,
 against 30.2 at the maximum. Each stage of `mcml_history` records the
 predicted residual and the number of Newton steps.
+
+- When the repeated Newton correction is refused (`residual_refused`), the
+first step is discarded with the steps that followed it, and the stage keeps
+its fitted estimate (#388). The second validation sample is drawn at the fitted
+estimate, whose bound plans the budget of the next stage, which starts from
+it, and the stage is not certified whatever that bound. The first step is
+recorded in the stage as `discarded_estimate`. Up to v2.0.0-rc3 the first step
+was kept, certified on the second sample, and the next stage started from it.
+That step is short in the metric of the observed information (0.1 to 0.3
+statistical standard errors in the cases below), but along the log of the
+nugget's ratio to the spatial variance, whose information nearly vanishes
+when the nugget is small, it moved the log ratio from between -4.7 and -2.9
+to between 0.3 and 18, where the log-likelihood was between 4.5 and 710 lower. The fitting
+sample had predicted a residual of more than 10,000 radii for it. In a study of
+covariance models for Poisson counts at 100 simulated locations, 4 of 2,400
+fits ended more than 1 unit below the maximum of the likelihood, and 1 of
+about 28,000 refits to cross-validation folds ended with a nugget variance of
+41. On four of these surveys the fits of rc3 ended with a log-likelihood of
+-214.0 (not certified, a fold of 76 locations), -355.8 and -308.2 (certified
+at the limit without spatial variance, which the first stage's exact fit of
+independent effects had put 6.8 and 7.0 below its maximum) and 104.2 (weak
+identification, with a scale of 0.07 km). The fits now end certified at the
+maximum, with -132.5, -349.0, -301.2 and 118.8, in two stages each. A step
+limited to a few radii of the certificate would not have stopped the step of
+the fold, which was 1.5 radii long. Fits whose correction is accepted are
+unchanged, and so is every task of the golden battery, in none of which the
+correction is refused. The warnings, the summary and `check_computation()`
+say that the correction was not applied.
 
 - Certified MCML distinguishes Monte Carlo error from weak
 identification. A variance component estimated as zero (and the spatial scale

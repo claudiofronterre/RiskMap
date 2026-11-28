@@ -1158,7 +1158,8 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    for (field in intersect(c("estimate", "fitted_estimate"), names(entry))) {
+    for (field in intersect(c("estimate", "fitted_estimate",
+                              "discarded_estimate"), names(entry))) {
       if (is.list(entry[[field]])) {
         entry[[field]]$beta <- as.numeric(
           coefficient_transform %*% entry[[field]]$beta

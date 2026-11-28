@@ -771,9 +771,16 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' (`repeat_correction()`) and the estimate is certified in the fitting
 ##' bank's curvature at the last step. If those steps stop short of the
 ##' bank's maximum by more than 2 - sqrt(2) radii, the most residual that
-##' Lemma 4.2 of Fronterre (2026) tolerates, they are discarded, the estimate
-##' of the first step is not certified, and the next stage
-##' (`fit_adaptive_mcml()`) starts from it.
+##' Lemma 4.2 of Fronterre (2026) tolerates, they are discarded together with
+##' the first step, which the fitting bank has already shown to leave the
+##' region where the log-likelihood is quadratic. Such a step, short in the
+##' metric of the information but long along a direction where it nearly
+##' vanishes, as along a log variance near zero, can lower the log-likelihood
+##' by many units. The estimate stays the fitted one, and the first step is
+##' recorded as `discarded_estimate`. The second bank is drawn at the fitted
+##' estimate, whose bound plans the budget of the next stage
+##' (`fit_adaptive_mcml()`), which starts from it, but the stage is not
+##' certified whatever that bound.
 ##'
 ##' The check does not act where the radius is below `radius_floor`
 ##' statistical standard errors. The validation draws then barely vary, as
@@ -839,9 +846,13 @@ correct_and_certify <- function(engine, penalty, estimate, information,
     record$correction_converged <- repeated$converged
     record$correction_remaining <- repeated$remaining
     refused <- !repeated$converged && repeated$remaining > 2 - sqrt(2)
-    # Steps that stop short can have wandered far from the maximum, so they
-    # are discarded, and the next stage starts from the first correction.
-    if (!refused) {
+    # Steps that stop short can have wandered far from the maximum, and so can
+    # the first step, whose residual they failed to remove. Both are
+    # discarded, and the second bank is drawn at the fitted estimate.
+    if (refused) {
+      record$discarded_estimate <- corrected
+      corrected <- estimate
+    } else {
       corrected <- repeated$estimate
       root <- repeated$root
       if (!is.null(repeated$information)) {
