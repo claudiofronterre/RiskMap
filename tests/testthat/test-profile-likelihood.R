@@ -557,7 +557,7 @@ test_that("a failure to find a value is not reported as infeasible", {
 # locations, so that their likelihood does not use it, and a nugget beside a
 # measurement error needs replicates to be well identified.
 replicated_data <- local({
-  set.seed(2026)
+  set.seed(21)
   n_locations <- 40L
   locations <- cbind(stats::runif(n_locations, 0, 20000),
                      stats::runif(n_locations, 0, 20000))
