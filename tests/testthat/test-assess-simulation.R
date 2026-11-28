@@ -580,3 +580,25 @@ test_that("a surface on points that are not a regular grid is mapped as points",
     expect_s3_class(plot_simulation(surface)$layers[[1]]$geom, "GeomTile")
   }
 })
+
+test_that("assess_simulation refuses a candidate whose covariates aren't finite on the grid", {
+  gaussian <- list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  logged_data <- named_data
+  logged_data$positive <- exp(logged_data$cov)
+  generating <- specify_glgpm(cases ~ cov + gp(), logged_data, "gaussian",
+                              gaussian)
+  candidate <- specify_glgpm(cases ~ log(positive) + gp(), logged_data,
+                             "gaussian", gaussian)
+  grid <- named_grid
+  grid$positive <- c(1, 0, -1, 2, 3)
+  sim <- simulate_glgpm(generating, nsim = 1, what = c("data", "surface"),
+                        prediction_grid = grid, seed = 3)
+  error <- expect_input_error(
+    assess_simulation(sim, models = list(candidate = candidate),
+                      spatial_scale = "location", objective = "mse",
+                      messages = FALSE),
+    "models", "at 2 locations of the prediction grid"
+  )
+  expect_match(conditionMessage(error), "They are locations 2 and 3.",
+               fixed = TRUE)
+})

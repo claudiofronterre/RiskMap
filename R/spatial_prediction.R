@@ -657,7 +657,7 @@ validate_prediction_standardise <- function(object, standardise) {
   profiles[reference_names] <- standardise[reference_names]
   infinite <- !prediction_design_is_finite(object, profiles)
   if (any(infinite)) {
-    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number.", arg = "standardise")
+    abort_input("{sum(infinite)} row{?s} of {.arg standardise} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}.", arg = "standardise")
   }
   list(
     data = standardise,
@@ -753,7 +753,7 @@ validate_prediction_data <- function(object, newdata, include,
       object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
     )
     if (any(!finite)) {
-      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as the logarithm of zero or of a negative number, so {?its/their} predictions are {.code NA}.")
+      riskmap_warn("{sum(!finite)} prediction row{?s} {?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}, so {?its/their} predictions are {.code NA}.")
       valid_rows[valid_rows] <- finite
     }
   }
@@ -1729,28 +1729,9 @@ prediction_design_is_finite <- function(object, predictors) {
 #' such as `log(x)` in `ns(log(x), 2)`, that give a number for each row.
 #' @noRd
 prediction_parts_are_finite <- function(object, predictors) {
-  terms <- stats::terms(update(interpret_formula(fit_formula(object))$pf,
-                               NULL ~ .))
-  finite <- rep(TRUE, nrow(predictors))
-  check_parts <- function(expression) {
-    if (!is.call(expression)) return(invisible(NULL))
-    parts <- as.list(expression)[-1L]
-    # Without empty arguments, as in x[, 1]
-    for (part in parts[!vapply(parts, identical, logical(1), quote(expr = ))]) {
-      values <- tryCatch(
-        suppressWarnings(eval(part, predictors, environment(terms))),
-        error = function(error) NULL
-      )
-      if (is.numeric(values) && length(values) == length(finite)) {
-        finite <<- finite & is.finite(as.numeric(values))
-      }
-      check_parts(part)
-    }
-  }
-  for (variable in as.list(attr(terms, "variables"))[-1L]) {
-    check_parts(variable)
-  }
-  finite
+  formula_parts_are_finite(
+    update(interpret_formula(fit_formula(object))$pf, NULL ~ .), predictors
+  )
 }
 
 #' Build a prediction design matrix using the fitted factor structure
@@ -3250,12 +3231,17 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##' @param label The name of the column of `boundaries` that holds distinct
 ##'   names of the areas. If `NULL`, the areas are named `"reg1"`, `"reg2"`
 ##'   and so on, in a column `"region"`.
-##' @param objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
+##' @param objective The measures of predictive performance, `"mse"` for the
+##'   mean squared error of the predictive mean, `"classify"` for the
+##'   classification into the classes of `breaks`, or both. By default the
+##'   mean squared error, and the classification as well when `breaks` are
+##'   given.
 ##' @param breaks A numeric vector of at least three finite, increasing class
 ##'   boundaries for classification, as in [plot_prediction()]. A class includes
 ##'   its upper boundary, the lowest class also includes the first boundary, and
 ##'   values beyond the boundaries belong to the end classes, so every value has
-##'   a class. Required if `objective` includes `"classify"`.
+##'   a class. Required if `objective` includes `"classify"`, which it does by
+##'   default when `breaks` are given.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param seed Optional non-negative integer that makes the assessment
 ##'   reproducible; see Details. The caller's random number state is restored
@@ -3351,7 +3337,6 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##'   spatial_scale = c("location", "area"),
 ##'   aggregate = "mean",
 ##'   boundaries = boundary,
-##'   objective = "mse",
 ##'   messages = FALSE
 ##' )
 ##'
@@ -3368,7 +3353,8 @@ assess_simulation <- function(simulation,
                               aggregate = NULL,
                               boundaries = NULL,
                               label = NULL,
-                              objective = c("mse", "classify"),
+                              objective = if (is.null(breaks)) "mse" else
+                                c("mse", "classify"),
                               breaks = NULL,
                               control_mcmc = set_control_mcmc(),
                               seed = NULL,
@@ -3495,6 +3481,18 @@ assess_simulation <- function(simulation,
     n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
     if (n_incomplete > 0) {
       abort_input(c("The model {.val {model_names[i]}} needs complete values of {.val {required}} on the prediction grid, but {n_incomplete} grid location{?s} {?has/have} missing values.", "i" = "Remove them from the prediction grid before simulating."), arg = "models")
+    }
+    # A fit is checked as predict() checks new data, with its own terms.
+    finite <- if (inherits(template_i, "RiskMap")) {
+      prediction_design_is_finite(template_i, st_drop_geometry(grid))
+    } else {
+      fixed_effects_are_finite(template_i$fixed_terms, grid)
+    }
+    if (!all(finite)) {
+      n_infinite <- sum(!finite)
+      # As text, whose length sets the plurals, not its value.
+      locations <- as.character(which(!finite))
+      abort_input(c("The model {.val {model_names[i]}} has a covariate that isn't a finite number, such as {.code log(0)}, at {n_infinite} location{?s} of the prediction grid.", "i" = "{?It is location/They are locations} {locations}. Remove {?it/them} from the prediction grid before simulating."), arg = "models")
     }
   }
 

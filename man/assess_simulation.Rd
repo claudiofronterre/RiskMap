@@ -12,7 +12,7 @@ assess_simulation(
   aggregate = NULL,
   boundaries = NULL,
   label = NULL,
-  objective = c("mse", "classify"),
+  objective = if (is.null(breaks)) "mse" else c("mse", "classify"),
   breaks = NULL,
   control_mcmc = set_control_mcmc(),
   seed = NULL,
@@ -62,13 +62,18 @@ Required only when \code{spatial_scale} includes \code{"area"}.}
 names of the areas. If \code{NULL}, the areas are named \code{"reg1"}, \code{"reg2"}
 and so on, in a column \code{"region"}.}
 
-\item{objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
+\item{objective}{The measures of predictive performance, \code{"mse"} for the
+mean squared error of the predictive mean, \code{"classify"} for the
+classification into the classes of \code{breaks}, or both. By default the
+mean squared error, and the classification as well when \code{breaks} are
+given.}
 
 \item{breaks}{A numeric vector of at least three finite, increasing class
 boundaries for classification, as in \code{\link[=plot_prediction]{plot_prediction()}}. A class includes
 its upper boundary, the lowest class also includes the first boundary, and
 values beyond the boundaries belong to the end classes, so every value has
-a class. Required if \code{objective} includes \code{"classify"}.}
+a class. Required if \code{objective} includes \code{"classify"}, which it does by
+default when \code{breaks} are given.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
 
@@ -171,7 +176,6 @@ assessment <- assess_simulation(
   spatial_scale = c("location", "area"),
   aggregate = "mean",
   boundaries = boundary,
-  objective = "mse",
   messages = FALSE
 )
 

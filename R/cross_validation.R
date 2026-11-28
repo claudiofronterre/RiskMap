@@ -68,12 +68,21 @@
 ##' @details
 ##' # Fixed and refitted parameters
 ##'
-##' Fixed parameters are much faster, and with many locations and few
-##' parameters the scores change little. The test observations still
-##' contribute to the fixed estimates, however, so the scores are optimistic,
-##' and more so for models with more parameters. Use `refit = TRUE` to compare
-##' models with different numbers of parameters. It costs one fit for each
-##' test set and model.
+##' Fixed parameters, the default, suit a check of the calibration of a model.
+##' The reference of a correct model (see "How to read the area") repeats the
+##' same procedure, with the covariance parameters of its working model
+##' estimated from all the observations of each simulated dataset, so the area
+##' of the data is judged against areas found in the same way. They are also
+##' much faster.
+##'
+##' To compare models by their scores, use `refit = TRUE`. With fixed
+##' parameters the test observations have helped to estimate each model, so
+##' its scores are optimistic, and more so for a model with more parameters.
+##' The comparison then favours the model with more parameters, and more so
+##' when the test sets are spatial clusters. A refit costs one fit for each
+##' test set and model, and it can fail when a training set is too small for
+##' a model, which leaves the scores of that test set missing (see
+##' "Failures").
 ##'
 ##' # Predictive distributions
 ##'
@@ -181,12 +190,21 @@
 ##' thousand observations it takes minutes for each model, and with many
 ##' thousands much longer.
 ##'
-##' For binary outcomes, with a single trial in each observation, the area, its
-##' limit and the band almost never point to miscalibration, even for a wrong
-##' model and with any kind of test sets. They are not a check of calibration
-##' there, and a curve inside the band says nothing about it. The CRPS of a
-##' binary outcome is the Brier score \eqn{(p - y)^2} of the predictive
-##' probability \eqn{p} that \eqn{y = 1}, so the scores still compare models.
+##' For binary outcomes, with a single trial in each test observation, the
+##' area, its limit and the band almost never point to miscalibration, even for
+##' a wrong model and with any kind of test sets. They are not a check of
+##' calibration there. A binomial model whose scored test observations all have
+##' one trial, as with individual-level data that have several observations at
+##' one location, is therefore treated apart. `assess_prediction()` says so.
+##' [plot_cross_validation()] draws its curve or histogram without the area, the
+##' limit or the band, and the print of the result and of its `summary()`, and
+##' [to_table()], leave out its area and limit. The plot and the prints say why,
+##' and [to_table()] gives "not shown (binary)" as the area, or leaves out the
+##' two columns when every model is of binary outcomes. The result and the
+##' summary still have them. In an assessment of several models this applies
+##' to each such model on its own. The CRPS of a binary outcome is the Brier
+##' score \eqn{(p - y)^2} of the predictive probability \eqn{p} that
+##' \eqn{y = 1}, and the scores still compare models.
 ##'
 ##' # Failures
 ##'
@@ -311,6 +329,7 @@ assess_prediction <- function(models,
   row.names(out$scores) <- NULL
   row.names(out$failures) <- NULL
   class(out) <- "RiskMap_cross_validation"
+  if (messages) inform_binary_models(binary_models(out))
   stamp_version(out)
 }
 
@@ -432,6 +451,52 @@ inform_assessment <- function(models, n_sets, refit) {
 inform_reference_time <- function(n_observations) {
   if (n_observations <= 1500L) return(invisible(NULL))
   riskmap_inform("With {n_observations} observations, simulating the calibration of a correct model can take a minute or more for each model, and its time grows about with the cube of the number of observations.")
+}
+
+##' Say that the calibration of binary outcomes is not checked by the area
+##'
+##' @param binary Whether each model is of binary outcomes, named after the
+##'   models (`binary_models()`).
+##' @noRd
+inform_binary_models <- function(binary) {
+  if (!any(binary)) return(invisible(NULL))
+  named <- names(binary)[binary]
+  which <- if (all(binary)) "" else " ({.val {named}})"
+  riskmap_inform(c(paste0("For binary outcomes", which, ", the PIT area, its limit and the band of a correct model are not a check of calibration."), "i" = "The CRPS, which is the Brier score for binary outcomes, compares models."))
+}
+
+##' Whether each model of a cross-validation is of binary outcomes
+##'
+##' A model whose denominators are numbers of trials, the binomial, and whose
+##' scored test observations all have one trial, for which the PIT area, its
+##' limit and the band are not a check of calibration. The result keeps no
+##' denominators, so they are read from the scores
+##' (`score_counts()`). An observation with one trial has a PIT interval that
+##' starts at 0, for y = 0, or ends at 1, for y = 1, and its CRPS is the Brier
+##' score, the square of 1 minus the end of the interval for y = 0 or of its
+##' start for y = 1, to the last bit, as `count_crps()` computes it from the
+##' same F(0). With more trials the CRPS adds the terms of the other counts,
+##' which leave it unchanged only when they are below half a unit in its last
+##' place, as for predicted probabilities below about 1e-8 at every
+##' observation.
+##' @param x The result of `assess_prediction()`.
+##' @return A logical vector named after the models.
+##' @noRd
+binary_models <- function(x) {
+  models <- x$calibration$area$model
+  families <- x$family
+  if (!is.null(names(families))) families <- families[models]
+  binary <- vapply(seq_along(models), function(k) {
+    # Only a family whose denominators are numbers of trials has trials.
+    if (!family_traits(families[[k]])$whole_denominator) return(FALSE)
+    scores <- x$scores[x$scores$model == models[k], , drop = FALSE]
+    scores <- scores[is.finite(scores$pit_lower), , drop = FALSE]
+    if (!nrow(scores)) return(FALSE)
+    at_zero <- scores$pit_lower == 0
+    brier <- ifelse(at_zero, (1 - scores$pit_upper)^2, scores$pit_lower^2)
+    isTRUE(all((at_zero | scores$pit_upper == 1) & scores$CRPS == brier))
+  }, logical(1))
+  stats::setNames(binary, models)
 }
 
 ##' Whether each row of the data can be used by every model
@@ -707,7 +772,10 @@ scaled_crps <- function(crps, expected) {
 ##' @details
 ##' Lower is better for both scores, and a negative difference means a better
 ##' score than that of the reference model. A `PIT_area` below `PIT_area_limit` is
-##' one that a correct model would give (see [assess_prediction()]).
+##' one that a correct model would give (see [assess_prediction()]). For a
+##' model of binary outcomes the area is not a check of calibration, so the
+##' print of the summary and [to_table()] show neither its area nor its limit.
+##' The print says why. The summary still has them.
 ##'
 ##' An observation in several test sets is first given the average of its
 ##' scores, so that it counts once. The scores of a model are then averaged
@@ -727,8 +795,9 @@ scaled_crps <- function(crps, expected) {
 ##'   `reference` is given, `CRPS_difference`, `CRPS_se`, `SCRPS_difference` and
 ##'   `SCRPS_se`. Its
 ##'   attributes include `reference`, `refit`, and for each model
-##'   `n_observations`, the number of observations with scores, and `n_failed`,
-##'   the number of failed test-set assessments.
+##'   `n_observations`, the number of observations with scores, `n_failed`,
+##'   the number of failed test-set assessments, and `binary`, whether it is a
+##'   model of binary outcomes.
 ##'
 ##' @seealso [assess_prediction()], and [to_table()] for a table to render.
 ##'
@@ -771,6 +840,7 @@ summary.RiskMap_cross_validation <- function(object, reference = NULL, ...) {
     sum(object$failures$model == model)
   }, integer(1))
   attr(out, "counts") <- all(families_are_discrete(object$family))
+  attr(out, "binary") <- binary_models(object)
   class(out) <- c("summary.RiskMap_cross_validation", "data.frame")
   out
 }
@@ -902,12 +972,20 @@ format_cv_settings <- function(refit, n_failed, before = NULL) {
 format_cv_averages <- function(x) {
   reference <- attr(x, "reference")
   counts <- attr(x, "counts")
+  binary <- summarised_binary(x)
+  which <- if (!all(binary)) {
+    paste0(" (", paste(row.names(x)[binary], collapse = ", "), ")")
+  }
   notes <- c(
     paste0("Lower is better for the CRPS and the SCRPS. The CRPS is in the ",
            "units of the response", if (isTRUE(counts)) ", which are counts",
            "."),
-    if (any(is.finite(x$PIT_area_limit))) {
+    if (any(is.finite(x$PIT_area_limit) & !binary)) {
       "The PIT area of a correct model is below the limit with a probability of 95%."
+    },
+    if (any(binary)) {
+      paste0("For binary outcomes", which, " the PIT area is not a check of ",
+             "calibration and is not shown, and the CRPS is the Brier score.")
     },
     if (!is.null(reference)) {
       paste0("Differences are from ", reference, ", and negative ones are in ",
@@ -929,7 +1007,7 @@ format_cv_averages <- function(x) {
 ##'
 ##' One column for each score, followed by its difference from the reference
 ##' with its standard error in brackets, and the area of the calibration curve
-##' with its limit.
+##' with its limit, which a model of binary outcomes doesn't show.
 ##' @noRd
 cv_summary_table <- function(x, digits) {
   reference <- attr(x, "reference")
@@ -954,13 +1032,34 @@ cv_summary_table <- function(x, digits) {
     text[row.names(x) == reference] <- ""
     columns[[paste(score, "difference")]] <- text
   }
-  areas <- cbind(values$PIT_area, values$PIT_area_limit)
-  formatted <- areas
-  formatted[] <- format_compared_values(areas, digits)
-  formatted[!is.finite(areas)] <- "NA"
-  columns[["PIT area"]] <- formatted[, 1L]
-  columns[["Limit"]] <- formatted[, 2L]
+  # The area of binary outcomes is not a check of calibration, so neither it
+  # nor its limit is shown, and the columns are left out when every model is
+  # of binary outcomes.
+  binary <- summarised_binary(x)
+  # An empty summary keeps the columns.
+  if (!length(binary) || !all(binary)) {
+    areas <- cbind(values$PIT_area, values$PIT_area_limit)
+    areas[binary, ] <- NA_real_
+    formatted <- areas
+    formatted[] <- format_compared_values(areas, digits)
+    formatted[!is.finite(areas)] <- "NA"
+    formatted[binary, 1L] <- "not shown (binary)"
+    formatted[binary, 2L] <- ""
+    columns[["PIT area"]] <- formatted[, 1L]
+    columns[["Limit"]] <- formatted[, 2L]
+  }
   as.data.frame(columns, check.names = FALSE, optional = TRUE)
+}
+
+##' Whether each model of a summary of a cross-validation is of binary
+##' outcomes, in the order of its rows
+##'
+##' `FALSE` for a model without the attribute, as in a summary from before it.
+##' @noRd
+summarised_binary <- function(x) {
+  binary <- attr(x, "binary", exact = TRUE)
+  if (is.null(binary)) return(rep(FALSE, nrow(x)))
+  unname(binary[row.names(x)] %in% TRUE)
 }
 
 ##' @title Print a cross-validation

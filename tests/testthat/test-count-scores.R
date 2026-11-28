@@ -242,11 +242,13 @@ test_that("draws of the mean that can't be scored stop", {
 })
 
 # A fit and a mocked prediction whose draws of the linear predictor are given.
+# `location` gives the location of each row, one for each by default.
 count_fit <- function(family, y, units_m, parameters = NULL,
-                      inverse = family_traits(family)$inverse_link) {
+                      inverse = family_traits(family)$inverse_link,
+                      location = seq_along(y)) {
   n <- length(y)
   data <- st_sf(y = y, x1 = seq_len(n),
-                geometry = st_sfc(lapply(seq_len(n), function(i) {
+                geometry = st_sfc(lapply(location, function(i) {
                   st_point(c(1000 * i, 0))
                 }), crs = 32637))
   fit <- list(
@@ -254,8 +256,9 @@ count_fit <- function(family, y, units_m, parameters = NULL,
     estimate = list(beta = c(0, 0), sigma2 = 0, phi = 0),
     D = matrix(1, nrow = n, ncol = 2), re = list(), cov_offset = NULL,
     nugget = "none", fixed_pars = parameters,
-    sst = FALSE, units_m = units_m, y = y, ID_coords = seq_len(n),
-    coords = st_coordinates(data), distance_units = "m",
+    sst = FALSE, units_m = units_m, y = y,
+    ID_coords = match(location, unique(location)),
+    coords = unique(st_coordinates(data)), distance_units = "m",
     call = list(denominator = quote(units_m)),
     link_function = list(inv = inverse, name = "custom")
   )
@@ -425,4 +428,118 @@ test_that("large counts, scored on a grid, have the PIT of every count", {
   }, numeric(1))
   expect_equal(out$scores$pit_lower, exact(-1), tolerance = 1e-3)
   expect_equal(out$scores$pit_upper, exact(0), tolerance = 1e-3)
+})
+
+# Binary outcomes ------------------------------------------------------------
+
+binary_y <- c(0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1)
+binary_sets <- list(1:4, 5:8, 9:12)
+binary_draws <- function() {
+  withr::with_seed(29, matrix(rnorm(12 * 300, -0.3, 0.8), 12))
+}
+
+test_that("binary models are told apart by their scores", {
+  local_mocked_bindings(predict_test_set = mock_draws(binary_draws()),
+                        calibration_reference = independent_reference)
+  binary <- function(fit, test_sets = binary_sets) {
+    binary_models(assess_prediction(list(m = fit), test_sets, messages = FALSE))
+  }
+  expect_identical(binary(count_fit("binomial", binary_y, rep(1, 12))),
+                   c(m = TRUE))
+  # Individual-level data, with three rows at each location.
+  rows <- count_fit("binomial", binary_y, rep(1, 12),
+                    location = rep(1:4, each = 3))
+  expect_identical(binary(rows, create_test_sets(rows)), c(m = TRUE))
+  # Several trials, even when every count is 0 or the number of trials, or in
+  # one observation only.
+  expect_identical(binary(count_fit("binomial", 3 * binary_y, rep(3, 12))),
+                   c(m = FALSE))
+  expect_identical(binary(count_fit("binomial", rep(0, 12), rep(2, 12))),
+                   c(m = FALSE))
+  expect_identical(binary(count_fit("binomial", binary_y, c(2, rep(1, 11)))),
+                   c(m = FALSE))
+  expect_identical(binary(count_fit("poisson", binary_y, rep(1, 12))),
+                   c(m = FALSE))
+  # A rare outcome with two trials, whose CRPS differs from the Brier score by
+  # a tiny relative amount.
+  local_mocked_bindings(
+    predict_test_set = mock_draws(matrix(qlogis(1e-6), 12, 300))
+  )
+  expect_identical(binary(count_fit("binomial", rep(0, 12), rep(2, 12))),
+                   c(m = FALSE))
+})
+
+test_that("assess_prediction() says once that the area of binary outcomes is not a check", {
+  local_mocked_bindings(predict_test_set = mock_draws(binary_draws()),
+                        calibration_reference = independent_reference)
+  bernoulli <- count_fit("binomial", binary_y, rep(1, 12))
+  said <- function(models) {
+    capture_messages(assess_prediction(models, binary_sets))
+  }
+  messages <- said(list(m = bernoulli))
+  expect_length(grep("binary outcomes, the PIT area", messages), 1L)
+  expect_length(grep("Brier score", messages), 1L)
+  expect_no_message(assess_prediction(bernoulli, binary_sets, messages = FALSE))
+  # Each model of a mixed assessment on its own.
+  mixed <- said(list(b = bernoulli, p = count_fit("poisson", binary_y,
+                                                  rep(1, 12))))
+  expect_length(grep("binary outcomes \\(.b.\\), the PIT area", mixed), 1L)
+  expect_no_match(said(list(m = count_fit("binomial", 3 * binary_y,
+                                          rep(3, 12)))),
+                  "binary|Brier")
+})
+
+test_that("the methods of a cross-validation give no area, limit or band for binary outcomes", {
+  local_mocked_bindings(predict_test_set = mock_draws(binary_draws()),
+                        calibration_reference = independent_reference)
+  models <- list(b = count_fit("binomial", binary_y, rep(1, 12)),
+                 p = count_fit("poisson", binary_y, rep(1, 12)))
+  out <- assess_prediction(models, binary_sets, messages = FALSE)
+  # The result keeps the limit and the band.
+  expect_true(all(is.finite(out$calibration$area$PIT_area_limit)))
+  expect_true(all(is.finite(out$calibration$curves$upper)))
+  scores <- summary(out)
+  expect_identical(attr(scores, "binary"), c(b = TRUE, p = FALSE))
+  expect_identical(scores$PIT_area_limit, out$calibration$area$PIT_area_limit)
+  table <- cv_summary_table(scores, 3L)
+  expect_identical(table[["PIT area"]][1], "not shown (binary)")
+  expect_identical(table$Limit[1], "")
+  expect_match(table[["PIT area"]][2], "^0\\.[0-9]{3}$")
+  expect_match(table$Limit[2], "^0\\.[0-9]{3}$")
+  printed <- squish(capture.output(print(out)))
+  expect_match(printed, "not shown (binary)", fixed = TRUE)
+  expect_match(printed, "binary outcomes (b)", fixed = TRUE)
+  expect_match(squish(to_table(out)), "not shown (binary)", fixed = TRUE)
+  expect_no_match(squish(to_table(out)), "NA", fixed = TRUE)
+  geoms <- function(plot) {
+    vapply(plot$layers, function(layer) class(layer$geom)[1], character(1))
+  }
+  p <- plot_cross_validation(out)
+  band <- ggplot2::layer_data(p, match("GeomRibbon", geoms(p)))
+  expect_identical(unique(as.integer(band$PANEL)), 2L)
+  label <- ggplot2::layer_data(p, match("GeomText", geoms(p)))$label
+  expect_no_match(label[1], "Area|Below")
+  expect_match(label[2], "Below")
+  alone <- plot_cross_validation(out, model = "b")
+  expect_false("GeomRibbon" %in% geoms(alone))
+})
+
+test_that("a binomial model with several trials keeps its limit and band", {
+  local_mocked_bindings(predict_test_set = mock_draws(binary_draws()),
+                        calibration_reference = independent_reference)
+  fit <- count_fit("binomial", 3 * binary_y, rep(3, 12))
+  out <- assess_prediction(list(m = fit), binary_sets, messages = FALSE)
+  scores <- summary(out)
+  expect_identical(attr(scores, "binary"), c(m = FALSE))
+  expect_match(cv_summary_table(scores, 3L)$Limit, "^0\\.[0-9]{3}$")
+  expect_match(squish(capture.output(print(scores))),
+               "below the limit with a probability of 95%", fixed = TRUE)
+  for (style in c("curve", "histogram")) {
+    p <- plot_cross_validation(out, style = style)
+    layers <- vapply(p$layers, function(layer) class(layer$geom)[1],
+                     character(1))
+    expect_true("GeomRibbon" %in% layers, label = style)
+    expect_match(ggplot2::layer_data(p, match("GeomText", layers))$label,
+                 "Below", label = style)
+  }
 })

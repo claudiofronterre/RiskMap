@@ -173,6 +173,45 @@
         errors may not hold. Refit with a larger `max_draws` in `set_control_mcml()`.
       ! 2 checks need a look. See `check_computation()`.
 
+# the summary of a cross-validation gives no area or limit for binary outcomes
+
+    Code
+      print(mixed)
+    Output
+      -- Cross-validation scores -----------------------------------------------------
+      Parameters are fixed at the estimates from all the data.
+      
+      Scores over 4 test observations
+         Model   CRPS   SCRPS           PIT area  Limit
+       model_a 0.3750 -0.6500             0.0400 0.0600
+       model_b 0.3488 -0.5000 not shown (binary)       
+      i Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
+        response.
+      i The PIT area of a correct model is below the limit with a probability of 95%.
+      i For binary outcomes (model_b) the PIT area is not a check of calibration and
+        is not shown, and the CRPS is the Brier score.
+
+---
+
+    Code
+      print(binary)
+    Output
+      -- Cross-validation ------------------------------------------------------------
+      2 models assessed on 2 test sets of 3 and 2 observations. Parameters are fixed
+      at the estimates from all the data.
+      
+      Scores over 4 test observations
+         Model   CRPS   SCRPS
+       model_a 0.3488 -0.6500
+       model_b 0.3488 -0.5000
+      i Lower is better for the CRPS and the SCRPS. The CRPS is in the units of the
+        response, which are counts.
+      i For binary outcomes the PIT area is not a check of calibration and is not
+        shown, and the CRPS is the Brier score.
+      
+      i `summary()` with `reference` compares the models with one of them, and
+        `plot()` draws the calibration curves or maps the scores.
+
 # print() of the summary of a cross-validation formats its scores
 
     Code

@@ -1997,8 +1997,9 @@ training set, and the area rejects 2.4 to 8.0%. Zero inflation is found in 46 to
 absorb (no covariate, no nugget, overdispersion, anisotropy) are found in 1.3 to
 7.1%, by any test of calibration. For binary outcomes with one trial the area
 rejects 0% of correct and of wrong models in every design, and full parametric
-bootstrap refits stay near 1%, so the help says that it is not a check of
-calibration there. The CRPS of a binary outcome is the Brier score of the
+bootstrap refits stay near 1%, because the estimates absorb what makes a binary
+PIT curve deviate, so it is not a check of calibration there (see the next
+bullet). The CRPS of a binary outcome is the Brier score of the
 predictive probability. With 999 curves on one thread the reference took about
 1, 9 and 33 seconds for 100, 500 and 1,000 locations on Wayland (0.2 to 1.3
 seconds before), and on the laptop, installed and under light load, 8 and 29
@@ -2009,6 +2010,38 @@ and above 1,500 `assess_prediction()` says that it can take a minute or more for
 each model. Its memory grows with the square of the number of observations. It
 shows a step with a spinner while it runs. The
 predictive draws of the test sets are no longer kept for it.
+- For binary outcomes the area, its limit and the band are not presented as a
+check of calibration. A model counts as binary when it is binomial and every
+scored test observation has one trial, which covers individual-level data with
+several rows at one location, and in an assessment of several models each model
+is judged on its own. `assess_prediction()` says once, with its other messages,
+that the area, the limit and the band are not a check of calibration there, and
+that the CRPS, which is the Brier score, compares models. The panel of such a
+model in `plot_cross_validation()`, as a curve or a histogram, has the curve
+without the area, the band or "Below", and the note "Not a check of calibration
+for binary outcomes". The print of the result and of `summary()`, and
+`to_table()`, give "not shown (binary)" as its area and leave its limit blank,
+and the print adds a note on why. When every model is binary, the two columns
+are left out. The area is not shown because a number next to the scores
+invites a reading as a check, which it is not here. The result and
+the data frame of `summary()` are unchanged and still hold the area, the limit
+and the band. The result keeps no
+denominators, so `binary_models()` recognises a binary model from its scores.
+An observation with one trial has a PIT interval that starts at 0 or ends at 1,
+and its CRPS equals the Brier score exactly, while with more trials the CRPS is
+larger unless the predictive distribution has no probability beyond one count
+from the observation. The summary has an attribute `binary`.
+- The help on fixed and refitted parameters says that fixed parameters, the
+default, suit a check of calibration, because the reference repeats the same
+procedure, and that models are compared by their scores with `refit = TRUE`. In
+a Gaussian simulation at 100 locations with the true model and one with six
+extra smooth noise covariates (1,000 datasets for each of four designs), fixed
+parameters chose the overfitted model by CRPS in 81 to 94% of datasets, refits
+in 9 to 18%, and it predicted new locations better in 11%. The optimism of fixed
+parameters in the log score was close to the number of parameters in
+leave-one-out and two to three times larger with clusters. Re-estimating only
+the coefficients in each training set did about as well as full refits, and is
+left for 2.1.
 - The result of `assess_prediction()` is a list with `scores`, a data frame with
 a row for each model and test observation (`model`, `test_set`, `row`, `CRPS`,
 `SCRPS`, `pit_lower`, `pit_upper`), `calibration`, with the areas, the
@@ -2094,6 +2127,15 @@ and their `colour` argument changes it.
   squared errors of 0.049 and 0.030 in one example, against 0.0069 and 0.0082
   under another name. A candidate with a transformed response, which was
   refitted without the transformation, stops.
+- The default of `objective` in `assess_simulation()` is `"mse"`, and
+  `c("mse", "classify")` when `breaks` are given, written in the usage as
+  `objective = if (is.null(breaks)) "mse" else c("mse", "classify")` (#389).
+  The default was `c("mse", "classify")` with `breaks = NULL`, so a call that
+  gave neither `objective` nor `breaks` stopped with "`breaks` must be given
+  when `objective` includes "classify"". An explicit `"classify"` without
+  `breaks` still stops, and a call that gives `objective` or `breaks` has the
+  same results as before. Every call in the tests and the golden battery
+  gave `objective`, and the example of the help page now leaves it out.
 - In the classification of `assess_simulation()` the lowest class includes the
   first break and values beyond the breaks belong to the end classes, for the
   truth and for the draws, as in the maps of `plot_prediction()`. A true value
@@ -2125,6 +2167,24 @@ and their `colour` argument changes it.
 - `plot()` of a simulation and of a `simulated_surface()` draws points when the
   prediction locations are not on a regular grid, as for a grid in another CRS
   than the model's. They were drawn as tiles too small to see.
+- A row of `sample_locations` or `prediction_grid` in `simulate_glgpm()` with a
+  missing covariate, or with one that gives the model a term that isn't finite,
+  such as `log(0)` or `log(-1)`, stops the simulation with a message that names
+  the rows and asks to remove them. A missing value gave "has invalid
+  covariates" with R's error about missing values, `log(0)` "gives a design
+  matrix that doesn't match the model" and `log(-1)` also R's warning about
+  NaNs. The data of `glgpm()`, `specify_glgpm()` and `glgpm_parameters()` are
+  checked the same way, where `log(0)` gave an error about a constant column of
+  the design matrix and `log(-1)` R's error about missing values in an object.
+  `assess_simulation()` stops when a candidate model has such a term on the
+  prediction grid, as it did for missing values, and names the locations.
+  Terms that depend on the data, such as `scale(x)`, are checked with the
+  centre and scale of the data the model was fitted to or specified with, as
+  the simulation uses them, and a term such as `ifelse(x > 0, log(x), 0)` is
+  accepted when the term itself is finite. The simulated surface keeps every
+  location of the grid, so a location is removed by the user rather than
+  returned as `NA`, as `predict()` does. The warning of `predict()` and the
+  error for `standardise` give `log(0)` as their example.
 
 ## Other
 

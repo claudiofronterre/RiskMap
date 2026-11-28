@@ -457,6 +457,116 @@ check_complete_data <- function(data, columns,
   invisible(TRUE)
 }
 
+##' Whether the fixed effects of a model are finite numbers in each row
+##'
+##' A row fails when a numeric column of its model frame isn't finite, such as
+##' `log(x)` at `x = 0`. When the model frame can't be built, as for
+##' `ns(log(x), 2)`, the parts inside the terms that use the data are checked
+##' instead, and the model frame of the rows whose parts are finite. Missing
+##' values fail too.
+##' @param terms The terms of the fixed effects, without a response. Those of
+##'   a model keep the centre and scale of terms such as `scale(x)` in their
+##'   `predvars`.
+##' @param data A data frame or `sf` object with the variables of the terms.
+##' @return A logical vector with an element for each row of `data`, all `TRUE`
+##'   when neither can be evaluated, since other checks report that.
+##' @noRd
+fixed_effects_are_finite <- function(terms, data) {
+  if (inherits(data, "sf")) data <- st_drop_geometry(data)
+  data <- as.data.frame(data)
+  every <- rep(TRUE, nrow(data))
+  if (!nrow(data)) return(every)
+  frame_is_finite <- function(rows) {
+    frame <- tryCatch(
+      suppressWarnings(model.frame(terms, data = data[rows, , drop = FALSE],
+                                   na.action = na.pass)),
+      error = function(error) NULL
+    )
+    if (is.null(frame)) return(NULL)
+    finite <- rep(TRUE, sum(rows))
+    for (column in frame) {
+      if (is.numeric(column)) {
+        finite <- finite & rowSums(!is.finite(as.matrix(column))) == 0L
+      }
+    }
+    finite
+  }
+  finite <- frame_is_finite(every)
+  if (!is.null(finite)) return(finite)
+  parts <- formula_parts_are_finite(terms, data)
+  if (!any(parts)) return(parts)
+  finite <- if (!all(parts)) frame_is_finite(parts)
+  if (is.null(finite)) return(every)
+  parts[parts] <- finite
+  parts
+}
+
+##' The terms of the fixed effects of a model formula
+##'
+##' @param formula A model formula, with `gp()` and perhaps `re()` terms.
+##' @return The terms without a response, or `NULL` when the formula can't be
+##'   read, which other checks report.
+##' @noRd
+fixed_effect_terms <- function(formula) {
+  tryCatch(stats::terms(update(interpret_formula(formula)$pf, NULL ~ .)),
+           error = function(error) NULL)
+}
+
+##' Whether the parts of the terms of a formula are finite at each row
+##'
+##' The parts are the calls and variables inside the variables of the terms,
+##' such as `log(x)` in `ns(log(x), 2)`, that use a column of the data and give
+##' a number for each row. Constants such as the breaks of `cut()` are not
+##' parts.
+##' @param formula A formula or terms without a response.
+##' @param data A data frame.
+##' @return A logical vector with an element for each row of `data`.
+##' @noRd
+formula_parts_are_finite <- function(formula, data) {
+  terms <- stats::terms(formula)
+  finite <- rep(TRUE, nrow(data))
+  check_parts <- function(expression) {
+    if (!is.call(expression)) return(invisible(NULL))
+    parts <- as.list(expression)[-1L]
+    # Without empty arguments, as in x[, 1]
+    for (part in parts[!vapply(parts, identical, logical(1), quote(expr = ))]) {
+      if (!any(all.vars(part) %in% names(data))) next
+      values <- tryCatch(
+        suppressWarnings(eval(part, data, environment(terms))),
+        error = function(error) NULL
+      )
+      if (is.numeric(values) && length(values) == length(finite)) {
+        finite <<- finite & is.finite(as.numeric(values))
+      }
+      check_parts(part)
+    }
+  }
+  for (variable in as.list(attr(terms, "variables"))[-1L]) {
+    check_parts(variable)
+  }
+  finite
+}
+
+##' Stop because rows give the model a covariate that isn't a finite number
+##'
+##' @param rows The numbers of the rows.
+##' @param arg The argument that holds them.
+##' @param use `"fit"` for data that a model is fitted to or specified with,
+##'   `"simulate"` for locations of a simulation.
+##' @noRd
+abort_non_finite_rows <- function(rows, arg, use = c("fit", "simulate")) {
+  use <- match.arg(use)
+  n <- length(rows)
+  # As text, whose length sets the plurals, not its value.
+  rows <- as.character(rows)
+  advice <- if (use == "fit") {
+    "{?It is row/They are rows} {rows}. Check or remove {?it/them}."
+  } else {
+    "{?It is row/They are rows} {rows}. Remove {?it/them} before simulating."
+  }
+  abort_input(c("{n} row{?s} of {.arg {arg}} {cli::qty(n)}{?gives/give} the model a covariate that isn't a finite number, such as {.code log(0)}.", "i" = advice), arg = arg)
+}
+
 ##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
@@ -495,6 +605,11 @@ check_formula <- function(formula, data, response_required = TRUE){
   }
 
   check_complete_data(data, formula_terms)
+  fixed <- fixed_effect_terms(formula)
+  if (!is.null(fixed)) {
+    finite <- fixed_effects_are_finite(fixed, data)
+    if (!all(finite)) abort_non_finite_rows(which(!finite), "data", "fit")
+  }
 
   invisible(TRUE)
 }
@@ -1193,7 +1308,10 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' The table of a cross-validation or its summary has a row for each model,
 ##' with its scores, their differences from a `reference` model with their
 ##' standard errors in brackets, and its `PIT_area` with the limit of a correct
-##' model.
+##' model. For a model of binary outcomes the area reads "not shown (binary)"
+##' and the limit is blank, because the area is not a check of calibration there
+##' (see [assess_prediction()]). When every model is of binary outcomes, these
+##' two columns are left out.
 ##'
 ##' @return An object of class "knitr_kable" that can be rendered directly.
 ##' @importFrom knitr kable

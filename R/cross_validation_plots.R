@@ -128,8 +128,13 @@ validation_map_theme <- function() {
 ##' and, after "Below", `PIT_area_limit`. It is a 95% limit and not a certainty. The
 ##' area of a correct model is below it with a probability of 95%, and above it
 ##' for one dataset in twenty. [assess_prediction()] says how the band and the
-##' limit are computed, how to read the area, and where they are not a check of
-##' calibration, as for binary outcomes.
+##' limit are computed and how to read the area.
+##'
+##' For binary outcomes, with one trial in each test observation, the area, the
+##' limit and the band are not a check of calibration. The panel of such a model
+##' shows its curve or histogram without the area, the band or the limit, and
+##' says that it is not a check of calibration for binary outcomes. Compare these
+##' models by their scores.
 ##'
 ##' # Scores
 ##'
@@ -241,18 +246,23 @@ plot_calibration <- function(x, models, style, bins, colour) {
     abort_input("{.arg x} has no scores to assess the calibration with.", arg = "x")
   }
   area$label <- paste0("Area ", format_area(area$PIT_area))
+  # The area, the limit and the band of binary outcomes are not a check of
+  # calibration, so these panels show none of them.
+  binary <- unname(binary_models(x)[area$model])
   # A limit needs at least 19 simulated curves.
-  limited <- is.finite(area$PIT_area_limit)
+  limited <- is.finite(area$PIT_area_limit) & !binary
   area$label[limited] <- paste0(
     area$label[limited], "\nBelow ", format_area(area$PIT_area_limit[limited]),
     " if calibrated"
   )
+  area$label[binary] <- "Not a check of calibration\nfor binary outcomes"
+  banded <- area$model[!binary]
   area$model <- factor(area$model, levels = models)
   colours <- validation_palette(colour)
   out <- if (style == "curve") {
-    plot_calibration_curves(x, models, area, colours)
+    plot_calibration_curves(x, models, area, banded, colours)
   } else {
-    plot_calibration_histograms(x, models, area, bins, colours)
+    plot_calibration_histograms(x, models, area, banded, bins, colours)
   }
   out <- out +
     scale_x_continuous(breaks = seq(0, 1, 0.25),
@@ -279,14 +289,19 @@ area_labels <- function(area, colours, y, vjust) {
 }
 
 ##' The calibration curves of the models, with the band of a correct model
+##' @param banded The models whose band is drawn.
 ##' @noRd
-plot_calibration_curves <- function(x, models, area, colours) {
+plot_calibration_curves <- function(x, models, area, banded, colours) {
   curves <- x$calibration$curves
   curves <- curves[curves$model %in% models, ]
   curves$model <- factor(curves$model, levels = models)
+  band <- curves[curves$model %in% banded, ]
+  band_layer <- if (nrow(band)) {
+    geom_ribbon(data = band, aes(ymin = .data$lower, ymax = .data$upper),
+                fill = colours$band)
+  }
   ggplot(curves, aes(x = .data$u)) +
-    geom_ribbon(aes(ymin = .data$lower, ymax = .data$upper),
-                fill = colours$band) +
+    band_layer +
     annotate("segment", x = 0, y = 0, xend = 1, yend = 1, linetype = "22",
              colour = colours$reference, linewidth = 0.4) +
     geom_line(aes(y = .data$curve), colour = colours$line, linewidth = 0.7) +
@@ -298,8 +313,10 @@ plot_calibration_curves <- function(x, models, area, colours) {
 }
 
 ##' The histograms of the PIT of the models, with the band of a correct model
+##' @param banded The models whose band is drawn.
 ##' @noRd
-plot_calibration_histograms <- function(x, models, area, bins, colours) {
+plot_calibration_histograms <- function(x, models, area, banded, bins,
+                                        colours) {
   bars <- do.call(rbind, lapply(as.character(area$model), function(name) {
     curve <- x$calibration$curves
     curve <- t(curve$curve[curve$model == name])
@@ -315,19 +332,26 @@ plot_calibration_histograms <- function(x, models, area, bins, colours) {
   steps <- rbind(transform(bars, u = (bars$bin - 1) / bins),
                  transform(bars, u = bars$bin / bins))
   steps <- steps[order(steps$model, steps$bin, steps$u), ]
+  steps <- steps[steps$model %in% banded, ]
   # Room above the bars for the areas.
-  top <- 1.25 * max(bars$height, bars$upper)
+  top <- 1.25 * max(bars$height, bars$upper[bars$model %in% banded])
+  band_area <- band_lines <- NULL
+  if (nrow(steps)) {
+    band_area <- geom_ribbon(data = steps, aes(x = .data$u, ymin = .data$lower,
+                                               ymax = .data$upper),
+                             fill = colours$limits)
+    band_lines <- lapply(c("lower", "upper"), function(limit) {
+      geom_path(data = steps, aes(x = .data$u, y = .data[[limit]]),
+                colour = colours$dark, linewidth = 0.35, linetype = "42")
+    })
+  }
   ggplot(bars) +
-    geom_ribbon(data = steps, aes(x = .data$u, ymin = .data$lower,
-                                  ymax = .data$upper), fill = colours$limits) +
+    band_area +
     geom_rect(aes(xmin = (.data$bin - 1) / bins, xmax = .data$bin / bins,
                   ymin = 0, ymax = .data$height),
               fill = colours$fill, colour = "white", linewidth = 0.25) +
     geom_hline(yintercept = 1, colour = colours$reference, linewidth = 0.3) +
-    lapply(c("lower", "upper"), function(limit) {
-      geom_path(data = steps, aes(x = .data$u, y = .data[[limit]]),
-                colour = colours$dark, linewidth = 0.35, linetype = "42")
-    }) +
+    band_lines +
     area_labels(area, colours, y = 0.98 * top, vjust = 1) +
     coord_cartesian(xlim = c(0, 1), ylim = c(0, top), expand = FALSE) +
     labs(y = "Density")
