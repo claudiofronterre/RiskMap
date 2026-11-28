@@ -3231,12 +3231,17 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##' @param label The name of the column of `boundaries` that holds distinct
 ##'   names of the areas. If `NULL`, the areas are named `"reg1"`, `"reg2"`
 ##'   and so on, in a column `"region"`.
-##' @param objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
+##' @param objective The measures of predictive performance, `"mse"` for the
+##'   mean squared error of the predictive mean, `"classify"` for the
+##'   classification into the classes of `breaks`, or both. By default the
+##'   mean squared error, and the classification as well when `breaks` are
+##'   given.
 ##' @param breaks A numeric vector of at least three finite, increasing class
 ##'   boundaries for classification, as in [plot_prediction()]. A class includes
 ##'   its upper boundary, the lowest class also includes the first boundary, and
 ##'   values beyond the boundaries belong to the end classes, so every value has
-##'   a class. Required if `objective` includes `"classify"`.
+##'   a class. Required if `objective` includes `"classify"`, which it does by
+##'   default when `breaks` are given.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param seed Optional non-negative integer that makes the assessment
 ##'   reproducible; see Details. The caller's random number state is restored
@@ -3332,7 +3337,6 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##'   spatial_scale = c("location", "area"),
 ##'   aggregate = "mean",
 ##'   boundaries = boundary,
-##'   objective = "mse",
 ##'   messages = FALSE
 ##' )
 ##'
@@ -3349,7 +3353,8 @@ assess_simulation <- function(simulation,
                               aggregate = NULL,
                               boundaries = NULL,
                               label = NULL,
-                              objective = c("mse", "classify"),
+                              objective = if (is.null(breaks)) "mse" else
+                                c("mse", "classify"),
                               breaks = NULL,
                               control_mcmc = set_control_mcmc(),
                               seed = NULL,

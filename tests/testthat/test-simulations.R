@@ -495,6 +495,37 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   )
 })
 
+test_that("assess_simulation classifies by default only when breaks are given #389", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+  assess <- function(...) {
+    assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
+                      control_mcmc = control_mcmc, seed = fixture_seed,
+                      spatial_scale = "location", messages = FALSE, ...)
+  }
+  breaks <- c(-3, -1, 0, 1, 3)
+
+  # Without breaks the default is the mean squared error alone.
+  by_default <- assess()
+  expect_identical(names(by_default$objective$location), "mse")
+  expect_identical(by_default, assess(objective = "mse"))
+  expect_match(squish(capture.output(print(by_default))),
+               "by mean squared error\\.")
+
+  # With breaks the default adds the classification.
+  with_breaks <- assess(breaks = breaks)
+  expect_identical(names(with_breaks$objective$location), c("mse", "classify"))
+  expect_identical(with_breaks,
+                   assess(objective = c("mse", "classify"), breaks = breaks))
+
+  # An objective that is given is kept, with or without breaks.
+  expect_identical(names(assess(objective = "mse", breaks = breaks)$objective$location),
+                   "mse")
+  expect_input_error(assess(objective = "classify"), "breaks",
+                     "must be given when")
+})
+
 test_that("classification metrics retain fixed categories and compute accuracy #108", {
   samples <- rbind(
     rep(0.25, 4),
