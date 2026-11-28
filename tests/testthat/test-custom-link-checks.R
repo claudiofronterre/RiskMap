@@ -126,12 +126,12 @@ test_that("the independent-site likelihood of a probit link matches integration"
 
 test_that("a fit with a custom link runs the screen and the exact alarms", {
   skip_on_cran()
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, invlink = function(eta) stats::pnorm(eta),
     control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, messages = FALSE
-  ))
+  )
   screen <- attr(fit, "optimizer")$mcml_maxima_screen
   expect_false(identical(screen$gate, "unavailable"))
   expect_null(screen$reason)

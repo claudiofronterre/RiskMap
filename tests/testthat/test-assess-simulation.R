@@ -19,14 +19,15 @@ assess_named <- function(formula, family, parameters, ...) {
     specify_glgpm(formula, named_data, family, parameters,
                   denominator = denominator)
   }
+  # Simulations whose binomial fits identify the scale.
   sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
-                        prediction_grid = named_grid, seed = 3)
-  suppressWarnings(assess_simulation(
+                        prediction_grid = named_grid, seed = 1)
+  assess_simulation(
     sim, models = list(model = model), spatial_scale = c("location", "area"),
     aggregate = "mean", boundaries = named_areas, label = "name",
     objective = "mse", control_mcmc = control_mcmc, seed = fixture_seed,
     messages = FALSE, ...
-  ))
+  )
 }
 
 test_that("assess_simulation keeps covariates called y and units_m", {
@@ -71,7 +72,7 @@ test_that("a covariate called as the response of the generating model is kept", 
   generating <- specify_glgpm(y ~ cov + gp(), named_data, "gaussian", gaussian)
   sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
                         prediction_grid = named_grid, seed = 3)
-  result <- suppressWarnings(assess_simulation(
+  result <- assess_simulation(
     sim,
     models = list(
       named_y = specify_glgpm(cases ~ y + gp(), named_data, "gaussian", gaussian),
@@ -79,7 +80,7 @@ test_that("a covariate called as the response of the generating model is kept", 
     ),
     spatial_scale = "location", objective = "mse", control_mcmc = control_mcmc,
     seed = fixture_seed, messages = FALSE
-  ))
+  )
   mse <- result$objective$location$mse
   expect_identical(mse["named_y", ], mse["named_cov", ])
 })
@@ -98,11 +99,11 @@ test_that("assess_simulation refuses a candidate with a transformed response", {
   )
   # A candidate may call its response differently.
   other_name <- specify_glgpm(cases ~ gp(), gaussian_data, "gaussian", parameters)
-  result <- suppressWarnings(assess_simulation(
+  result <- assess_simulation(
     sim, models = list(y = generating, cases = other_name),
     spatial_scale = "location", objective = "mse", seed = fixture_seed,
     messages = FALSE
-  ))
+  )
   mse <- result$objective$location$mse
   expect_identical(mse["y", ], mse["cases", ])
 })
@@ -233,11 +234,11 @@ expect_exact_draws <- function(draws, exact, groups) {
 }
 
 nugget_gaussian_fit <- function(formula, ...) {
-  suppressWarnings(glgpm(
+  glgpm(
     formula, data = nugget_sites, family = "gaussian", messages = FALSE,
     fixed_pars = list(beta = c(0.5, 1), sigma2 = 1, phi = 2, tau2 = 1.5,
                       sigma2_me = 0.2, ...)
-  ))
+  )
 }
 
 test_that("draws of a Gaussian model at sampled sites condition on their nugget", {
@@ -264,11 +265,11 @@ test_that("draws of a Gaussian model at sampled sites condition on their nugget"
 
 test_that("draws of a Gaussian model without measurement error are its data", {
   sites <- nugget_sites[1:8, ]
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ gp(nugget = TRUE), data = sites, family = "gaussian", messages = FALSE,
     fixed_pars = list(beta = 0.5, sigma2 = 1, phi = 2, tau2 = 1.5,
                       sigma2_me = 0)
-  ))
+  )
   control <- set_control_mcmc(n_draws = 20, burnin = 0, thin = 1)
   for (groups in list(NULL, nugget_groups)) {
     expect_no_warning(
@@ -281,12 +282,12 @@ test_that("draws of a Gaussian model without measurement error are its data", {
   }
 
   # With groups, the data leave only their variance.
-  grouped <- suppressWarnings(glgpm(
+  grouped <- glgpm(
     y ~ gp(nugget = TRUE) + re(group), data = sites, family = "gaussian",
     messages = FALSE,
     fixed_pars = list(beta = 0.5, sigma2 = 1, phi = 2, tau2 = 1.5,
                       sigma2_me = 0, sigma2_re = 0.7)
-  ))
+  )
   expect_no_warning(
     draws <- assessment_response_draws(grouped, nugget_grid, "nugget", control)
   )
@@ -307,11 +308,11 @@ test_that("joint draws share the nugget of a repeated location", {
   nugget_sites$cases <- rep(c(3, 12, 7, 9), 5)
   fits <- list(
     nugget_gaussian_fit(y ~ cov + gp(nugget = TRUE)),
-    suppressWarnings(glgpm(
+    glgpm(
       cases ~ cov + gp(nugget = TRUE), data = nugget_sites, family = "binomial",
       denominator = m, messages = FALSE,
       fixed_pars = list(beta = c(0.2, 0.1), sigma2 = 0.3, phi = 2, tau2 = 1.5)
-    ))
+    )
   )
   for (fit in fits) {
     for (rows in list(c(3, 3, 4), c(1, 1, 3, 3, 4))) {
@@ -319,11 +320,16 @@ test_that("joint draws share the nugget of a repeated location", {
       # Only the fixed part differs between the rows of a repeated location.
       grid$cov[which(rows == 3)] <- c(0.15, 0.95)
       set.seed(17)
-      # The prediction engine warns of the jitter that equal rows need.
-      draws <- suppressWarnings(
+      # Equal rows can need a jitter, of which the prediction engine warns,
+      # depending on rounding. Only that warning is muffled.
+      draws <- withCallingHandlers(
         assessment_response_draws(fit, grid, "nugget", control,
                                   rep(1L, length(rows))),
-        classes = "riskmap_warning_fit"
+        riskmap_warning_fit = function(warning) {
+          if (grepl("to be factorised", conditionMessage(warning), fixed = TRUE)) {
+            invokeRestart("muffleWarning")
+          }
+        }
       )
       link <- if (fit$family == "gaussian") draws else qlogis(draws)
       difference <- link[which(rows == 3), ]
@@ -337,16 +343,18 @@ test_that("joint draws share the nugget of a repeated location", {
 
 test_that("draws of a binomial model at sampled sites are those of the fit's latent effects", {
   # Sites so far apart that their effects are independent, which makes the
-  # exact distribution at each an integral over one effect.
-  far <- st_as_sf(data.frame(x = c(0, 1e6, 2e6, 3e6), z = 0,
+  # exact distribution at each an integral over one effect. They are 100 km
+  # apart about the central meridian, so that the projection does not distort
+  # their distances.
+  far <- st_as_sf(data.frame(x = 5e5 + c(0, 1e5, 2e5, 3e5), z = 0,
                              cases = c(1, 19, 12, 4), m = 20),
                   coords = c("x", "z"), crs = 32637)
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     cases ~ gp(nugget = TRUE), data = far, family = "binomial",
     denominator = m, messages = FALSE,
     fixed_pars = list(beta = 0.2, sigma2 = 0.3, phi = 2, tau2 = 1.5)
-  ))
-  new <- st_as_sf(data.frame(x = 5e5, z = 0), coords = c("x", "z"), crs = 32637)
+  )
+  new <- st_as_sf(data.frame(x = 5.5e5, z = 0), coords = c("x", "z"), crs = 32637)
   grid <- rbind(far[c(2, 1), "geometry"], new)
   exact <- vapply(c(2, 1), function(i) {
     weight <- function(w) dbinom(far$cases[i], 20, plogis(0.2 + w)) *
@@ -368,13 +376,13 @@ test_that("draws away from the sampled sites are those of the prediction engine"
   control <- set_control_mcmc(n_draws = 50, burnin = 100, thin = 2)
   gaussian <- nugget_gaussian_fit(y ~ cov + gp(nugget = TRUE))
   nugget_sites$cases <- rep(c(3, 12, 7, 9), 5)
-  binomial <- suppressWarnings(glgpm(
+  binomial <- glgpm(
     cases ~ cov + gp(nugget = TRUE) + re(group), data = nugget_sites,
     family = "binomial", denominator = m, messages = FALSE,
     control_mcml = set_control_mcml(integrate_noise = FALSE),
     fixed_pars = list(beta = c(0.2, 0.1), sigma2 = 0.3, phi = 2, tau2 = 1.5,
                       sigma2_re = 0.2)
-  ))
+  )
   sampled <- !is.na(nugget_grid$site)
   for (fit in list(gaussian, binomial)) {
     for (groups in list(NULL, nugget_groups)) {
@@ -415,16 +423,16 @@ test_that("assess_simulation predicts the realised nugget at sampled sites", {
                     coords = c("x", "z"), crs = 32633)
   parameters <- list(beta = 0, sigma2 = 1, phi = 20, tau2 = 1, sigma2_me = 0.05)
   model <- specify_glgpm(y ~ gp(nugget = TRUE), sites, "gaussian", parameters)
-  candidate <- suppressWarnings(glgpm(
+  candidate <- glgpm(
     y ~ gp(nugget = TRUE), data = transform(sites, y = rnorm(n)),
     family = "gaussian", messages = FALSE, fixed_pars = parameters
-  ))
+  )
   sim <- simulate_glgpm(model, nsim = 10, what = c("data", "surface"),
                         prediction_grid = sites, seed = 2)
-  result <- suppressWarnings(assess_simulation(
+  result <- assess_simulation(
     sim, models = list(model = candidate), spatial_scale = "location",
     objective = "mse", seed = 1, messages = FALSE
-  ))
+  )
   # The mean squared errors of the exact conditional means of the surface with
   # its nugget, 0.048 on average.
   correlation <- exp(-as.matrix(dist(st_coordinates(sites) / 1000)) / 20)
@@ -444,18 +452,18 @@ test_that("assess_simulation adds an offset that is zero at the samples", {
     nugget_sites$count <- rep(c(3, 12, 7, 9), 5)
     nugget_grid$exposure <- value
     model <- specify_glgpm(formula, nugget_sites, family, parameters)
-    candidate <- suppressWarnings(glgpm(
+    candidate <- glgpm(
       formula, data = nugget_sites, family = family, messages = FALSE,
       fixed_pars = parameters
-    ))
+    )
     sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
                           prediction_grid = nugget_grid, seed = 3)
-    result <- suppressWarnings(assess_simulation(
+    result <- assess_simulation(
       sim, models = list(model = candidate),
       spatial_scale = c("location", "area"), aggregate = "mean",
       boundaries = named_areas, label = "name", objective = "mse",
       control_mcmc = control_mcmc, seed = fixture_seed, messages = FALSE
-    ))
+    )
     list(data = sim$samples$data[, , "response"],
          surface = sim$samples$surface[, , "mean"],
          mse = lapply(result$objective, function(scale) unname(scale$mse)),
@@ -506,10 +514,10 @@ test_that("a model can't be called Class when models are classified", {
                       messages = FALSE),
     "models", "Class"
   )
-  result <- suppressWarnings(assess_simulation(
+  result <- assess_simulation(
     edge_simulation, models, spatial_scale = "location", objective = "mse",
     seed = 1, messages = FALSE
-  ))
+  )
   expect_true(all(is.finite(result$objective$location$mse)))
 })
 

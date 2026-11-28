@@ -118,18 +118,18 @@ test_that("models of different observations can't be compared", {
     expect_input_error(assess(list(a = first, b = other), list(1:2)), "models",
                        ...)
   }
-  refused(fit(gaussian_data[1:9, ]), sprintf("is fitted to 9 of them, and \"a\" to %d", n))
-  refused(fit(gaussian_data[n:1, ]), "same rows in the same order")
-  moved <- gaussian_data
+  refused(fit(gaussian_intercept_data[1:9, ]), sprintf("is fitted to 9 of them, and \"a\" to %d", fixture_n))
+  refused(fit(gaussian_intercept_data[fixture_n:1, ]), "same rows in the same order")
+  moved <- gaussian_intercept_data
   st_geometry(moved)[1] <- st_geometry(moved)[1] + c(1, 0)
-  refused(fit(st_set_crs(moved, st_crs(gaussian_data))),
+  refused(fit(st_set_crs(moved, st_crs(gaussian_intercept_data))),
           "same rows in the same order")
   # Defect 17, a response on another scale.
-  other <- gaussian_data
+  other <- gaussian_intercept_data
   other$y <- exp(other$y)
   refused(fit(other), "The responses of \"b\" and \"a\" differ")
   # Rounding in the last digits isn't a difference.
-  rounded <- gaussian_data
+  rounded <- gaussian_intercept_data
   rounded$y <- (rounded$y / 3) * 3
   local_mocked_bindings(predict_test_set = mock_constant(0))
   expect_s3_class(assess(list(first, fit(rounded)), list(1:2)),
@@ -183,8 +183,7 @@ test_that("each model predicts from its own data", {
 test_that("the result has a row for each model and test observation", {
   local_mocked_bindings(predict_test_set = mock_constant(0))
   sets <- list(c(3, 1), list(train = 5:10, test = c(2, 3)))
-  out <- assess(list(a = gaussian_intercept_model, b = gaussian_offset_model),
-                sets)
+  out <- assess(list(a = gaussian_no_cov_model, b = gaussian_model), sets)
   expect_s3_class(out, "RiskMap_cross_validation")
   expect_named(out, c("scores", "calibration", "test_sets", "refit", "family",
                       "failures"), ignore.order = TRUE)
@@ -370,9 +369,9 @@ test_that("the seed reproduces an assessment and keeps the session's numbers", {
   set.seed(1)
   state <- .Random.seed
   run <- function(...) {
-    assess(list(a = gaussian_model, b = binomial_like), list(1:4, c(2, 7)), ...)
+    assess(list(a = gaussian_model, b = gaussian_no_cov_model), list(1:4, c(2, 7)),
+           ...)
   }
-  binomial_like <- gaussian_offset_model
   first <- run(seed = 7)
   expect_identical(.Random.seed, state)
   expect_identical(run(seed = 7), first)
@@ -405,7 +404,7 @@ test_that("a model has the same scores in any position", {
 
 test_that("assess_prediction() says how the parameters are set", {
   local_mocked_bindings(predict_test_set = mock_constant(0))
-  fits <- list(m0 = gaussian_intercept_model, m1 = gaussian_offset_model)
+  fits <- list(m0 = gaussian_no_cov_model, m1 = gaussian_model)
   said <- function(models) {
     paste(capture_messages(assess_prediction(models, list(1:2))), collapse = " ")
   }
@@ -413,7 +412,7 @@ test_that("assess_prediction() says how the parameters are set", {
   expect_match(said(fits), "different numbers of parameters")
   expect_no_match(said(list(a = fits$m0, b = fits$m0)), "different numbers")
   expect_no_message(assess(fits, list(1:2)))
-  local_mocked_bindings(glgpm = function(...) gaussian_intercept_model)
+  local_mocked_bindings(glgpm = function(...) gaussian_no_cov_model)
   expect_message(assess_prediction(fits, list(1:2, 3), refit = TRUE),
                  "re-estimated in each training set \\(4 model fits\\)")
 })
@@ -501,7 +500,7 @@ test_that("the scores of Gaussian models with re() are those of their closed for
   by_site <- lapply(0:2, function(k) which((rep(1:12, each = 3) - 1) %% 3 == k))
   by_group <- lapply(0:3, function(k) 9 * k + 1:9)
   for (sets in list(by_site, by_group)) {
-    out <- suppressWarnings(assess(fit, sets, control_mcmc = control, seed = 2))
+    out <- assess(fit, sets, control_mcmc = control, seed = 2)
     expect_identical(nrow(out$failures), 0L)
     exact <- lapply(sets, function(test) {
       prediction <- exact_prediction(fit, test)
@@ -525,12 +524,12 @@ test_that("the scores of counts with re() are those of their closed form", {
                               y = c(9, 12, 7, 10, 0, 1, 0, 2, 3, 3, 5, 2),
                               n = rep(c(2, 1), 6)),
                    coords = c("x", "z"), crs = 32637)
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ gp() + re(group), data = data, family = "poisson", denominator = n,
     messages = FALSE, return_samples = FALSE, seed = 1,
     fixed_pars = list(beta = 0.8, sigma2 = 1e-6, phi = 1,
                       sigma2_re = c(group = 0.7))
-  ))
+  )
   out <- assess(fit, list(c(1, 2, 5, 6), 9:12), seed = 3,
                 control_mcmc = set_control_mcmc(n_draws = 4000, burnin = 2000,
                                                 thin = 10))
@@ -609,10 +608,10 @@ test_that("the reference shows a step while it runs", {
 test_that("assess_prediction() refits the models of every family", {
   skip_on_cran()
   for (fit in list(gaussian_model, binomial_model, poisson_model)) {
-    out <- suppressWarnings(assess(
+    out <- assess(
       list(model = fit), list(2), refit = TRUE, control_mcmc = control_mcmc,
       seed = fixture_seed
-    ))
+    )
     expect_identical(nrow(out$failures), 0L)
     expect_true(is.finite(out$scores$CRPS))
     expect_true(out$refit)

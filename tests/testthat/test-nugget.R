@@ -17,8 +17,10 @@ test_that("the nugget and the measurement error variance cannot both be estimate
   expect_identical(zero_error_fit$fixed_pars, list(sigma2_me = 0))
   expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
 
+  # Three locations can't identify both a spatial variance and a nugget, and
+  # these give a singular information on every platform.
   expect_warnings(
-    glgpm(
+    fit <- glgpm(
       z ~ gp(nugget = TRUE), gaussian_data, "binomial",
       denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, messages = FALSE
@@ -26,6 +28,7 @@ test_that("the nugget and the measurement error variance cannot both be estimate
     c("`sigma2` was estimated as effectively zero",
       "observed information matrix is singular")
   )
+  expect_true(attr(fit, "optimizer")$mcml_identifiability_failure)
 
   two_location_data <- rbind(data,
                              data.frame(

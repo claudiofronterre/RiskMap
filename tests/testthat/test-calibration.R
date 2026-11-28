@@ -160,13 +160,13 @@ test_that("the working model has the covariance of the fit", {
     kappa = fit$kappa
   )
   group <- outer(fit$data$i, fit$data$i, "==")
-  covariance <- spatial + p$sigma2_re[[1]] * group + diag(p$sigma2_me, n)
+  covariance <- spatial + p$sigma2_re[[1]] * group + diag(p$sigma2_me, fixture_n)
   expect_equal(working$covariance(working$theta), covariance,
                ignore_attr = TRUE)
   # The derivatives are on the logarithmic scale.
   expect_equal(working$derivative("sigma2"), spatial, ignore_attr = TRUE,
                tolerance = 1e-6)
-  expect_equal(working$derivative("sigma2_me"), diag(p$sigma2_me, n),
+  expect_equal(working$derivative("sigma2_me"), diag(p$sigma2_me, fixture_n),
                ignore_attr = TRUE, tolerance = 1e-6)
   expect_identical(colnames(working$design), c("(Intercept)", "cov"))
   # A nugget, a measurement error held at zero, and a held scale.
@@ -200,7 +200,7 @@ test_that("candidate points move the free parameters around the estimates", {
   expect_identical(candidate_points(working, 50), points)
   expect_identical(candidate_points(working, 1), points[1, , drop = FALSE])
   # Without free parameters, only the estimates.
-  held <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+  held <- glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian",
                 fixed_pars = list(sigma2 = 1, phi = 2, sigma2_me = 0.1),
                 messages = FALSE)
   expect_identical(nrow(candidate_points(working_model(held), 50)), 1L)
@@ -275,8 +275,8 @@ test_that("held parameters are known in the simulated datasets", {
     out <- candidate_errors(working, sets, 3L, 20L, refit)
     set.seed(4)
     V <- working$covariance(working$theta)
-    z <- t(chol(V)) %*% matrix(rnorm(3 * n), n)
-    train <- setdiff(seq_len(n), c(2, 5, 7))
+    z <- t(chol(V)) %*% matrix(rnorm(3 * fixture_n), fixture_n)
+    train <- setdiff(seq_len(fixture_n), c(2, 5, 7))
     weights <- V[c(2, 5), train] %*% solve(V[train, train])
     sd <- sqrt(diag(V[c(2, 5), c(2, 5)] - weights %*% V[train, c(2, 5)]))
     expect_equal(out, pnorm((z[c(2, 5), ] - weights %*% z[train, ]) / sd),
@@ -290,7 +290,7 @@ test_that("a coefficient that a training set can't estimate is left out", {
   sets <- list(list(test = c(2, 5), left_out = c(2, 5, 7)),
                list(test = 1:3, left_out = 1:3))
   wider <- working
-  wider$design <- cbind(working$design, as.numeric(seq_len(n) %in% c(2, 5, 7)))
+  wider$design <- cbind(working$design, as.numeric(seq_len(fixture_n) %in% c(2, 5, 7)))
   set.seed(5)
   out <- candidate_errors(wider, sets, 4L, 6L, TRUE)
   set.seed(5)
@@ -337,21 +337,22 @@ test_that("calibration_reference() is reproducible and keeps the session's numbe
 test_that("counts have the PIT of counts from their predictive distributions", {
   skip_on_cran()
   fit <- function(family, data, ...) {
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ gp(), data = data, family = family, control_mcmc = control_mcmc,
       seed = fixture_seed, control_mcml = fixture_control_mcml,
       messages = FALSE, ...
-    ))
+    )
   }
-  bernoulli_data <- binomial_data
-  bernoulli_data$y <- as.integer(bernoulli_data$y > median(bernoulli_data$y))
-  bernoulli_data$one <- 1
+  # Binary outcomes simulated from y ~ gp().
+  bernoulli_data <- simulate_fixture(30, function(columns) {
+    rbinom(fixture_n, 1, plogis(0.2 + fixture_field))
+  }, denominator = rep(1L, fixture_n))
   fits <- list(
     binomial = binomial_model, poisson = poisson_model,
     negative_binomial = fit(negative_binomial(), poisson_data,
                             denominator = denominator,
                             fixed_pars = list(theta = 2)),
-    bernoulli = fit("binomial", bernoulli_data, denominator = one)
+    bernoulli = fit("binomial", bernoulli_data, denominator = denominator)
   )
   for (name in names(fits)) {
     set.seed(27)
@@ -390,11 +391,11 @@ test_that("counts drawn at known parameters have a calibrated reference", {
   # counts have their predictive distributions, whose average curve is the
   # identity line.
   held <- function(family, data) {
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ gp(), data = data, family = family, denominator = denominator,
       fixed_pars = list(beta = 0.2, sigma2 = 0.5, phi = 2),
       control_mcmc = control_mcmc, seed = fixture_seed, messages = FALSE
-    ))
+    )
   }
   for (family in c("binomial", "poisson")) {
     fit <- held(family, if (family == "binomial") binomial_data else poisson_data)

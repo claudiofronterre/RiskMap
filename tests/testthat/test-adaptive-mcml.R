@@ -269,7 +269,7 @@ test_that("set_control_mcml validates the PC prior options", {
 })
 
 test_that("glgpm fits with the PC prior and reports the unpenalised likelihood", {
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = set_control_mcml(
@@ -277,7 +277,7 @@ test_that("glgpm fits with the PC prior and reports the unpenalised likelihood",
       max_stages = 1, pc_prior = TRUE
     ),
     messages = FALSE
-  ))
+  )
   expect_true(attr(fit, "optimizer")$mcml_pc_prior)
   expect_true(all(is.finite(unlist(fit$estimate))))
   expect_true(is.finite(fit$log_lik))
@@ -442,10 +442,8 @@ test_that("weighted quadratic fits are exact and use QR when needed", {
   # Weight on two nodes only: the fit is not identified.
   concentrated <- matrix(0, 1, length(nodes))
   concentrated[1, 10:11] <- 1
-  expect_false(all(is.finite(suppressWarnings(
-    fit_observation_quadratics(values[1, , drop = FALSE], concentrated,
-                               nodes)[1, ]
-  ))))
+  expect_false(all(is.finite(fit_observation_quadratics(values[1, , drop = FALSE], concentrated,
+                               nodes)[1, ])))
 })
 
 test_that("the global proposal keeps more effective draws than Laplace", {
@@ -858,12 +856,12 @@ test_that("a control saved with the sizes as *_samples fits as before", {
                                      "max_samples")
   old <- structure(old, class = "RiskMap_control_mcml")
   fit_with <- function(control) {
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ cov + gp(), data = binomial_data, family = "binomial",
       denominator = denominator, control_mcmc = control_mcmc,
       control_mcml = control, seed = fixture_seed, return_samples = FALSE,
       messages = FALSE
-    ))
+    )
   }
   expect_identical(coef(fit_with(old)), coef(fit_with(fixture_control_mcml)))
   # A fit holding every parameter evaluates the likelihood on one bank of the

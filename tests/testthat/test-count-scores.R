@@ -371,11 +371,11 @@ test_that("a test set with a draw of the mean that isn't finite is a failure", {
 test_that("a fit has the same count scores alone and in any position of a list", {
   skip_on_cran()
   fit_family <- function(family, data, ...) {
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ gp(), data = data, family = family, denominator = denominator,
       control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, messages = FALSE, ...
-    ))
+    )
   }
   fits <- list(
     binomial = fit_family("binomial", binomial_data),

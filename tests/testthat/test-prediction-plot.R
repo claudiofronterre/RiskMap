@@ -501,7 +501,7 @@ test_that("a threshold is found whatever the rounding of its last bits", {
     gaussian_model, prediction_data, boundaries = st_sf(geometry = squares),
     aggregate = "mean", summaries = c("mean", "exceedance"),
     thresholds = thresholds, seed = 1, messages = FALSE
-  ) |> suppressWarnings()
+  )
   for (spatial_scale in c("location", "area", "both")) {
     values <- lapply(list(0.3, thresholds[3]), function(threshold) {
       map <- plot_prediction(prediction, summaries = "exceedance",

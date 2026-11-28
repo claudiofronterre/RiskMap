@@ -207,6 +207,6 @@ Text is plain unless `markup = TRUE`, so that data such as a formula are printed
 ## Testing
 
 - We use [testthat](https://cran.r-project.org/package=testthat) for unit tests. Each function should have unit tests to verify that they function as expected and fail gracefully when incorrect inputs are provided.
-- Test data is included in `tests/testthat/helper-data.R` which is loaded when `devtools::load_all()` is used and available to use in all the tests.
+- Test data is included in `tests/testthat/helper-data.R` which is loaded when `devtools::load_all()` is used and available to use in all the tests. Each dataset there is simulated from the model the tests fit to it, so fit a model to the dataset simulated from it, or simulate one at the same locations with `simulate_fixture()`.
 - Tests affecting a change made should be run locally prior to submitting a PR, but the whole suite will be run whenever changes are pushed.
-- Do not use `suppressWarnings()` in tests or fixtures. If a warning is expected, assert it with `expect_warning()` and its message; if it is not expected, fix whatever is causing it instead of hiding it.
+- Do not use `suppressWarnings()` in tests or fixtures. If a warning is expected, assert it with `expect_warning()` and its class or message, or with `expect_warnings()` from `tests/testthat/helper-conditions.R`, which also fails on any other warning. If it is not expected, fix whatever is causing it instead of hiding it.

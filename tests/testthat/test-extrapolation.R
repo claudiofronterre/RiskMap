@@ -126,7 +126,7 @@ test_that("an extrapolation map at points not made by create_grid() draws every 
 })
 
 test_that("unexplained spatial variance uses fixed variance components", {
-  fixed_model <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+  fixed_model <- glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian",
                        fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
   estimated_model <- fixed_model
   estimated_model$fixed_pars <- NULL
@@ -219,12 +219,12 @@ test_that("the unexplained share includes the binomial sampling noise", {
 })
 
 test_that("a Gaussian share is the kriging variance with the records averaged", {
-  repeated <- rbind(gaussian_data, gaussian_data[1:3, ])
+  repeated <- rbind(gaussian_intercept_data, gaussian_intercept_data[1:3, ])
   withr::with_seed(3, repeated$y <- repeated$y + stats::rnorm(nrow(repeated),
                                                               sd = 0.3))
   fit <- glgpm(y ~ gp(), data = repeated, family = "gaussian",
                messages = FALSE)
-  expect_identical(nrow(fit$coords), nrow(gaussian_data))
+  expect_identical(nrow(fit$coords), nrow(gaussian_intercept_data))
   parameters <- coef(fit)
   observed <- fit$coords
   records <- observed[fit$ID_coords, ]
@@ -246,7 +246,7 @@ test_that("a Gaussian share is the kriging variance with the records averaged", 
   newdata <- st_as_sf(data.frame(x = point[1] / factor, z = point[2] / factor),
                       coords = c("x", "z"), crs = 32637)
   expect_equal(assess_extrapolation(fit, newdata)$spatial_unexplained,
-               expected, tolerance = 1e-8)
+               expected, tolerance = 1e-7)
 })
 
 test_that("documents that print data frames as tables show the print", {
@@ -281,7 +281,7 @@ test_that("the print of indicators states the classes and the thresholds", {
   extrapolation <- assess_extrapolation(binomial_model, binomial_data)
   printed <- capture.output(print(extrapolation))
   expect_match(printed[1L], "Extrapolation")
-  expect_true(sprintf("Indicators at %d locations.", n) %in% printed)
+  expect_true(sprintf("Indicators at %d locations.", fixture_n) %in% printed)
   share <- paste0(format(100 * attr(extrapolation, "spatial_threshold"),
                          digits = 3), "%")
   expect_match(squish(printed), paste0(

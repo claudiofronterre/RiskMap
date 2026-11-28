@@ -1,32 +1,107 @@
+# The shared fixtures of the tests (#206). Every dataset is simulated from the
+# model that the tests fit to it, at the same 20 locations in a 10 km square
+# and with the same spatial field, so that each fit estimates effects its data
+# contain:
+#
+# - `gaussian_data`, `binomial_data` and `poisson_data` from `y ~ cov + gp()`,
+#   with a measurement error variance for the Gaussian data and the exposure
+#   `denominator` for the counts;
+# - `gaussian_re_data`, `binomial_re_data` and `poisson_re_data` from
+#   `y ~ cov + gp() + re(i)`, for `gaussian_model`, `binomial_model` and
+#   `poisson_model`;
+# - `gaussian_two_re_data` and `binomial_two_re_data` from
+#   `y ~ cov + gp() + re(i, j)`, with four levels of `j`;
+# - `gaussian_offset_data` from `y ~ cov + gp(nugget = TRUE) + offset(offset)`
+#   for `gaussian_offset_model`, and `gaussian_intercept_data` from `y ~ gp()`
+#   for `gaussian_intercept_model`;
+# - `binomial_nugget_data` from `y ~ cov + gp(nugget = TRUE)`, with five times
+#   the denominators, without which the nugget is not identified.
+#
+# Each dataset draws its response with its own seed, chosen so that these
+# fits are clean: a scale longer than the median distance between
+# neighbouring locations (1.1 km), variances away from zero and every check of
+# `check_computation()` OK. Data for another model can be simulated at the
+# same locations with `simulate_fixture()`.
 set.seed(1)
-n <- 20L
-coords <- cbind(runif(n, 0, 10000), runif(n, 0, 10000))
-n_groups <- n / 2L
+fixture_n <- 20L
+fixture_groups <- fixture_n / 2L
+fixture_columns <- withr::with_seed(1, {
+  data.frame(x = runif(fixture_n, 0, 10000), z = runif(fixture_n, 0, 10000),
+             cov = rnorm(fixture_n),
+             denominator = sample(5:20, fixture_n, replace = TRUE),
+             offset = rnorm(fixture_n),
+             i = rep(seq_len(fixture_groups), each = 2),
+             j = rep(1:2, each = fixture_groups))
+})
+# A field of variance 1 and scale 5.5 km.
+fixture_field <- withr::with_seed(2, {
+  correlation <- matern_correlation(dist(fixture_columns[, c("x", "z")]),
+                                    phi = 5500, kappa = 1,
+                                    return_sym_matrix = TRUE)
+  as.numeric(t(chol(correlation)) %*% rnorm(fixture_n))
+})
 
-data <- data.frame(x = coords[,1],
-                   z = coords[,2],
-                   cov = rnorm(n),
-                   denominator =  sample(5:20, n, replace = TRUE),
-                   offset = rnorm(n),
-                   i = rep(1:n_groups, each = 2),
-                   j = rep(1:2, each = n_groups))
+# The locations with the response `y` that `response(columns)` draws with
+# `seed`. `columns` can replace columns of `fixture_columns`.
+simulate_fixture <- function(seed, response, ...) {
+  columns <- utils::modifyList(fixture_columns, list(...))
+  columns$y <- withr::with_seed(seed, response(columns))
+  st_as_sf(columns, coords = c("x", "z"), crs = 32637)
+}
+fixture_effect <- function(levels, variance = 1) {
+  rnorm(max(levels), sd = sqrt(variance))[levels]
+}
+two_re_j <- rep(1:4, length.out = fixture_n)
 
-sigma2 <- 1
-phi <- 5500
-kappa <- 1
-Sigma <- sigma2 * matern_correlation(dist(coords), phi = phi, kappa = kappa,
-                             return_sym_matrix = TRUE)
-Sigma_sroot <- t(chol(Sigma))
-S <- as.numeric(Sigma_sroot %*% rnorm(n))
-
-sigma2_re <- 1.6
-re_values <- rnorm(n_groups, sd = sqrt(sigma2_re))
-tau2 <- 0.3
-nugget_values <- rnorm(n, sd = sqrt(tau2))
-
-data$y <- 3 + 0.5 * data$cov + S + re_values[data$i] + nugget_values
-gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
+gaussian_data <- simulate_fixture(20, function(columns) {
+  3 + 0.5 * columns$cov + fixture_field + rnorm(fixture_n, sd = sqrt(0.3))
+})
+gaussian_re_data <- simulate_fixture(10, function(columns) {
+  3 + 0.5 * columns$cov + fixture_field + fixture_effect(columns$i) +
+    rnorm(fixture_n, sd = sqrt(0.3))
+})
+gaussian_two_re_data <- simulate_fixture(60, function(columns) {
+  3 + 0.5 * columns$cov + fixture_field + fixture_effect(columns$i) +
+    fixture_effect(columns$j) + rnorm(fixture_n, sd = sqrt(0.3))
+}, j = two_re_j)
+gaussian_offset_data <- simulate_fixture(14, function(columns) {
+  3 + 0.5 * columns$cov + columns$offset + fixture_field +
+    rnorm(fixture_n, sd = sqrt(0.3))
+})
+gaussian_intercept_data <- simulate_fixture(38, function(columns) {
+  3 + fixture_field + rnorm(fixture_n, sd = sqrt(0.3))
+})
 latlon_data <- st_transform(gaussian_data, crs = 4326)
+
+binomial_data <- simulate_fixture(33, function(columns) {
+  rbinom(fixture_n, columns$denominator,
+         plogis(0.2 + 0.3 * columns$cov + fixture_field))
+})
+binomial_re_data <- simulate_fixture(18, function(columns) {
+  rbinom(fixture_n, columns$denominator,
+         plogis(0.2 + 0.3 * columns$cov + fixture_field +
+                  fixture_effect(columns$i)))
+})
+binomial_two_re_data <- simulate_fixture(31, function(columns) {
+  rbinom(fixture_n, columns$denominator,
+         plogis(0.2 + 0.3 * columns$cov + fixture_field +
+                  fixture_effect(columns$i) + fixture_effect(columns$j)))
+}, j = two_re_j)
+binomial_nugget_data <- simulate_fixture(20, function(columns) {
+  rbinom(fixture_n, columns$denominator,
+         plogis(0.2 + 0.3 * columns$cov + fixture_field +
+                  rnorm(fixture_n, sd = sqrt(0.5))))
+}, denominator = 5L * fixture_columns$denominator)
+
+poisson_data <- simulate_fixture(35, function(columns) {
+  rpois(fixture_n, columns$denominator *
+          exp(-1 + 0.2 * columns$cov + fixture_field))
+})
+poisson_re_data <- simulate_fixture(3, function(columns) {
+  rpois(fixture_n, columns$denominator *
+          exp(-1 + 0.2 * columns$cov + fixture_field +
+                fixture_effect(columns$i)))
+})
 
 # reduce iterations to speed up fits
 control_mcmc <- set_control_mcmc(n_draws = 80,
@@ -38,38 +113,35 @@ fixture_control_mcml <- set_control_mcml(
 )
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),
-                        data = gaussian_data,
+                        data = gaussian_re_data,
                         family = "gaussian",
                         messages = FALSE)
 
+# gaussian_model without the covariate, a second model of the same data.
+gaussian_no_cov_model <- glgpm(y ~ gp() + re(i),
+                               data = gaussian_re_data,
+                               family = "gaussian",
+                               messages = FALSE)
+
 gaussian_offset_model <- glgpm(y ~ cov + gp(nugget = TRUE) + offset(offset),
-                               data = gaussian_data,
+                               data = gaussian_offset_data,
                                family = "gaussian",
                                fixed_pars = list(sigma2_me = 0),
                                messages = FALSE)
 
 gaussian_intercept_model <- glgpm(y ~ gp(),
-                                  data = gaussian_data,
+                                  data = gaussian_intercept_data,
                                   family = "gaussian",
                                   messages = FALSE)
 
-eta <- 0.2 + 0.3 * data$cov + S + re_values[data$i]
-p <- plogis(eta)
-data$y <- rbinom(n, size = data$denominator, prob = p)
-binomial_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
-
 binomial_model <- glgpm(
-  y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+  y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
   denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, messages = FALSE
 )
 
-lambda <- exp(1 + 0.2 * data$cov + S + re_values[data$i])
-data$y <- rpois(n, lambda) + 1
-poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
-
 poisson_model <- glgpm(
-  y ~ cov + gp() + re(i), data = poisson_data, family = "poisson",
+  y ~ cov + gp() + re(i), data = poisson_re_data, family = "poisson",
   denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, return_samples = TRUE,
   messages = FALSE
@@ -98,7 +170,7 @@ independent_reference <- function(fit, test_sets, predictive, n_curves, ...) {
 }
 
 cross_validation <- assess_prediction(
-  list(model_a = gaussian_model, model_b = gaussian_offset_model),
+  list(model_a = gaussian_model, model_b = gaussian_no_cov_model),
   list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),
   messages = FALSE
 )
@@ -128,5 +200,5 @@ surface$i <- rep(1, nrow(grid))
 simulation <- simulate_glgpm(gaussian_model,
                              what = c("data", "surface"),
                              prediction_grid = surface,
-                             sample_locations = gaussian_data
+                             sample_locations = gaussian_re_data
                              )

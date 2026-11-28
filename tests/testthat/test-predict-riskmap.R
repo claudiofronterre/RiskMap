@@ -193,7 +193,7 @@ test_that("the nugget of the data can't be included at observed locations", {
   residual <- gaussian_offset_model$y - gaussian_offset_model$cov_offset -
     as.numeric(gaussian_offset_model$D %*% parameters$beta)
   spatial <- parameters$sigma2 * correlation %*%
-    solve(parameters$sigma2 * correlation + diag(parameters$tau2, n), residual)
+    solve(parameters$sigma2 * correlation + diag(parameters$tau2, fixture_n), residual)
   prediction <- predict(
     gaussian_offset_model, seed = 1, messages = FALSE,
     control_mcmc = set_control_mcmc(n_draws = 20000, burnin = 0, thin = 1)
@@ -960,10 +960,10 @@ test_that("a prediction seed also seeds a fresh conditional MCMC run", {
     n_draws = 10, burnin = 20, thin = 2
   )
   predict_binomial <- function(seed) {
-    suppressWarnings(predict(
+    predict(
       binomial_model, prediction_data, control_mcmc = prediction_control,
       seed = seed, keep_samples = TRUE, messages = FALSE
-    ))
+    )
   }
   set.seed(7)
   caller_state <- .Random.seed
@@ -1509,11 +1509,11 @@ test_that("exceedance probabilities and CVs can be the only summaries", {
     )
     far <- st_sf(geometry = st_sfc(st_buffer(st_point(c(1e6, 1e6)), 10),
                                    crs = 32637))
-    areal <- suppressWarnings(predict(
+    areal <- predict(
       gaussian_model, prediction_data, boundaries = rbind(areas, far),
       aggregate = "mean", summaries = summary, thresholds = thresholds,
       messages = FALSE
-    ))
+    )
     expect_setequal(areal$boundary_summary$summary, c("estimate", summary))
     expect_setequal(
       areal$boundary_summary$quantity[areal$boundary_summary$summary == summary],
@@ -1627,15 +1627,15 @@ test_that("an offset that is zero in the data is added in newdata", {
 test_that("messages = FALSE silences the projection of newdata and boundaries", {
   elsewhere <- st_transform(prediction_data, 4326)
   areas <- st_transform(st_sf(geometry = squares), 4326)
-  expect_no_message(suppressWarnings(predict(
+  expect_no_message(predict(
     gaussian_intercept_model, elsewhere, boundaries = areas,
     aggregate = "mean", seed = 1, messages = FALSE
-  )), message = "projected")
+  ), message = "projected")
   expect_message(
-    expect_message(suppressWarnings(predict(
+    expect_message(predict(
       gaussian_intercept_model, elsewhere, boundaries = areas,
       aggregate = "mean", seed = 1, messages = TRUE
-    )), "boundaries.*projected"),
+    ), "boundaries.*projected"),
     "newdata.*projected"
   )
 })
@@ -1671,20 +1671,20 @@ test_that("polygons that meet at a T-junction in lon/lat don't overlap", {
   )) > 0
   expect_gt(min(coverage[as.character(which(inside))]), 0.999)
 
-  result <- suppressWarnings(predict(
+  result <- predict(
     gaussian_intercept_model, cells, boundaries = areas, aggregate = "mean",
     seed = 1, messages = FALSE
-  ))
+  )
   expect_false(anyNA(
     result$boundary_summary$value[result$boundary_summary$quantity == "response"]
   ))
   # A real overlap is refused, and so is the same polygon twice.
   for (overlapping in list(polygons(0.01), areas[c(1, 2, 2), ])) {
     expect_input_error(
-      suppressWarnings(predict(
+      predict(
         gaussian_intercept_model, cells, boundaries = overlapping,
         aggregate = "mean", messages = FALSE
-      )), "boundaries"
+      ), "boundaries"
     )
   }
   # Polygons that share every edge are projected as they are.

@@ -287,11 +287,11 @@ test_that("a fit in longitude and latitude says where it is fitted once", {
     list(value = value, messages = texts)
   }
   fit_to <- function(data) {
-    messages_of(suppressWarnings(glgpm(
+    messages_of(glgpm(
       y ~ cov + gp(), data = data, family = "binomial",
       denominator = denominator, control_mcml = fixture_control_mcml,
       seed = fixture_seed, messages = TRUE
-    )))
+    ))
   }
   lonlat <- fit_to(sf::st_transform(binomial_data, 4326))
   crs_messages <- grep("EPSG|fitted in", lonlat$messages, value = TRUE)

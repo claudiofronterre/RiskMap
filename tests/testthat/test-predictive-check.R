@@ -2,14 +2,15 @@
 
 # Data with two records at each location, and fits with every parameter held at
 # given values, which need no estimation.
-check_data_twice <- gaussian_data[rep(seq_len(n), each = 2), ]
-check_data_twice$cov <- check_data_twice$cov + rep(c(0, 1), n)
+check_data_twice <- gaussian_data[rep(seq_len(fixture_n), each = 2), ]
+check_data_twice$cov <- check_data_twice$cov + rep(c(0, 1), fixture_n)
 set.seed(31)
-check_data_twice$y <- 1 + rnorm(2 * n)
-check_data_twice$count <- rpois(2 * n, 2)
-check_data_twice$binary <- rbinom(2 * n, 1, 0.5)
-check_data_twice$z <- rnorm(2 * n)
-check_data_twice$exposure <- rep(c(0.5, 2), n)
+check_data_twice$y <- 1 + rnorm(2 * fixture_n)
+check_data_twice$count <- rpois(2 * fixture_n, 2)
+check_data_twice$binary <- rbinom(2 * fixture_n, 1, 0.5)
+check_data_twice$z <- rnorm(2 * fixture_n)
+check_data_twice$exposure <- rep(c(0.5, 2), fixture_n)
+check_data_twice$trials <- 1
 
 held_fit <- function(formula, family, parameters, denominator = NULL) {
   arguments <- list(
@@ -18,12 +19,12 @@ held_fit <- function(formula, family, parameters, denominator = NULL) {
     control_mcmc = control_mcmc, seed = 1, messages = FALSE
   )
   if (!is.null(denominator)) arguments$denominator <- as.name(denominator)
-  suppressWarnings(do.call(glgpm, arguments))
+  do.call(glgpm, arguments)
 }
 gaussian_twice <- held_fit(y ~ cov + gp(), "gaussian",
                            parameters = list(beta = c(1, 0.2),
                                              sigma2_me = 0.5))
-binary_twice <- held_fit(binary ~ gp(), "binomial",
+binary_twice <- held_fit(binary ~ gp(), "binomial", denominator = "trials",
                          parameters = list(beta = 0))
 poisson_twice <- held_fit(count ~ cov + gp(), "poisson", denominator = "exposure",
                           parameters = list(beta = c(0.5, 0)))
@@ -31,16 +32,16 @@ negative_binomial_twice <- held_fit(count ~ gp(), negative_binomial(),
                                     denominator = "exposure",
                                     parameters = list(beta = 0.5, theta = 2))
 
-checked <- assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
+checked <- assess_fit(list(a = gaussian_model, b = gaussian_no_cov_model),
                       nsim = 99, seed = 7, messages = FALSE)
 
 test_that("assess_fit() describes the observed and the simulated data", {
   expect_s3_class(checked, "RiskMap_predictive_check")
   expect_identical(names(checked$family), c("a", "b"))
-  expect_identical(checked$n_locations, n)
+  expect_identical(checked$n_locations, fixture_n)
   expect_identical(checked$observed$statistic,
                    rep(c("mean", "sd", "min", "max"), 2))
-  y <- gaussian_data$y
+  y <- gaussian_re_data$y
   expect_equal(checked$observed$value, rep(c(mean(y), sd(y), range(y)), 2))
   expect_identical(nrow(checked$simulated), 2L * 4L * 99L)
 
@@ -55,8 +56,8 @@ test_that("assess_fit() describes the observed and the simulated data", {
 
 test_that("assess_fit() takes the variogram of the residuals from the covariates", {
   shown <- subset(checked$variogram, model == "a")
-  residuals <- resid(lm(y ~ cov, gaussian_data))
-  data <- gaussian_data
+  residuals <- resid(lm(y ~ cov, gaussian_re_data))
+  data <- gaussian_re_data
   data$residuals <- residuals
   expected <- variogram(data, "residuals", n_permutations = 0)
   kept <- expected$variogram$n_pairs > 0
@@ -67,15 +68,15 @@ test_that("assess_fit() takes the variogram of the residuals from the covariates
   # Without covariates it is that of the response.
   expect_equal(
     subset(checked$variogram, model == "b")$observed,
-    variogram(gaussian_data, "y", n_permutations = 0)$variogram$semivariance[kept]
+    variogram(gaussian_re_data, "y", n_permutations = 0)$variogram$semivariance[kept]
   )
 
   # The regression is done again in each simulated dataset, and the envelope
   # is the one of variogram(), with the observed curve first.
   simulations <- simulate_glgpm(gaussian_model, nsim = 99, seed = 7)
   curves <- vapply(0:99, function(k) {
-    y <- if (k == 0) gaussian_data$y else simulated_data(simulations, k)$y
-    data$residuals <- resid(lm(y ~ gaussian_data$cov))
+    y <- if (k == 0) gaussian_re_data$y else simulated_data(simulations, k)$y
+    data$residuals <- resid(lm(y ~ gaussian_re_data$cov))
     variogram(data, "residuals", n_permutations = 0)$variogram$semivariance[kept]
   }, numeric(sum(kept)))
   envelope <- global_rank_envelope(curves, 0.95)
@@ -88,20 +89,18 @@ test_that("assess_fit() takes the variogram of the residuals from the covariates
 
 test_that("the offset is taken out of the residuals", {
   with_offset <- assess_fit(gaussian_offset_model, nsim = 19, seed = 1)
-  data <- gaussian_data
-  data$residuals <- resid(lm(y - offset ~ cov, gaussian_data))
+  data <- gaussian_offset_data
+  data$residuals <- resid(lm(y - offset ~ cov, gaussian_offset_data))
   expected <- variogram(data, "residuals", n_permutations = 0)$variogram
   expect_equal(with_offset$variogram$observed,
                expected$semivariance[expected$n_pairs > 0])
 })
 
 test_that("a model whose covariates leave no residuals has no variogram", {
-  data <- gaussian_data
+  data <- gaussian_intercept_data
   data$site <- factor(seq_len(nrow(data)))
-  fit <- suppressWarnings(
-    glgpm(y ~ site + gp(), data = data, family = "gaussian", messages = FALSE,
+  fit <- glgpm(y ~ site + gp(), data = data, family = "gaussian", messages = FALSE,
           fixed_pars = list(sigma2 = 0.5, phi = 2, sigma2_me = 0.1))
-  )
   expect_warning(
     check <- assess_fit(list(saturated = fit, b = gaussian_intercept_model),
                         nsim = 19, seed = 1),
@@ -139,11 +138,11 @@ test_that("a model whose covariates leave no residuals has no variogram", {
 
 test_that("nearly collinear covariates are all taken out of the residuals", {
   data <- gaussian_data
-  data$year <- 2000 + 2 * seq_len(n)
+  data$year <- 2000 + 2 * seq_len(fixture_n)
   raw <- fit <- gaussian_intercept_model
   raw$D <- cbind(1, data$year, data$year^2, data$year^3)
   fit$D <- cbind(1, scale(data$year), scale(data$year)^2, scale(data$year)^3)
-  field <- matrix(rnorm(2 * n), n)
+  field <- matrix(rnorm(2 * fixture_n), fixture_n)
   records <- check_records(fit, "response")
   expect_equal(residuals_from_covariates(field, raw, records),
                residuals_from_covariates(field, fit, records), tolerance = 1e-4)
@@ -151,7 +150,7 @@ test_that("nearly collinear covariates are all taken out of the residuals", {
 
 test_that("offsets are taken out on the scale of the link", {
   set.seed(8)
-  population <- rep(c(10, 1000), n)
+  population <- rep(c(10, 1000), fixture_n)
   records <- check_records(poisson_twice, "rate")
   total <- as.numeric(rowsum(check_data_twice$count, records$index))
   people <- check_data_twice$exposure * population
@@ -174,9 +173,9 @@ test_that("offsets are taken out on the scale of the link", {
   # is one of the covariates.
   records <- check_records(binary_twice, "prevalence")
   fit <- binary_twice
-  fit$cov_offset <- rnorm(2 * n)
+  fit$cov_offset <- rnorm(2 * fixture_n)
   offset <- as.numeric(tapply(fit$cov_offset, records$index, mean))
-  field <- matrix(rnorm(n), n)
+  field <- matrix(rnorm(fixture_n), fixture_n)
   expect_equal(residuals_from_covariates(field, fit, records),
                matrix(resid(lm(field[, 1] - offset ~ 1))))
   fit$link_function$name <- "custom"
@@ -185,8 +184,8 @@ test_that("offsets are taken out on the scale of the link", {
 })
 
 test_that("observations at a location are added up, or averaged", {
-  index <- rep(seq_len(n), each = 2)
-  locations <- check_data_twice[2 * seq_len(n), ]
+  index <- rep(seq_len(fixture_n), each = 2)
+  locations <- check_data_twice[2 * seq_len(fixture_n), ]
   semivariances <- function(values) {
     locations$values <- values
     variogram(locations, "values", n_permutations = 0)$variogram |>
@@ -205,8 +204,8 @@ test_that("observations at a location are added up, or averaged", {
   expect_equal(check$variogram$observed,
                semivariances(resid(lm(as.numeric(tapply(y, index, mean)) ~
                                         covariate))))
-  expect_identical(check$n_observations, 2L * n)
-  expect_identical(check$n_locations, n)
+  expect_identical(check$n_observations, 2L * fixture_n)
+  expect_identical(check$n_locations, fixture_n)
 
   # Denominators of 1. The positives at a location are added up.
   check <- assess_fit(binary_twice, nsim = 19, seed = 1)
@@ -242,14 +241,12 @@ test_that("observations at a location are added up, or averaged", {
 
 test_that("binomial observations are added up only if they are individuals", {
   data <- check_data_twice
-  data$tested <- rep(c(5, 1, 20, 8), length.out = 2 * n)
+  data$tested <- rep(c(5, 1, 20, 8), length.out = 2 * fixture_n)
   set.seed(3)
-  data$positive <- rbinom(2 * n, data$tested, 0.3)
-  fit <- suppressWarnings(
-    glgpm(positive ~ gp(), data = data, family = "binomial", denominator = tested,
+  data$positive <- rbinom(2 * fixture_n, data$tested, 0.3)
+  fit <- glgpm(positive ~ gp(), data = data, family = "binomial", denominator = tested,
           fixed_pars = list(beta = -1, sigma2 = 0.5, phi = 2),
           control_mcmc = control_mcmc, seed = 1, messages = FALSE)
-  )
   prevalence <- data$positive / data$tested
   check <- assess_fit(fit, nsim = 19, seed = 1)
   expect_identical(check$unit, "observation")
@@ -259,8 +256,8 @@ test_that("binomial observations are added up only if they are individuals", {
                ecdf(prevalence)(check$distribution$value))
   expect_match(plot(check, type = "distribution")$labels$y, "observations")
   # The variogram has one value for each location.
-  index <- rep(seq_len(n), each = 2)
-  locations <- data[2 * seq_len(n), ]
+  index <- rep(seq_len(fixture_n), each = 2)
+  locations <- data[2 * seq_len(fixture_n), ]
   locations$values <- elogit(as.numeric(tapply(data$positive, index, sum)),
                              as.numeric(tapply(data$tested, index, sum)))
   expected <- variogram(locations, "values", n_permutations = 0)$variogram
@@ -298,14 +295,14 @@ test_that("binomial observations are added up only if they are individuals", {
 
 test_that("the distribution is the empirical one, with its joint envelope", {
   shown <- subset(checked$distribution, model == "b")
-  expect_equal(shown$observed, ecdf(gaussian_data$y)(shown$value))
+  expect_equal(shown$observed, ecdf(gaussian_re_data$y)(shown$value))
   expect_identical(min(shown$observed), as.numeric(min(shown$value) >=
-                                                     min(gaussian_data$y)) * 0.1)
+                                                     min(gaussian_re_data$y)) * 0.1)
   expect_identical(max(shown$observed), 1)
   expect_false(is.unsorted(shown$value, strictly = TRUE))
-  simulations <- simulate_glgpm(gaussian_intercept_model, nsim = 99, seed = 7)
+  simulations <- simulate_glgpm(gaussian_no_cov_model, nsim = 99, seed = 7)
   curves <- vapply(0:99, function(k) {
-    y <- if (k == 0) gaussian_data$y else simulated_data(simulations, k)$y
+    y <- if (k == 0) gaussian_re_data$y else simulated_data(simulations, k)$y
     ecdf(y)(shown$value)
   }, numeric(nrow(shown)))
   envelope <- global_rank_envelope(curves, 0.95)
@@ -331,7 +328,7 @@ test_that("statistics can be a function or a named list of functions", {
   }
   check <- assess_fit(gaussian_model, describe, nsim = 19, seed = 7)
   expect_equal(check$observed$value,
-               c(mean(gaussian_data$y), cor(gaussian_data$y, gaussian_data$cov)))
+               c(mean(gaussian_re_data$y), cor(gaussian_re_data$y, gaussian_re_data$cov)))
   simulated <- simulated_data(simulate_glgpm(gaussian_model, nsim = 19, seed = 7),
                               simulation = 19)
   expect_equal(subset(check$simulated, simulation == 19)$value,
@@ -355,7 +352,7 @@ test_that("statistics can be a function or a named list of functions", {
 })
 
 test_that("statistics can be given by name, with functions or without", {
-  y <- gaussian_data$y
+  y <- gaussian_re_data$y
   run <- function(statistics, fit = gaussian_model) {
     assess_fit(fit, statistics, nsim = 19, seed = 7)
   }
@@ -377,7 +374,7 @@ test_that("statistics can be given by name, with functions or without", {
                    c("max", "lower", "upper", "Spread", "Correlation", "min"))
   expect_equal(check$observed$value,
                c(max(y), quantile(y, c(0.25, 0.75), names = FALSE), sd(y),
-                 cor(y, gaussian_data$cov), min(y)))
+                 cor(y, gaussian_re_data$cov), min(y)))
   simulated <- simulated_data(simulate_glgpm(gaussian_model, nsim = 19, seed = 7),
                               simulation = 19)
   expect_equal(subset(check$simulated, simulation == 19)$value,
@@ -407,7 +404,7 @@ test_that("statistics can be given by name, with functions or without", {
 
 test_that("the distribution and the variogram are calculated if asked for", {
   run <- function(statistics, ...) {
-    assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
+    assess_fit(list(a = gaussian_model, b = gaussian_no_cov_model),
                statistics, nsim = 99, seed = 7, ...)
   }
   expect_identical(checked$types, c("statistic", "distribution", "variogram"))
@@ -513,7 +510,7 @@ test_that("statistics that can't be used are errors", {
 })
 
 test_that("a transformed response has only the statistics with a name", {
-  data <- gaussian_data
+  data <- gaussian_intercept_data
   data$positive <- exp(data$y)
   fit <- glgpm(log(positive) ~ gp(), data = data, family = "gaussian",
                messages = FALSE)
@@ -530,8 +527,10 @@ test_that("a transformed response has only the statistics with a name", {
 
 test_that("statistics that aren't finite are left out and reported", {
   set.seed(1)
+  # The log of the smallest value, which is not finite where that is negative.
   uncertain <- function(data) {
-    c(sd = sd(data$y), log_min = suppressWarnings(log(min(data$y))))
+    smallest <- min(data$y)
+    c(sd = sd(data$y), log_min = if (smallest > 0) log(smallest) else NaN)
   }
   expect_warning(
     check <- assess_fit(gaussian_model, uncertain, nsim = 99, seed = 7),
@@ -559,9 +558,12 @@ test_that("statistics that aren't finite are left out and reported", {
   expect_output(print(never), "NA")
   expect_input_error(plot_predictive_check(never), "x", "no finite statistics")
   # A statistic that can be drawn is, without the one that can't.
-  some <- suppressWarnings(
-    assess_fit(gaussian_model, function(data) c(x = NaN, mean = mean(data$y)),
-               nsim = 19, seed = 7)
+  expect_warnings(
+    some <- assess_fit(gaussian_model,
+                       function(data) c(x = NaN, mean = mean(data$y)),
+                       nsim = 19, seed = 7),
+    c("isn't finite in the observed data",
+      "isn't finite in some simulated datasets")
   )
   expect_identical(unique(as.character(plot_predictive_check(some)$data$statistic)),
                    "mean")
@@ -573,7 +575,7 @@ test_that("the warnings of statistics are raised once for each model", {
     c(mean = mean(data$y))
   }
   warnings <- capture_warnings(
-    assess_fit(list(a = gaussian_model, b = gaussian_intercept_model), noisy,
+    assess_fit(list(a = gaussian_model, b = gaussian_no_cov_model), noisy,
                nsim = 19, seed = 7)
   )
   expect_length(warnings, 2)
@@ -592,7 +594,7 @@ test_that("summary() and to_table() say where the observed values lie", {
   row <- as.data.frame(unclass(summarised))[4, ]
   expect_equal(unlist(row[c("median", "lower", "upper")], use.names = FALSE),
                quantile(simulated, c(0.5, 0.025, 0.975), names = FALSE))
-  expect_equal(row$at_or_above, mean(simulated >= sd(gaussian_data$y)))
+  expect_equal(row$at_or_above, mean(simulated >= sd(gaussian_re_data$y)))
 
   expect_s3_class(to_table(checked), "knitr_kable")
   expect_identical(to_table(checked), to_table(summarised))
@@ -623,19 +625,19 @@ test_that("an assessment of fits prints", {
 test_that("the seed sets the simulations, and leaves the caller's state", {
   set.seed(11)
   before <- .Random.seed
-  again <- assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
+  again <- assess_fit(list(a = gaussian_model, b = gaussian_no_cov_model),
                       nsim = 99, seed = 7)
   expect_identical(.Random.seed, before)
   expect_identical(again, checked)
 
   # The draws of a model don't depend on the other models.
-  alone <- assess_fit(list(b = gaussian_intercept_model), nsim = 99, seed = 7)
+  alone <- assess_fit(list(b = gaussian_no_cov_model), nsim = 99, seed = 7)
   expect_identical(alone$simulated$value,
                    subset(checked$simulated, model == "b")$value)
 
   # Statistics with random numbers have the same ones for every model.
   random <- function(data) c(u = runif(1))
-  check <- assess_fit(list(a = gaussian_model, b = gaussian_intercept_model),
+  check <- assess_fit(list(a = gaussian_model, b = gaussian_no_cov_model),
                       random, nsim = 19, seed = 7)
   expect_identical(subset(check$simulated, model == "a")$value,
                    subset(check$simulated, model == "b")$value)
@@ -674,7 +676,7 @@ test_that("the distance classes can be given", {
 })
 
 test_that("few locations have no variogram, or one class of it", {
-  few <- gaussian_data[c(1, 2), ]
+  few <- gaussian_intercept_data[c(1, 2), ]
   fit <- gaussian_intercept_model
   fit$data <- fit$data[1:2, ]
   fit$y <- fit$y[1:2]
@@ -685,7 +687,7 @@ test_that("few locations have no variogram, or one class of it", {
   expect_output(print(check), "2\\s+locations")
   expect_input_error(plot_predictive_check(check, type = "variogram"), "x",
                      "no variogram, because no pair")
-  only <- suppressWarnings(assess_fit(fit, "variogram", nsim = 19, seed = 1))
+  only <- assess_fit(fit, "variogram", nsim = 19, seed = 1)
   expect_output(print(only), "There is no variogram, because no pair")
   expect_input_error(plot(only), "x", "no pair")
   one_class <- assess_fit(fit, breaks = c(0, 1e3), nsim = 19, seed = 1)
@@ -706,7 +708,7 @@ test_that("a location without anyone examined is left out of rates", {
   fit$units_m[1:2] <- 0
   fit$y[1:2] <- 0
   check <- assess_fit(fit, nsim = 19, seed = 1)
-  positive <- as.numeric(tapply(fit$y[-(1:2)], rep(seq_len(n - 1), each = 2), sum))
+  positive <- as.numeric(tapply(fit$y[-(1:2)], rep(seq_len(fixture_n - 1), each = 2), sum))
   expect_equal(check$observed$value[1], mean(positive / 2))
   expect_true(all(is.finite(check$simulated$value)))
   expect_true(all(is.finite(check$variogram$observed)))

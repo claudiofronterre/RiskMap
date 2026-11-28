@@ -3,12 +3,12 @@ test_that("MCMC diagnostics reject fits without samples", {
   expect_input_error(summarise_mcmc("not risk"), "object")
   expect_input_error(plot_mcmc(gaussian_model), "object")
 
-  binomial_without_samples <- suppressWarnings(glgpm(
+  binomial_without_samples <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     control_mcml = fixture_control_mcml, seed = fixture_seed,
     return_samples = FALSE, messages = FALSE
-  ))
+  )
   expect_null(binomial_without_samples$S_samples)
   expect_null(binomial_without_samples$linear_predictors)
   expect_null(fitted(binomial_without_samples))
@@ -21,7 +21,7 @@ test_that("MCMC diagnostics reject fits without samples", {
 test_that("plot_mcmc checks its arguments", {
   # The model has `n` locations followed by `n_groups` levels of re(i), whose
   # samples are not locations.
-  for (locations in list(n + 1, n + n_groups + 1, 10.5, 0, "no", c(1, 1), Inf,
+  for (locations in list(fixture_n + 1, fixture_n + fixture_groups + 1, 10.5, 0, "no", c(1, 1), Inf,
                          integer())) {
     expect_input_error(plot_mcmc(poisson_model, check_mean = FALSE,
                                  locations = locations),
@@ -47,12 +47,12 @@ test_that("plot_mcmc shows the mean and the location with the smallest ESS", {
   traces <- diagnostics[[1L]][[1L]]
   correlations <- diagnostics[[1L]][[2L]]
   histogram <- diagnostics[[2L]]
-  spatial <- poisson_model$S_samples[, 1:n]
+  spatial <- poisson_model$S_samples[, 1:fixture_n]
   smallest <- which.min(mcmc_effective_size(spatial))
 
   expect_s3_class(diagnostics, "patchwork")
   expect_identical(levels(traces$data$chain), c(
-    sprintf("Mean of S over %d locations", n),
+    sprintf("Mean of S over %d locations", fixture_n),
     sprintf("S at location %d, the smallest ESS", smallest)
   ))
   expect_equal(traces$data$value,
@@ -77,7 +77,7 @@ test_that("plot_mcmc shows the chains of the chosen locations", {
   expect_no_error(print(diagnostics))
   expect_identical(
     levels(plot_mcmc(poisson_model, locations = c(3, 1))[[1L]][[1L]]$data$chain),
-    c(sprintf("Mean of S over %d locations", n), "S at location 3", "S at location 1")
+    c(sprintf("Mean of S over %d locations", fixture_n), "S at location 3", "S at location 1")
   )
 })
 
@@ -103,11 +103,11 @@ test_that("summarise_mcmc returns the ESS of the mean, every location and every 
   expect_s3_class(summary, "tbl_df")
   expect_named(summary, c("effect", "index", "ess"))
   expect_identical(summary$effect,
-                   c("mean of S", rep("S", n), rep("i", n_groups)))
-  expect_identical(summary$index, c(NA, 1:n, 1:n_groups))
+                   c("mean of S", rep("S", fixture_n), rep("i", fixture_groups)))
+  expect_identical(summary$index, c(NA, 1:fixture_n, 1:fixture_groups))
   expect_identical(attr(summary, "n_samples"), 80L)
   expect_equal(summary$ess, c(
-    mcmc_effective_size(rowMeans(samples[, 1:n])),
+    mcmc_effective_size(rowMeans(samples[, 1:fixture_n])),
     mcmc_effective_size(samples)
   ))
 })

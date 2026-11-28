@@ -79,7 +79,7 @@ test_that("summary.RiskMap reports a custom inverse link", {
       probability * (1 - probability) * (1 - 2 * probability)
     }
   )
-  fit <- glgpm(y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+  fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
                denominator = denominator, control_mcmc = control_mcmc,
                seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
@@ -346,7 +346,7 @@ test_that("print.RiskMap is short and gives the certificate", {
   expect_identical(result, binomial_model)
   expect_lt(length(printed), 30L)
   expect_match(printed[1L], "Binomial geostatistical model")
-  expect_true(any(grepl(paste0("^", n, " observations at "), printed)))
+  expect_true(any(grepl(paste0("^", fixture_n, " observations at "), printed)))
   expect_true(any(grepl("Regression coefficients", printed, fixed = TRUE)))
   expect_true(any(grepl("certified", printed, ignore.case = TRUE)))
   expect_false(any(grepl("concerns the maximum found", printed)))
@@ -736,11 +736,11 @@ test_that("the summary of a fit says where its starting values came from", {
   expect_null(summary(gaussian_model)$mcml)
   # A start given in part keeps the comparison for the rest, and the summary
   # names the values given.
-  given <- suppressWarnings(glgpm(
+  given <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, start_pars = list(beta = c(0, 0.3)),
     control_mcml = fixture_control_mcml, seed = fixture_seed, messages = FALSE
-  ))
+  )
   expect_identical(summary(given)$mcml$starting_given,
                    c("beta.(Intercept)", "beta.cov"))
   expect_true(summary(given)$mcml$starting_values %in%

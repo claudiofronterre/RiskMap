@@ -662,12 +662,12 @@ test_that("the screen of short scales is tabulated and drawn from the fit", {
   skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
-  screened <- suppressWarnings(glgpm(
+  screened <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, return_samples = FALSE,
     messages = FALSE
-  ))
+  )
   record <- attr(screened, "optimizer")$mcml_maxima_screen
   checked <- check_computation(screened)
   data <- checked$results[["Other maxima"]]$data

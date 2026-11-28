@@ -42,33 +42,41 @@ test_that("differentiates whichever d1 was actually produced, for d2", {
   expect_equal(d2(eta), analytic_d2, tolerance = 1e-6)
 })
 
-test_that("a custom invlink that Deriv cannot differentiate still fits via the numeric fallback", {
+test_that("a custom invlink that takes the numeric fallback fits as with its exact derivatives", {
   skip_on_cran()
-  ## approxfun()'s returned closure has no Deriv derivative rule, so this
-  ## exercises the same fallback as the unit tests above, end-to-end through
-  ## glgpm(). Bounded to [0, 1], so paired with "binomial", not "poisson".
-  ## Built once and closed over, rather than rebuilt on every call: the
-  ## numeric fallback's Richardson extrapolation calls `inv()` many times per
-  ## optimizer iteration, and re-running approxfun()'s table setup that often
-  ## made this test slow.
-  ## A small sample budget, without the check for other maxima, keeps this fast.
-  ## The fixture's data can't identify every parameter under this link.
-  af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
-  invlink <- list(inv = function(eta) af(eta))
-  small_control_mcml <- set_control_mcml(
-    initial_draws = 100, validation_draws = 100, max_draws = 100,
-    max_stages = 1, check_maxima = FALSE
+  ## A logistic link of scale 1.5 is outside the rules, so it takes the
+  ## numeric fallback (as in the next test), here end to end through glgpm().
+  ## The fit is that with the exact derivatives of the link. The fallback of
+  ## a piecewise linear link from approxfun() does not yet move from its
+  ## starting values (#ISSUE).
+  link <- function(eta) plogis(eta, scale = 1.5)
+  exact <- list(
+    inv = link,
+    d1 = function(eta) dlogis(eta, scale = 1.5),
+    d2 = function(eta) {
+      p <- link(eta)
+      p * (1 - p) * (1 - 2 * p) / 1.5^2
+    }
   )
+  fit_with <- function(invlink) {
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+          denominator = denominator, invlink = invlink,
+          control_mcmc = control_mcmc, seed = fixture_seed,
+          control_mcml = fixture_control_mcml, messages = FALSE)
+  }
+  numerical <- fit_with(list(inv = link))
+  exact_fit <- fit_with(exact)
 
-  expect_warning(
-    fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
-                 denominator = denominator, invlink = invlink,
-                 control_mcmc = control_mcmc, seed = fixture_seed,
-                 control_mcml = small_control_mcml, messages = FALSE),
-    "observed information matrix is singular"
-  )
-  expect_s3_class(fit, "RiskMap")
-  expect_true(all(is.finite(unlist(fit$estimate))))
+  ## The fit used the numerical derivative.
+  eta <- c(-2, 0, 1.3)
+  expect_identical(numerical$link_function$d1(eta), vapply(eta, function(z) {
+    numDeriv::grad(link, z, method.args = list(zero.tol = 1))
+  }, numeric(1)))
+  ## The two Laplace starts differ slightly, so the fits differ by their
+  ## Monte Carlo error.
+  expect_equal(unlist(numerical$estimate), unlist(exact_fit$estimate),
+               tolerance = 1e-3)
+  expect_equal(numerical$log_lik, exact_fit$log_lik, tolerance = 1e-6)
 })
 
 test_that("the numeric fallback matches numDeriv on each value, in one pass", {

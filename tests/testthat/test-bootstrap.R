@@ -1,20 +1,20 @@
 test_that("a refit to the observed response is a glgpm() fit from the estimate", {
   skip_on_cran()
   refit <- make_bootstrap_refit(binomial_model)
-  refitted <- suppressWarnings(refit(binomial_model$y, 77L))
-  direct <- suppressWarnings(glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+  refitted <- refit(binomial_model$y, 77L)
+  direct <- glgpm(
+    y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
     denominator = denominator, control_mcml = fixture_control_mcml,
     start_pars = coef(binomial_model), seed = 77L, return_samples = FALSE,
     messages = FALSE
-  ))
+  )
   expect_identical(refitted, unlist(coef(direct)))
 
   # The offset, the nugget and the measurement error variance are carried
   # over from the fit.
   gaussian_refit <- make_bootstrap_refit(gaussian_offset_model)
   gaussian_direct <- glgpm(
-    y ~ cov + gp(nugget = TRUE) + offset(offset), data = gaussian_data,
+    y ~ cov + gp(nugget = TRUE) + offset(offset), data = gaussian_offset_data,
     family = "gaussian", fixed_pars = list(sigma2_me = 0),
     start_pars = coef(gaussian_offset_model), messages = FALSE
   )
@@ -48,9 +48,9 @@ test_that("replicates have their own seeds and do not depend on cores", {
   # The first replicate simulates and refits with the seed itself. The
   # replicates run with one BLAS thread, which this refit may not.
   simulated <- simulate_glgpm(gaussian_model, seed = 11)
-  refitted <- suppressWarnings(make_bootstrap_refit(gaussian_model)(
+  refitted <- make_bootstrap_refit(gaussian_model)(
     simulated$samples$data[, 1L, "response"], 11L
-  ))
+  )
   expect_equal(first$estimates[1L, ], refitted, tolerance = 1e-8)
 
   skip_on_os("windows")
@@ -72,8 +72,8 @@ test_that("without a seed, one is drawn from the session's stream", {
 
 test_that("binomial bootstraps with random effects use separate streams", {
   skip_on_cran()
-  boot <- suppressWarnings(parametric_bootstrap(binomial_model, n_sim = 2,
-                                                seed = 3, messages = FALSE))
+  boot <- parametric_bootstrap(binomial_model, n_sim = 2,
+                                                seed = 3, messages = FALSE)
   expect_identical(colnames(boot$estimates),
                    names(unlist(coef(binomial_model))))
   expect_false(anyNA(boot$estimates))

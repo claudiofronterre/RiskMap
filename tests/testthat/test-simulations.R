@@ -798,22 +798,22 @@ test_that("assess_simulation names missing candidate covariates on the grid", {
 
 test_that("assess_simulation scores candidates without the generating model's nugget", {
   generating <- specify_glgpm(
-    y ~ gp(nugget = TRUE), data = binomial_data, family = "binomial",
+    y ~ gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator,
-    parameters = list(beta = 0, sigma2 = 0.5, phi = 2, tau2 = 0.2)
+    parameters = list(beta = 0, sigma2 = 1, phi = 5, tau2 = 0.2)
   )
   sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
-                        prediction_grid = binomial_data, seed = 3)
+                        prediction_grid = binomial_nugget_data, seed = 3)
   candidate <- specify_glgpm(
-    y ~ gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, parameters = list(beta = 0, sigma2 = 0.5, phi = 2)
+    y ~ gp(), data = binomial_nugget_data, family = "binomial",
+    denominator = denominator, parameters = list(beta = 0, sigma2 = 1, phi = 5)
   )
-  result <- suppressWarnings(assess_simulation(
+  result <- assess_simulation(
     sim, models = list(no_nugget = candidate), control_mcmc = control_mcmc,
     seed = fixture_seed,
     spatial_scale = "location", objective = "mse",
     messages = FALSE
-  ))
+  )
   expect_identical(result$fits$status, c("ok", "ok"))
   expect_true(all(is.finite(result$objective$location$mse)))
 })
@@ -835,7 +835,7 @@ assess_recording_links <- function(...) {
     },
     .package = "RiskMap"
   )
-  result <- suppressWarnings(assess_simulation(...))
+  result <- assess_simulation(...)
   list(result = result, links = recorded$links, draws = recorded$draws)
 }
 
