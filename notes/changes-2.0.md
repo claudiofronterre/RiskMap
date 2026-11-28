@@ -2127,6 +2127,15 @@ and their `colour` argument changes it.
   squared errors of 0.049 and 0.030 in one example, against 0.0069 and 0.0082
   under another name. A candidate with a transformed response, which was
   refitted without the transformation, stops.
+- The default of `objective` in `assess_simulation()` is `"mse"`, and
+  `c("mse", "classify")` when `breaks` are given, written in the usage as
+  `objective = if (is.null(breaks)) "mse" else c("mse", "classify")` (#389).
+  The default was `c("mse", "classify")` with `breaks = NULL`, so a call that
+  gave neither `objective` nor `breaks` stopped with "`breaks` must be given
+  when `objective` includes "classify"". An explicit `"classify"` without
+  `breaks` still stops, and a call that gives `objective` or `breaks` has the
+  same results as before. Every call in the tests and the golden battery
+  gave `objective`, and the example of the help page now leaves it out.
 - In the classification of `assess_simulation()` the lowest class includes the
   first break and values beyond the breaks belong to the end classes, for the
   truth and for the draws, as in the maps of `plot_prediction()`. A true value
