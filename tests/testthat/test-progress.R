@@ -288,7 +288,7 @@ test_that("each evaluation of the Monte Carlo likelihood moves the spinner", {
 
 test_that("a Gaussian fit shows a step that moves, and no trace", {
   fit <- function() {
-    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian", messages = TRUE,
+    glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian", messages = TRUE,
           start_pars = list(sigma2 = 1, phi = 10))
   }
   local_terminal()
@@ -307,7 +307,7 @@ test_that("a Gaussian fit shows a step that moves, and no trace", {
   lines <- grep("Maximising", capture_messages(fit()), value = TRUE)
   expect_length(lines, 2L)
   held <- capture_messages(
-    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+    glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian",
           fixed_pars = as.list(coef(gaussian_intercept_model)), messages = TRUE)
   )
   expect_no_match(held, "Maximising")
@@ -331,7 +331,7 @@ test_that("the spinner doesn't change a Gaussian fit", {
   }
   withr::local_options(cli.dynamic = FALSE)
   lines <- capture_messages(
-    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+    glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian",
           fixed_pars = list(sigma2 = 1), messages = TRUE)
   )
   expect_length(grep("Maximising", lines), 2L)

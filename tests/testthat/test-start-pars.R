@@ -92,12 +92,12 @@ test_that("given starts replace their elements of a complete start", {
 
 fit_binomial_with <- function(start_pars = NULL,
                               control_mcml = fixture_control_mcml) {
-  suppressWarnings(glgpm(
+  glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = control_mcml,
     return_samples = FALSE, messages = FALSE, start_pars = start_pars
-  ))
+  )
 }
 
 test_that("a partial start keeps the comparison of starts", {
@@ -175,32 +175,32 @@ test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
     list(captured = captured, expected = expected)
   }
   count_fit <- function(family, data, start_pars = NULL) {
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ cov + gp(), data = data, family = family, denominator = denominator,
       control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, return_samples = FALSE,
       messages = FALSE, start_pars = start_pars
-    ))
+    )
   }
   set.seed(2)
-  replicated <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
+  # Six copies of gaussian_re_data, each with its own measurement error, so
+  # that the error of the original data is a nugget at each location.
+  replicated <- do.call(rbind, replicate(6, gaussian_re_data, simplify = FALSE))
   replicated$y <- replicated$y + rnorm(nrow(replicated), sd = 0.3)
-  # The information of a variance estimated at zero is rounding, so that of the
-  # fit can need a jitter.
   gaussian_fit <- function(data, start_pars = NULL) {
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ cov + gp(nugget = TRUE) + re(i), data = data, family = "gaussian",
       messages = FALSE, start_pars = start_pars
-    ))
+    )
   }
   fits <- list(
     binomial = list(fit = binomial_model, refit = function() {
-      suppressWarnings(glgpm(
-        y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+      glgpm(
+        y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
         denominator = denominator, control_mcmc = control_mcmc,
         seed = fixture_seed, control_mcml = fixture_control_mcml,
         messages = FALSE, start_pars = coef(binomial_model)
-      ))
+      )
     }),
     poisson = local({
       fit <- count_fit("poisson", poisson_data)
@@ -209,13 +209,13 @@ test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
       })
     }),
     negative_binomial = local({
-      fit <- count_fit(negative_binomial(), poisson_data)
+      fit <- count_fit(negative_binomial(), negative_binomial_data)
       list(fit = fit, refit = function() {
-        count_fit(negative_binomial(), poisson_data, coef(fit))
+        count_fit(negative_binomial(), negative_binomial_data, coef(fit))
       })
     }),
     gaussian_direct = list(fit = gaussian_model, refit = function() {
-      glgpm(y ~ cov + gp() + re(i), data = gaussian_data, family = "gaussian",
+      glgpm(y ~ cov + gp() + re(i), data = gaussian_re_data, family = "gaussian",
             messages = FALSE, start_pars = coef(gaussian_model))
     }),
     gaussian_woodbury = local({
@@ -299,21 +299,21 @@ test_that("a partial start reaches the engine whichever candidate wins", {
 })
 
 test_that("a start that leaves nothing to compare skips the comparison", {
-  poisson_fit <- suppressWarnings(glgpm(
+  poisson_fit <- glgpm(
     y ~ cov + gp(), data = poisson_data, family = "poisson",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE
-  ))
+  )
   fitted <- 0
   counts <- with_mocked_bindings(
-    suppressWarnings(glgpm(
-      y ~ cov + gp(), data = poisson_data, family = negative_binomial(),
+    glgpm(
+      y ~ cov + gp(), data = negative_binomial_data, family = negative_binomial(),
       denominator = denominator, control_mcmc = control_mcmc,
       seed = fixture_seed, control_mcml = fixture_control_mcml,
       return_samples = FALSE, messages = FALSE,
       start_pars = coef(poisson_fit)
-    )),
+    ),
     glgpm_lm = function(...) {
       fitted <<- fitted + 1
       stop("the transformed Gaussian model was fitted")

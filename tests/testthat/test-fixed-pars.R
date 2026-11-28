@@ -68,7 +68,7 @@ test_that("holds that don't fit the model stop", {
   expect_match(conditionMessage(error), "fixed_pars = list(tau2 = 0.5)",
                fixed = TRUE)
   expect_input_error(negative_binomial(theta = 2), "theta")
-  expect_error(glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+  expect_error(glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian",
                      fix_var_me = 0.1),
                "unused argument")
 })
@@ -76,12 +76,12 @@ test_that("holds that don't fit the model stop", {
 test_that("fixed_pars holds the size of a negative binomial family", {
   skip_on_cran()
   counts <- function(...) {
-    suppressWarnings(glgpm(
-      y ~ cov + gp(), data = poisson_data, denominator = denominator,
+    glgpm(
+      y ~ cov + gp(), data = negative_binomial_data, denominator = denominator,
       control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, return_samples = FALSE,
       messages = FALSE, ...
-    ))
+    )
   }
   held <- counts(family = negative_binomial(), fixed_pars = list(theta = 2))
   expect_identical(held$fixed_pars, list(theta = 2))
@@ -146,15 +146,12 @@ test_that("fits saved before fixed_pars are read through their old fields", {
 })
 
 test_that("a profile of an MCML fit holds the nugget variance", {
-  set.seed(2)
-  data <- binomial_data[rep(seq_len(nrow(binomial_data)), each = 3), ]
-  data$y <- rbinom(nrow(data), data$denominator, 0.4)
-  fit <- suppressWarnings(glgpm(
-    y ~ cov + gp(nugget = TRUE), data = data, family = "binomial",
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE
-  ))
+  )
   problem <- make_profile_problem(fit, 500L, 1L)
   expect_true("tau2" %in% problem$names)
   expect_false("nu2" %in% problem$names)
@@ -207,10 +204,16 @@ test_that("gp() points a value of the nugget to fixed_pars or to FALSE", {
   }
 })
 
-replicated_gaussian <- function() {
+# Four observations at each location of gaussian_data, from its model, each
+# with its own measurement error, and with a nugget at each location if
+# `nugget`.
+replicated_gaussian <- function(nugget = FALSE) {
   set.seed(3)
-  data <- do.call(rbind, replicate(4, gaussian_data, simplify = FALSE))
-  data$y <- data$y + rnorm(nrow(data), sd = 0.3)
+  rows <- rep(seq_len(fixture_n), 4)
+  data <- gaussian_data[rows, ]
+  location <- 3 + 0.5 * fixture_columns$cov + fixture_field +
+    if (nugget) rnorm(fixture_n, sd = sqrt(0.3)) else 0
+  data$y <- location[rows] + rnorm(length(rows), sd = sqrt(0.3))
   data
 }
 
@@ -275,13 +278,13 @@ test_that("a held scale is the profile of the scale at that value", {
 
 test_that("held variances of a binomial fit stay at their values", {
   skip_on_cran()
-  fit <- suppressWarnings(glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+  fit <- glgpm(
+    y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE,
     fixed_pars = list(sigma2_re = c(i = 0.3), sigma2 = 0.5)
-  ))
+  )
   expect_identical(coef(fit)$sigma2, 0.5)
   expect_identical(coef(fit)$sigma2_re, c(i = 0.3))
   expect_true(all(is.na(diag(fit$covariance)[c("sigma2", "sigma2_re.i")])))
@@ -289,27 +292,27 @@ test_that("held variances of a binomial fit stay at their values", {
                                                     "beta.cov", "phi")])))
   expect_true(is.finite(summary(fit)$mcml$certificate))
   # The bootstrap refits with the holds, with columns for the others only.
-  boot <- suppressWarnings(parametric_bootstrap(fit, n_sim = 2, seed = 3L,
-                                                messages = FALSE))
+  boot <- parametric_bootstrap(fit, n_sim = 2, seed = 3L,
+                               messages = FALSE)
   expect_identical(colnames(boot$estimates),
                    c("beta.(Intercept)", "beta.cov", "phi"))
   # start_pars = coef(fit) works for a refit with the same holds.
-  refit <- suppressWarnings(glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+  refit <- glgpm(
+    y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE, start_pars = coef(fit),
     fixed_pars = list(sigma2_re = c(i = 0.3), sigma2 = 0.5)
-  ))
+  )
   expect_identical(attr(refit, "starting_values")$selected, "user")
   expect_input_error(
-    glgpm(y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+    glgpm(y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
           denominator = denominator, messages = FALSE,
           start_pars = list(sigma2 = 1), fixed_pars = list(sigma2 = 0.5)),
     "start_pars"
   )
   expect_input_error(
-    glgpm(y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+    glgpm(y ~ cov + gp() + re(i), data = binomial_re_data, family = "binomial",
           denominator = denominator, messages = FALSE,
           fixed_pars = list(sigma2_re = c(i = 0))),
     "fixed_pars"
@@ -333,13 +336,13 @@ test_that("a model with every parameter held is evaluated at the values", {
   working <- c(1, 0.3, log(0.5), log(1.2), log(0.1))
   expect_equal(fit$log_lik, problem$value(working) + constant,
                tolerance = 1e-8)
-  binomial <- suppressWarnings(glgpm(
+  binomial <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     messages = FALSE,
     fixed_pars = list(beta = c(0.6, 0), sigma2 = 0.5, phi = 0.3)
-  ))
+  )
   expect_true(is.finite(binomial$log_lik))
   expect_null(summary(binomial)$mcml)
   expect_false(is.null(binomial$S_samples))
@@ -372,13 +375,13 @@ test_that("predictions with parameter uncertainty keep held parameters", {
 })
 
 test_that("check_computation() says that a fit holding every parameter estimates nothing", {
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     messages = FALSE,
     fixed_pars = list(beta = c(0.6, 0), sigma2 = 0.5, phi = 0.3)
-  ))
+  )
   checks <- check_computation(fit, messages = FALSE)$checks
   row <- checks[checks$check == "Monte Carlo accuracy", ]
   expect_identical(row$status, "OK")
@@ -408,13 +411,13 @@ test_that("held coefficients are fixed directions in the search for separation",
 })
 
 test_that("the screen of short scales doesn't run with held coefficients", {
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE,
     fixed_pars = list(beta = c(cov = 0))
-  ))
+  )
   record <- attr(fit, "optimizer")$mcml_maxima_screen
   expect_identical(record$gate, "unavailable")
   expect_identical(record$reason, "held coefficients")
@@ -434,7 +437,7 @@ test_that("glgpm_parameters() shows the parameters that fixed_pars holds", {
 })
 
 test_that("a held spatial variance leaves the nugget its standard error", {
-  data <- replicated_gaussian()
+  data <- replicated_gaussian(nugget = TRUE)
   fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = data, family = "gaussian",
                fixed_pars = list(sigma2 = 0.2), messages = FALSE)
   # log tau2 = nu2 + log sigma2, and sigma2 is known.

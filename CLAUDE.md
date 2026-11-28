@@ -22,15 +22,23 @@ follow it. This file only covers things CONTRIBUTING.md doesn't.
 ## Test fixtures
 
 `tests/testthat/helper-data.R` is sourced automatically before the test suite
-runs and defines the shared fixtures used across most test files:
-`gaussian_data`, `binomial_data`, `poisson_data` (small, `n = 10`, synthetic
-datasets) and pre-fitted models `gaussian_model`, `gaussian_offset_model`,
-`gaussian_intercept_model`, `binomial_model`, `poisson_model`, plus
-`control_mcmc` (a reduced-iteration `set_control_mcmc()` for fast fits). Prefer
-reusing these over creating new fixtures, unless a test specifically needs
-different data (e.g. a covariate name collision, or a formula shape none of
-the fixtures cover). If you ever need to produce examples of bugs, use these
-same objects.
+runs and defines the shared fixtures used across most test files. Each
+dataset has 20 locations and is simulated from the model that the tests fit
+to it. `gaussian_data`, `binomial_data` and `poisson_data` come from
+`y ~ cov + gp()`, the `*_re_data` from `y ~ cov + gp() + re(i)`, the
+`*_two_re_data` from `y ~ cov + gp() + re(i, j)`, `binomial_nugget_data` from
+`y ~ cov + gp(nugget = TRUE)`, `negative_binomial_data` from a negative
+binomial `y ~ cov + gp()`, and `gaussian_offset_data` and
+`gaussian_intercept_data` from their models. Fit a model to data that contain
+every effect it estimates (#206), and simulate data for another model with
+`simulate_fixture()`. The pre-fitted models are `gaussian_model`,
+`gaussian_no_cov_model`, `gaussian_offset_model`, `gaussian_intercept_model`,
+`binomial_model` and `poisson_model`, plus `control_mcmc` and
+`fixture_control_mcml` for fast fits.
+Prefer reusing these over creating new fixtures, unless a test specifically
+needs different data (e.g. a covariate name collision, or a formula shape none
+of the fixtures cover). If you ever need to produce examples of bugs, use
+these same objects.
 
 ## Golden battery
 

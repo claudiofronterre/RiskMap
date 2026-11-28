@@ -438,13 +438,13 @@ test_that("a fit integrates households out and reports them", {
     east = 1000 * survey$coords[survey$location, 1L],
     north = 1000 * survey$coords[survey$location, 2L]
   ), coords = c("east", "north"), crs = 32636)
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ x + gp(nugget = TRUE) + re(household), data = data,
     family = "binomial", denominator = m, distance_units = "km",
     control_mcmc = control_mcmc,
     control_mcml = set_control_mcml(integrate_noise = TRUE, max_stages = 1),
     seed = fixture_seed, messages = FALSE
-  ))
+  )
   optimizer <- attr(fit, "optimizer")
   expect_true(optimizer$mcml_integrate_noise)
   expect_identical(optimizer$mcml_integrated_terms,
@@ -469,12 +469,12 @@ test_that("an automatic fit with households is the fit with TRUE", {
                                 max_stages = 1)
     # A threshold no variance reaches would sample a nugget that switches.
     control$integrate_threshold <- 1e6
-    suppressWarnings(glgpm(
+    glgpm(
       y ~ x + gp(nugget = TRUE) + re(household), data = data,
       family = "binomial", denominator = m, distance_units = "km",
       control_mcmc = control_mcmc, control_mcml = control,
       seed = fixture_seed, messages = FALSE
-    ))
+    )
   }
   automatic <- fit_with("auto")
   integrated <- fit_with(TRUE)
@@ -507,14 +507,14 @@ test_that("a nugget beside random effects that span locations can switch form", 
     held$sigma2_re <- c(g = 1, h = 0.3)[terms]
     # Only the nugget is estimated, with the sampled and the integrated form
     fits <- lapply(list("auto", TRUE, FALSE), function(form) {
-      suppressWarnings(glgpm(
+      glgpm(
         formula, data = data, family = "binomial", denominator = trials,
         fixed_pars = held, start_pars = list(tau2 = 1), seed = 1,
         control_mcml = set_control_mcml(
           initial_draws = 2000, validation_draws = 2000, max_stages = 1,
           integrate_noise = form, laplace_start = FALSE
         ), return_samples = FALSE, messages = FALSE
-      ))
+      )
     })
     standard_error <- sqrt(fits[[3]]$covariance["nu2", "nu2"])
     for (fit in fits[1:2]) {

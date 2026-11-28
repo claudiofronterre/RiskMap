@@ -69,23 +69,23 @@ test_that("named links carry their name and exact derivatives", {
 
 test_that("canonical family objects fit exactly as the strings do", {
   skip_on_cran()
-  binomial_object <- suppressWarnings(glgpm(
-    y ~ cov + gp() + re(i), data = binomial_data, family = binomial(),
+  binomial_object <- glgpm(
+    y ~ cov + gp() + re(i), data = binomial_re_data, family = binomial(),
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     messages = FALSE
-  ))
+  )
   expect_identical(fit_without_timing(binomial_object),
                    fit_without_timing(binomial_model))
   expect_identical(binomial_object$link_function$name, "canonical")
   expect_identical(binomial_object$link_function$link, "logit")
 
-  poisson_object <- suppressWarnings(glgpm(
-    y ~ cov + gp() + re(i), data = poisson_data, family = poisson,
+  poisson_object <- glgpm(
+    y ~ cov + gp() + re(i), data = poisson_re_data, family = poisson,
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, control_mcml = fixture_control_mcml,
     return_samples = TRUE, messages = FALSE
-  ))
+  )
   expect_identical(fit_without_timing(poisson_object),
                    fit_without_timing(poisson_model))
   expect_identical(poisson_object$link_function$link, "log")
@@ -187,7 +187,7 @@ test_that("print() and summary() name the link", {
   skip_on_cran()
   fit <- named_fits$cloglog
   expect_output(print(fit), "Binomial geostatistical model with cloglog link")
-  expect_output(print(fit), "10 observations at 10 locations")
+  expect_output(print(fit), paste(fixture_n, "observations at", fixture_n, "locations"))
   fit_summary <- summary(fit)
   expect_identical(fit_summary$link_name, "cloglog")
   expect_identical(fit_summary$invlink_expression,

@@ -113,7 +113,7 @@ test_that("distance scaling rejects coincident observed locations", {
 
 test_that("fitted scale parameters remain in the requested distance units", {
   model_metres <- glgpm(y ~ cov + gp() + re(i),
-                        data = gaussian_data,
+                        data = gaussian_re_data,
                         family = "gaussian",
                         distance_units = "m",
                         messages = FALSE)

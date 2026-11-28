@@ -562,6 +562,15 @@ test_that("the summary gives the numbers behind each finding", {
   flagged <- binomial_model
   optimizer <- attr(flagged, "optimizer")
   optimizer$mcml_boundary <- "nugget variance (tau2)"
+  # The scale of binomial_model is long, so its fit ran no dispersed starts
+  # and has no table of them. A table is set here, so that this test covers
+  # the other maxima with the rest of the summary. The test of a scale shorter
+  # than the spacing in test-glgpm.R checks the summary of the table of a fit.
+  optimizer$mcml_maxima_check <- data.frame(
+    start = c("fitted", "short"), log_phi = log(c(3, 0.5)),
+    log_likelihood = c(-100, -101), independent_log_likelihood = NA_real_,
+    independent_se = NA_real_, chosen = c(TRUE, FALSE)
+  )
   attr(flagged, "optimizer") <- optimizer
   checked <- check_computation(flagged)
   summarised <- summary(checked)

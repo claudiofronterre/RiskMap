@@ -65,7 +65,7 @@ test_that("the rebuilt problem reproduces the fit's certification bank", {
   # With the Laplace proposal the importance distribution does not depend on
   # an anchor, so the bank drawn on the fit's certification stream is the
   # fit's.
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, messages = FALSE,
@@ -73,7 +73,7 @@ test_that("the rebuilt problem reproduces the fit's certification bank", {
       initial_draws = 500, validation_draws = 500, max_draws = 500,
       max_stages = 1, proposal = "laplace"
     )
-  ))
+  )
   last <- fit$mcml_history[[1L]]
   skip_if(!is.finite(last$certificate_radius %||% NA_real_))
   problem <- rebuild_certification_problem(fit, last)
@@ -213,15 +213,15 @@ test_that("the radius check rebuilds the form of the fit's last stage", {
 # A fit whose importance distribution does not depend on an anchor, so that
 # the banks drawn on its streams are the fit's.
 laplace_nugget_fit <- function(integrate_noise) {
-  suppressWarnings(glgpm(
-    y ~ cov + gp(nugget = TRUE), data = binomial_data, family = "binomial",
+  glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, messages = FALSE,
     control_mcml = set_control_mcml(
       initial_draws = 500, validation_draws = 500, max_draws = 500,
       max_stages = 1, proposal = "laplace", integrate_noise = integrate_noise
     )
-  ))
+  )
 }
 
 test_that("the rebuilt problem reproduces an integrated fit's bank", {

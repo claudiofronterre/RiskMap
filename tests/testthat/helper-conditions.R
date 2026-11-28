@@ -12,3 +12,29 @@ expect_input_error <- function(object, arg, message = NULL) {
   }
   invisible(condition)
 }
+
+# Expect exactly the warnings a call gives, as `expect_warning()` catches only
+# the first that matches and lets the others through. Each element of
+# `messages` must be contained in one warning, and every warning must contain
+# one of them. cli wraps messages at the console width, so runs of whitespace
+# are read as one space before matching.
+expect_warnings <- function(object, messages) {
+  warnings <- capture_warnings({{ object }})
+  warnings <- gsub("\\s+", " ", warnings)
+  contains <- function(warning, message) grepl(message, warning, fixed = TRUE)
+  given <- if (length(warnings) == 0) "none" else paste("*", warnings, collapse = "\n")
+  for (message in messages) {
+    expect(
+      any(contains(warnings, message)),
+      sprintf("No warning contained \"%s\". Warnings given:\n%s", message, given)
+    )
+  }
+  unexpected <- warnings[!vapply(warnings, function(warning) {
+    any(vapply(messages, contains, logical(1), warning = warning))
+  }, logical(1))]
+  expect(
+    length(unexpected) == 0,
+    sprintf("Unexpected warnings:\n%s", paste("*", unexpected, collapse = "\n"))
+  )
+  invisible(warnings)
+}

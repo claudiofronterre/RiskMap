@@ -126,7 +126,7 @@ test_that("an extrapolation map at points not made by create_grid() draws every 
 })
 
 test_that("unexplained spatial variance uses fixed variance components", {
-  fixed_model <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+  fixed_model <- glgpm(y ~ gp(), data = gaussian_intercept_data, family = "gaussian",
                        fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
   estimated_model <- fixed_model
   estimated_model$fixed_pars <- NULL
@@ -219,19 +219,18 @@ test_that("the unexplained share includes the binomial sampling noise", {
 })
 
 test_that("a Gaussian share is the kriging variance with the records averaged", {
-  repeated <- rbind(gaussian_data, gaussian_data[1:3, ])
+  repeated <- rbind(gaussian_intercept_data, gaussian_intercept_data[1:3, ])
   withr::with_seed(3, repeated$y <- repeated$y + stats::rnorm(nrow(repeated),
                                                               sd = 0.3))
   fit <- glgpm(y ~ gp(), data = repeated, family = "gaussian",
                messages = FALSE)
-  expect_identical(nrow(fit$coords), nrow(gaussian_data))
+  expect_identical(nrow(fit$coords), nrow(gaussian_intercept_data))
   parameters <- coef(fit)
   observed <- fit$coords
   records <- observed[fit$ID_coords, ]
   point <- observed[2, , drop = FALSE] + c(0.3, 0.1)
   correlation <- function(a, b) {
-    distances <- sqrt(pmax(outer(rowSums(a^2), rowSums(b^2), "+") -
-                             2 * a %*% t(b), 0))
+    distances <- sqrt(outer(a[, 1], b[, 1], "-")^2 + outer(a[, 2], b[, 2], "-")^2)
     matern_correlation(distances, phi = parameters$phi, kappa = fit$kappa)
   }
   same_location <- outer(fit$ID_coords, fit$ID_coords, "==")
@@ -281,7 +280,7 @@ test_that("the print of indicators states the classes and the thresholds", {
   extrapolation <- assess_extrapolation(binomial_model, binomial_data)
   printed <- capture.output(print(extrapolation))
   expect_match(printed[1L], "Extrapolation")
-  expect_true("Indicators at 10 locations." %in% printed)
+  expect_true(sprintf("Indicators at %d locations.", fixture_n) %in% printed)
   share <- paste0(format(100 * attr(extrapolation, "spatial_threshold"),
                          digits = 3), "%")
   expect_match(squish(printed), paste0(
@@ -303,10 +302,13 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_match(printed, "leaves out the sampling noise", fixed = TRUE)
   # Locations that share almost no correlation set the threshold at 1, so
   # nothing can be flagged, which assess_extrapolation() warns of and the
-  # print says.
+  # print says. A scale far shorter than the spacing of the fixture's locations
+  # gives that.
+  isolated_model <- gaussian_model
+  isolated_model$estimate$phi <- log(1e-3)
   far <- st_as_sf(data.frame(x = 1e7, z = 1e7, cov = 0), coords = c("x", "z"),
                   crs = 32637)
-  expect_warning(isolated <- assess_extrapolation(gaussian_model, far),
+  expect_warning(isolated <- assess_extrapolation(isolated_model, far),
                  "no location can be classed as spatial extrapolation",
                  class = "riskmap_warning")
   expect_equal(attr(isolated, "spatial_threshold"), 1, tolerance = 1e-12)
@@ -320,7 +322,7 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_no_match(squish(capture.output(print(extrapolation))),
                   "Spatial: none", fixed = TRUE)
   # A threshold that is given, or a percentile below 1, gives no warning.
-  expect_no_warning(assess_extrapolation(gaussian_model, far,
+  expect_no_warning(assess_extrapolation(isolated_model, far,
                                          spatial_threshold = 0.8))
   expect_no_warning(assess_extrapolation(binomial_model, binomial_data))
   # A threshold below 1 never prints as 100%.

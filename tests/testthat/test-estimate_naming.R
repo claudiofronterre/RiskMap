@@ -139,12 +139,12 @@ test_that("a covariate named after a parameter no longer corrupts estimates (#92
   ## - the covariate's beta coefficient, exponentiated, instead of the actual
   ## spatial variance. Structuring `estimate` as a list (beta$sigma2 vs
   ## top-level $sigma2) keeps those namespaces separate.
-  clashing_data <- gaussian_data
+  clashing_data <- gaussian_re_data
   clashing_data$sigma2 <- clashing_data$cov
 
   fit_clash <- glgpm(y ~ sigma2 + gp() + re(i), data = clashing_data,
                      family = "gaussian", messages = FALSE)
-  fit_ref   <- glgpm(y ~ cov + gp() + re(i), data = gaussian_data,
+  fit_ref   <- glgpm(y ~ cov + gp() + re(i), data = gaussian_re_data,
                      family = "gaussian", messages = FALSE)
 
   co_clash <- coef(fit_clash)
@@ -233,7 +233,7 @@ test_that("working_estimate() and the fitting engines' indices agree on sigma2_m
 })
 
 test_that("glgpm fits gaussian re() + estimated measurement error with deliberately different sigma2_re/sigma2_me starting values (#135/#117)", {
-  fit <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_data, family = "gaussian",
+  fit <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_two_re_data, family = "gaussian",
               messages = FALSE,
               start_pars = list(sigma2_re = c(5, 10), sigma2_me = 0.01))
 

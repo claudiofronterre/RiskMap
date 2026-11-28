@@ -245,25 +245,25 @@ test_that("predict() says when points on a grid are assigned whole to polygons (
   # about.
   combined <- cbind(grid, value = 1)
   expect_false(inherits(combined, "RiskMap_grid"))
-  expect_message(prediction <- suppressWarnings(predict_over(combined)),
+  expect_message(prediction <- predict_over(combined),
                  "regular grid", class = "riskmap_message")
   expect_identical(prediction$coverage, "point")
 
   expect_no_message(predict_over(grid))
-  expect_no_message(suppressWarnings(predict_over(gaussian_data)))
+  expect_no_message(predict_over(gaussian_data))
 
   # A grid in another CRS than the fit's is recognised before it is
   # projected, which predict() also reports
   messages_of <- function(newdata) {
     texts <- character()
-    withCallingHandlers(suppressWarnings(predict_over(newdata)),
+    withCallingHandlers(predict_over(newdata),
                         riskmap_message = function(m) {
                           texts <<- c(texts, conditionMessage(m))
                           invokeRestart("muffleMessage")
                         })
     texts
   }
-  other_grid <- suppressWarnings(create_grid(st_transform(hull, 32636), 3))
+  other_grid <- create_grid(st_transform(hull, 32636), 3)
   other_combined <- cbind(other_grid, value = 1)
   expect_false(on_square_lattice(st_transform(other_combined, 32637)))
   expect_true(any(grepl("regular grid", messages_of(other_combined))))
@@ -390,5 +390,5 @@ test_that("create_convex_hull functions correctly", {
   expect_identical(nrow(result), 1L)
 
   intersect <- unlist(st_intersects(gaussian_data, result))
-  expect_identical(intersect, rep(1L, 10))
+  expect_identical(intersect, rep(1L, fixture_n))
 })

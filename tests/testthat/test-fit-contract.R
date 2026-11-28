@@ -46,19 +46,19 @@ test_that("logLik(), nobs(), AIC() and BIC() read a fit", {
   expect_identical(as.numeric(log_likelihood), gaussian_model$log_lik)
   expect_identical(attr(log_likelihood, "df"),
                    length(unlist(coef(gaussian_model))))
-  expect_identical(nobs(gaussian_model), 10L)
-  expect_identical(attr(log_likelihood, "nobs"), 10L)
+  expect_identical(nobs(gaussian_model), fixture_n)
+  expect_identical(attr(log_likelihood, "nobs"), fixture_n)
   expect_equal(AIC(gaussian_model), summary(gaussian_model)$aic)
   expect_equal(BIC(gaussian_model),
                -2 * gaussian_model$log_lik +
-                 log(10) * attr(log_likelihood, "df"))
+                 log(fixture_n) * attr(log_likelihood, "df"))
   # A held parameter is not counted.
   held <- logLik(gaussian_offset_model)
   expect_identical(attr(held, "df"),
                    length(unlist(coef(gaussian_offset_model))) - 1L)
   expect_equal(AIC(gaussian_offset_model),
                summary(gaussian_offset_model)$aic)
-  expect_identical(nobs(binomial_model), 10L)
+  expect_identical(nobs(binomial_model), fixture_n)
   expect_identical(as.numeric(logLik(binomial_model)), binomial_model$log_lik)
 })
 
@@ -163,8 +163,8 @@ test_that("every result records the version of RiskMap that made it", {
                   seed = 1, messages = FALSE))
   stamped(parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                                messages = FALSE))
-  stamped(suppressWarnings(assess_extrapolation(gaussian_intercept_model, grid,
-                                                spatial_threshold = 0.8)))
+  stamped(assess_extrapolation(gaussian_intercept_model, grid,
+                               spatial_threshold = 0.8))
   without_re <- simulate_glgpm(gaussian_intercept_model,
                                what = c("data", "surface"),
                                prediction_grid = grid,

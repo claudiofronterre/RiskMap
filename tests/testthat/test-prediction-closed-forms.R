@@ -42,8 +42,8 @@ fit_held <- function(data, terms = character(), nugget = FALSE, ...) {
   held <- utils::modifyList(held_gaussian, list(...))
   if (length(terms)) held$sigma2_re <- held_re[terms]
   if (nugget && is.null(held$tau2)) held$tau2 <- 0.3
-  suppressWarnings(glgpm(formula, data = data, family = "gaussian",
-                         fixed_pars = held, messages = FALSE))
+  glgpm(formula, data = data, family = "gaussian",
+        fixed_pars = held, messages = FALSE)
 }
 
 # The distribution, given the data, of the linear predictor and of its spatial
@@ -196,12 +196,12 @@ test_that("the labels of random effects don't change count predictions", {
         data$counts
       values <- held
       if (name == "negative_binomial") values$theta <- 2
-      fit <- suppressWarnings(glgpm(
+      fit <- glgpm(
         response ~ z + gp() + re(g), data = labelled, family = families[[name]],
         denominator = trials, fixed_pars = values, seed = 3,
         control_mcmc = set_control_mcmc(n_draws = 100, burnin = 100, thin = 1),
         messages = FALSE
-      ))
+      )
       predict(fit, newdata, joint = TRUE, include = "random_effects", seed = 1,
               keep_samples = TRUE, messages = FALSE)$samples
     }
@@ -274,11 +274,14 @@ test_that("random effects are kept when the measurement error is held at zero", 
     expect_gaussian_draws(draws_of(prediction)$link, exact$link)
     # The data determine the sums of the effects of their records, so the
     # covariance of the effects needs a jitter, which warns.
-    areal <- suppressWarnings(predict(
-      fit, new$data, boundaries = area, aggregate = "mean",
-      include = "random_effects", seed = 2, control_mcmc = many_draws,
-      keep_samples = TRUE, messages = FALSE
-    ))
+    expect_warnings(
+      areal <- predict(
+        fit, new$data, boundaries = area, aggregate = "mean",
+        include = "random_effects", seed = 2, control_mcmc = many_draws,
+        keep_samples = TRUE, messages = FALSE
+      ),
+      "needed a diagonal jitter of 1e-12 to be factorised"
+    )
     expect_gaussian_draws(areal$samples$mean$link, list(
       mean = mean(exact$link$mean),
       covariance = matrix(mean(exact$link$covariance))
@@ -377,13 +380,13 @@ test_that("effects of new levels are drawn from their distribution inside", {
     held <- list(beta = c(0, 0.5), sigma2 = 1, phi = 20, tau2 = 0.3,
                  sigma2_re = c(g = 1.5, h = 0.8))
     if (name == "negative_binomial") held$theta <- 2
-    fit <- suppressWarnings(glgpm(
+    fit <- glgpm(
       response ~ z + gp(nugget = TRUE) + re(g, h), data = data,
       family = families[[name]], denominator = trials, fixed_pars = held,
       seed = 3, messages = FALSE,
       control_mcml = set_control_mcml(integrate_noise = FALSE),
       control_mcmc = set_control_mcmc(n_draws = 1500, burnin = 500, thin = 5)
-    ))
+    )
     draws <- components(fit, NULL)
     n <- ncol(draws$link)
     expect_identical(draws$nugget[c(1, 2), ], draws$nugget[c(3, 5), ])
@@ -433,10 +436,10 @@ test_that("predict() without newdata gives each record its location's effect", {
     for (with_re in c(FALSE, TRUE)) {
       formula <- if (with_re) response ~ z + gp() + re(g) else response ~ z + gp()
       if (with_re) held$sigma2_re <- c(g = 1.5)
-      fit <- suppressWarnings(glgpm(
+      fit <- glgpm(
         formula, data = data, family = families[[name]], denominator = trials,
         fixed_pars = held, seed = 3, control_mcmc = control, messages = FALSE
-      ))
+      )
       prediction <- expect_no_warning(predict(
         fit, seed = 1, joint = with_re,
         include = if (with_re) "random_effects", keep_samples = TRUE,
@@ -473,11 +476,11 @@ test_that("predict() without newdata follows the records at every draw", {
   fits <- list(
     glgpm(y ~ z + gp(), data = data, family = "gaussian",
           fixed_pars = c(covariance, sigma2_me = 0.25), messages = FALSE),
-    suppressWarnings(glgpm(
+    glgpm(
       counts ~ z + gp(), data = data, family = "poisson", denominator = NULL,
       fixed_pars = covariance, seed = 3, messages = FALSE,
       control_mcmc = set_control_mcmc(n_draws = 60, burnin = 100, thin = 1)
-    ))
+    )
   )
   for (fit in fits) {
     prediction <- expect_no_warning(predict(
@@ -578,12 +581,12 @@ test_that("the stored samples are drawn at the held values", {
                  tolerance = 1e-5)
   }
   for (hold in names(holds)) {
-    fit <- suppressWarnings(glgpm(
+    fit <- glgpm(
       binomial ~ z + gp(nugget = TRUE) + re(g), data = data,
       family = "binomial", denominator = trials, fixed_pars = holds[[hold]],
       control_mcml = control_mcml, control_mcmc = control, seed = 5,
       messages = FALSE
-    ))
+    )
     check_stored(fit)
     # The fitted values and the default prediction are from them.
     expect_equal(fitted(fit, "link"), colMeans(
@@ -596,11 +599,11 @@ test_that("the stored samples are drawn at the held values", {
     held <- all_held
     held$beta <- c("(Intercept)" = -1, z = 0.002)
     if (!is.character(family)) held$theta <- 3
-    check_stored(suppressWarnings(glgpm(
+    check_stored(glgpm(
       counts ~ z + gp(nugget = TRUE) + re(g), data = data, family = family,
       fixed_pars = held, control_mcml = control_mcml, control_mcmc = control,
       seed = 5, messages = FALSE
-    )))
+    ))
   }
 })
 
@@ -620,14 +623,14 @@ test_that("a Gaussian variance estimated at zero keeps its estimate", {
   # The first of these data sets whose nugget is estimated at zero
   for (seed in 1:20) {
     data <- draw(seed)
-    fit <- suppressWarnings(glgpm(y ~ gp(nugget = TRUE), data = data,
-                                  family = "gaussian", messages = FALSE))
+    fit <- glgpm(y ~ gp(nugget = TRUE), data = data,
+                 family = "gaussian", messages = FALSE)
     if (coef(fit)$tau2 < 1e-4) break
   }
   expect_lt(coef(fit)$tau2, 1e-4)
   expect_gt(sqrt(diag(fit$covariance))[["nu2"]], 100)
-  without <- suppressWarnings(glgpm(y ~ gp(), data = data, family = "gaussian",
-                                    messages = FALSE))
+  without <- glgpm(y ~ gp(), data = data, family = "gaussian",
+                   messages = FALSE)
   set.seed(1)
   draws <- RiskMap:::draw_parameter_values(fit, 500)
   # The nugget keeps its estimate, as its variance.
@@ -653,10 +656,10 @@ test_that("a Gaussian variance estimated at zero keeps its estimate", {
 })
 
 test_that("the other parameters are drawn given those that are kept", {
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ z + gp(nugget = TRUE), data = make_records()$data, family = "gaussian",
     messages = FALSE
-  ))
+  )
   # A nugget near zero with a wide likelihood, correlated with the spatial
   # variance and scale, on the scale with the variance of the nugget
   fit$estimate$sigma2 <- log(0.8)
@@ -696,10 +699,10 @@ test_that("the other parameters are drawn given those that are kept", {
 })
 
 test_that("a spatial variance at zero leaves the nugget its uncertainty", {
-  fit <- suppressWarnings(glgpm(
+  fit <- glgpm(
     y ~ z + gp(nugget = TRUE), data = make_records()$data, family = "gaussian",
     messages = FALSE
-  ))
+  )
   # A spatial variance at zero, with the likelihood flat in it and in the
   # scale. The ratio of the nugget to it moves with it, so that only the
   # variance of the nugget is determined.

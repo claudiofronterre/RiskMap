@@ -455,18 +455,18 @@ test_that("both forms estimate the same likelihood with a custom link", {
 
 test_that("a fit with integrate_noise reports the integrated locations", {
   skip_on_cran()
-  fit <- suppressWarnings(glgpm(
-    y ~ cov + gp(nugget = TRUE), data = binomial_data, family = "binomial",
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     control_mcml = set_control_mcml(integrate_noise = TRUE, max_stages = 1),
     seed = fixture_seed, messages = FALSE
-  ))
+  )
   optimizer <- attr(fit, "optimizer")
   expect_true(optimizer$mcml_integrate_noise)
-  expect_identical(optimizer$mcml_integrated_locations, 10L)
+  expect_identical(optimizer$mcml_integrated_locations, fixture_n)
   expect_null(optimizer$laplace_start)
   expect_match(check_computation(fit)$draws,
-               "The nugget was integrated out at 10 of 10 locations.")
+               sprintf("The nugget was integrated out at %d of %d locations.", fixture_n, fixture_n))
   expect_true(is.finite(optimizer$mcml_history[[1]]$refit_change))
 })
 
@@ -570,13 +570,13 @@ test_that("a sampled fit keeps the release's rule when the global iteration stal
     global
   })
   fit_with <- function(integrate) {
-    suppressWarnings(glgpm(
-      y ~ cov + gp(nugget = TRUE), data = binomial_data, family = "binomial",
+    glgpm(
+      y ~ cov + gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
       denominator = denominator, control_mcmc = control_mcmc,
       control_mcml = set_control_mcml(integrate_noise = integrate,
                                       max_stages = 1),
       seed = fixture_seed, messages = FALSE
-    ))
+    )
   }
   sampled <- attr(fit_with(FALSE), "optimizer")
   expect_gt(sampled$mcml_history[[1]]$proposal_failures, 0L)
@@ -700,12 +700,12 @@ test_that("a switching engine takes its form from the nugget variance", {
 
 test_that("an automatic fit records the form of each stage", {
   skip_on_cran()
-  fit <- suppressWarnings(glgpm(
-    y ~ cov + gp(nugget = TRUE), data = binomial_data, family = "binomial",
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     control_mcml = set_control_mcml(integrate_noise = "auto", max_stages = 2),
     seed = fixture_seed, messages = FALSE
-  ))
+  )
   optimizer <- attr(fit, "optimizer")
   forms <- optimizer$mcml_noise_forms
   expect_length(forms, optimizer$mcml_stages)

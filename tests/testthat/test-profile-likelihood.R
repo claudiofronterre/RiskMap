@@ -553,9 +553,9 @@ test_that("a failure to find a value is not reported as infeasible", {
 
 # A well-identified linear geostatistical model with a nugget: 40 locations
 # with four observations each, so that the likelihood uses the Woodbury
-# identity. The shared Gaussian fixtures have one observation at each of ten
-# locations, and some of their variances are estimated near zero, so their
-# profiles reach the bounds, where brute-force maximisation is no check.
+# identity. The shared Gaussian fixtures have one observation at each of 20
+# locations, so that their likelihood does not use it, and a nugget beside a
+# measurement error needs replicates to be well identified.
 replicated_data <- local({
   set.seed(2026)
   n_locations <- 40L

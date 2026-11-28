@@ -16,11 +16,19 @@ test_that("the nugget and the measurement error variance cannot both be estimate
   expect_identical(fit_fix_var_me(zero_error_fit), 0)
   expect_identical(zero_error_fit$fixed_pars, list(sigma2_me = 0))
   expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
-  expect_no_error(suppressWarnings(glgpm(
-    z ~ gp(nugget = TRUE), gaussian_data, "binomial",
-    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
-    control_mcml = fixture_control_mcml, messages = FALSE
-  )))
+
+  # Three locations can't identify both a spatial variance and a nugget, and
+  # these give a singular information on every platform.
+  expect_warnings(
+    fit <- glgpm(
+      z ~ gp(nugget = TRUE), gaussian_data, "binomial",
+      denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    ),
+    c("`sigma2` was estimated as effectively zero",
+      "observed information matrix is singular")
+  )
+  expect_true(attr(fit, "optimizer")$mcml_identifiability_failure)
 
   two_location_data <- rbind(data,
                              data.frame(
@@ -67,12 +75,20 @@ test_that("a non-Gaussian estimated nugget uses the global proposal", {
   n <- 80L
   denominator <- sample(10:50, n, replace = TRUE)
   covariate <- rnorm(n)
+  x <- runif(n, 0, 100000)
+  z <- runif(n, 0, 100000)
+  # real spatial and nugget components, so sigma2 and tau2 are identifiable
+  sigma2 <- 1; phi <- 20000; kappa <- 1
+  Sigma <- sigma2 * matern_correlation(dist(cbind(x, z)), phi = phi, kappa = kappa,
+                                       return_sym_matrix = TRUE)
+  S <- as.numeric(t(chol(Sigma)) %*% rnorm(n))
+  nugget_true <- rnorm(n, sd = 0.6)
   data <- data.frame(
-    y = rbinom(n, denominator, plogis(-0.5 + 0.4 * covariate)),
+    y = rbinom(n, denominator, plogis(-0.5 + 0.4 * covariate + S + nugget_true)),
     covariate = covariate,
     denominator = denominator,
-    x = runif(n, 0, 100000),
-    z = runif(n, 0, 100000)
+    x = x,
+    z = z
   )
   spatial_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32630)
   control <- set_control_mcmc(

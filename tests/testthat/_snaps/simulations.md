@@ -4,7 +4,7 @@
       print(model)
     Output
       -- Geostatistical model for simulation -----------------------------------------
-      Negative binomial geostatistical model, y ~ cov + gp(nugget = TRUE), at 10
+      Negative binomial geostatistical model, y ~ cov + gp(nugget = TRUE), at 20
       locations.
       
       Parameters
