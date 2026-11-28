@@ -5,8 +5,15 @@ test_set_data <- function(crs = 32637) {
   set.seed(30)
   coordinates <- cbind(runif(30, 0, 1e5), runif(30, 0, 1e5))
   rows <- c(1:30, 21:30)
+  # A field of scale 30 km and a measurement error, without changing the
+  # session's random numbers after the locations.
+  value <- withr::with_seed(31, {
+    correlation <- exp(-as.matrix(dist(coordinates)) / 30000)
+    field <- drop(t(chol(correlation)) %*% rnorm(30))
+    field[rows] + rnorm(length(rows), sd = sqrt(0.3))
+  })
   data <- data.frame(x = coordinates[rows, 1], y = coordinates[rows, 2],
-                     value = seq_along(rows))
+                     value = value)
   st_transform(st_as_sf(data, coords = c("x", "y"), crs = 32637), crs)
 }
 

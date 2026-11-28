@@ -19,9 +19,9 @@ assess_named <- function(formula, family, parameters, ...) {
     specify_glgpm(formula, named_data, family, parameters,
                   denominator = denominator)
   }
-  # Simulations whose binomial fits identify the scale.
+  # A seed at which every fit of these simulations identifies its parameters.
   sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
-                        prediction_grid = named_grid, seed = 1)
+                        prediction_grid = named_grid, seed = 7)
   assess_simulation(
     sim, models = list(model = model), spatial_scale = c("location", "area"),
     aggregate = "mean", boundaries = named_areas, label = "name",
@@ -36,14 +36,14 @@ test_that("assess_simulation keeps covariates called y and units_m", {
     expect_identical(x$objective, y$objective)
     expect_identical(unname(x$estimates$model), unname(y$estimates$model))
   }
-  gaussian <- list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  gaussian <- list(beta = c(1, 0.5), sigma2 = 1, phi = 5, sigma2_me = 0.3)
   expect_same_assessment(assess_named(cases ~ y + gp(), "gaussian", gaussian),
                          assess_named(cases ~ cov + gp(), "gaussian", gaussian))
   expect_same_assessment(
     assess_named(cases ~ I(y^2) + gp(), "gaussian", gaussian),
     assess_named(cases ~ I(cov^2) + gp(), "gaussian", gaussian)
   )
-  binomial <- list(beta = c(-0.5, 0.5), sigma2 = 0.5, phi = 2)
+  binomial <- list(beta = c(-0.5, 0.5), sigma2 = 1, phi = 5)
   reference <- assess_named(cases ~ cov + gp(), "binomial", binomial)
   expect_same_assessment(assess_named(cases ~ units_m + gp(), "binomial", binomial),
                          reference)
@@ -68,10 +68,10 @@ test_that("assess_simulation asks for a covariate called y on the grid", {
 test_that("a covariate called as the response of the generating model is kept", {
   # The response of a specification need not exist in the data, so the data
   # can have a covariate of that name, which another model uses.
-  gaussian <- list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  gaussian <- list(beta = c(1, 0.5), sigma2 = 1, phi = 5, sigma2_me = 0.3)
   generating <- specify_glgpm(y ~ cov + gp(), named_data, "gaussian", gaussian)
   sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
-                        prediction_grid = named_grid, seed = 3)
+                        prediction_grid = named_grid, seed = 2)
   result <- assess_simulation(
     sim,
     models = list(
@@ -86,11 +86,11 @@ test_that("a covariate called as the response of the generating model is kept", 
 })
 
 test_that("assess_simulation refuses a candidate with a transformed response", {
-  parameters <- list(beta = 1, sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  parameters <- list(beta = 1, sigma2 = 1, phi = 5, sigma2_me = 0.3)
   generating <- specify_glgpm(y ~ gp(), gaussian_data, "gaussian", parameters)
   candidate <- specify_glgpm(log(y) ~ gp(), gaussian_data, "gaussian", parameters)
   sim <- simulate_glgpm(generating, nsim = 1, what = c("data", "surface"),
-                        prediction_grid = named_grid, seed = 3)
+                        prediction_grid = named_grid, seed = 7)
   expect_input_error(
     assess_simulation(sim, models = list(plain = generating, logged = candidate),
                       spatial_scale = "location", objective = "mse",

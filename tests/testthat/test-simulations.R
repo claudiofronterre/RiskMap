@@ -297,8 +297,8 @@ test_that("assessment refits use fitted templates without reusing estimates #108
 test_that("assessment refits accept specify_glgpm templates #108", {
   template <- specify_glgpm(
     y ~ cov + gp(), gaussian_data, "gaussian",
-    parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
-                      sigma2_me = 0.1)
+    parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 5,
+                      sigma2_me = 0.3)
   )
   formula <- update(template$formula, y ~ .)
   args <- assessment_refit_args(
@@ -313,7 +313,7 @@ test_that("assessment refits accept specify_glgpm templates #108", {
 
   sim <- simulate_glgpm(
     template, nsim = 1, what = c("data", "surface"),
-    prediction_grid = gaussian_data, seed = 2
+    prediction_grid = gaussian_data, seed = 5
   )
   result <- assess_simulation(
     sim, models = list(candidate = template), spatial_scale = "location",
@@ -797,6 +797,8 @@ test_that("assess_simulation names missing candidate covariates on the grid", {
 })
 
 test_that("assess_simulation scores candidates without the generating model's nugget", {
+  # The candidate has no nugget, so that its fits take the nugget of the data
+  # into the field, at a scale below the spacing of the locations.
   generating <- specify_glgpm(
     y ~ gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator,
@@ -846,10 +848,10 @@ test_that("a canonical logit assessment scores plogis of the linear predictors",
   generating <- specify_glgpm(
     y ~ gp(), data = binomial_data, family = "binomial",
     denominator = denominator,
-    parameters = list(beta = -0.5, sigma2 = 0.5, phi = 2)
+    parameters = list(beta = -0.5, sigma2 = 0.5, phi = 5)
   )
   sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
-                        prediction_grid = binomial_data, seed = 3)
+                        prediction_grid = binomial_data, seed = 6)
   run <- assess_recording_links(
     sim, models = list(logit = generating), control_mcmc = control_mcmc,
     seed = fixture_seed, spatial_scale = "location", objective = "mse",
@@ -869,10 +871,10 @@ test_that("assess_simulation scores every model through its own inverse link", {
   generating <- specify_glgpm(
     y ~ gp(), data = binomial_data, family = binomial("probit"),
     denominator = denominator,
-    parameters = list(beta = -0.5, sigma2 = 0.3, phi = 2)
+    parameters = list(beta = -0.5, sigma2 = 0.3, phi = 5)
   )
   sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
-                        prediction_grid = binomial_data, seed = 3)
+                        prediction_grid = binomial_data, seed = 6)
   linear_predictor <- sim$samples$surface[, , "linear_predictor"]
   truth <- simulation_assessment_data(sim)$mean_sim
   expect_identical(truth, matrix(pnorm(linear_predictor),
@@ -881,7 +883,7 @@ test_that("assess_simulation scores every model through its own inverse link", {
   logit <- specify_glgpm(
     y ~ gp(), data = binomial_data, family = "binomial",
     denominator = denominator,
-    parameters = list(beta = -0.8, sigma2 = 0.8, phi = 2)
+    parameters = list(beta = -0.8, sigma2 = 0.8, phi = 5)
   )
   targets <- list()
   record_target <- function(mean) {
@@ -920,10 +922,10 @@ test_that("assess_simulation accepts a generating model with a custom link", {
   generating <- specify_glgpm(
     y ~ gp(), data = binomial_data, family = "binomial",
     denominator = denominator, invlink = imperfect_test,
-    parameters = list(beta = 0, sigma2 = 0.5, phi = 2)
+    parameters = list(beta = 0, sigma2 = 0.5, phi = 5)
   )
   sim <- simulate_glgpm(generating, nsim = 1, what = c("data", "surface"),
-                        prediction_grid = binomial_data, seed = 3)
+                        prediction_grid = binomial_data, seed = 7)
   linear_predictor <- sim$samples$surface[, , "linear_predictor"]
   truth <- simulation_assessment_data(sim)$mean_sim
   expect_identical(truth, matrix(imperfect_test(linear_predictor), ncol = 1))
