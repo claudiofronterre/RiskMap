@@ -53,7 +53,7 @@
 <span>  aggregate <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  boundaries <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  label <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  objective <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mse"</span>, <span class="st">"classify"</span><span class="op">)</span>,</span>
+<span>  objective <span class="op">=</span> <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/NULL.html" class="external-link">is.null</a></span><span class="op">(</span><span class="va">breaks</span><span class="op">)</span><span class="op">)</span> <span class="st">"mse"</span> <span class="kw">else</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mse"</span>, <span class="st">"classify"</span><span class="op">)</span>,</span>
 <span>  breaks <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  control_mcmc <span class="op">=</span> <span class="fu"><a href="set_control_mcmc.html">set_control_mcmc</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -122,7 +122,11 @@ and so on, in a column <code>"region"</code>.</p></dd>
 
 
 <dt id="arg-objective">objective<a class="anchor" aria-label="anchor" href="#arg-objective"></a></dt>
-<dd><p>A character vector specifying objectives, either <code>"mse"</code>, <code>"classify"</code>, or both.</p></dd>
+<dd><p>The measures of predictive performance, <code>"mse"</code> for the
+mean squared error of the predictive mean, <code>"classify"</code> for the
+classification into the classes of <code>breaks</code>, or both. By default the
+mean squared error, and the classification as well when <code>breaks</code> are
+given.</p></dd>
 
 
 <dt id="arg-breaks">breaks<a class="anchor" aria-label="anchor" href="#arg-breaks"></a></dt>
@@ -130,7 +134,8 @@ and so on, in a column <code>"region"</code>.</p></dd>
 boundaries for classification, as in <code><a href="plot_prediction.html">plot_prediction()</a></code>. A class includes
 its upper boundary, the lowest class also includes the first boundary, and
 values beyond the boundaries belong to the end classes, so every value has
-a class. Required if <code>objective</code> includes <code>"classify"</code>.</p></dd>
+a class. Required if <code>objective</code> includes <code>"classify"</code>, which it does by
+default when <code>breaks</code> are given.</p></dd>
 
 
 <dt id="arg-control-mcmc">control_mcmc<a class="anchor" aria-label="anchor" href="#arg-control-mcmc"></a></dt>
@@ -252,7 +257,6 @@ answers which question about a model.</p></div>
 <span class="r-in"><span>  spatial_scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"location"</span>, <span class="st">"area"</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>  aggregate <span class="op">=</span> <span class="st">"mean"</span>,</span></span>
 <span class="r-in"><span>  boundaries <span class="op">=</span> <span class="va">boundary</span>,</span></span>
-<span class="r-in"><span>  objective <span class="op">=</span> <span class="st">"mse"</span>,</span></span>
 <span class="r-in"><span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>

@@ -176,9 +176,10 @@ in the source repository.
   assesses predictions on them.
 - In
   [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
-  every value belongs to a class, those beyond the `breaks` to the end
-  classes, covariates can have any name, and a prediction at a sampled
-  location uses what the data say about its nugget.
+  the classification is assessed by default only when `breaks` are
+  given, every value belongs to a class, those beyond the `breaks` to
+  the end classes, covariates can have any name, and a prediction at a
+  sampled location uses what the data say about its nugget.
 
 #### Plots, printing and messages
 

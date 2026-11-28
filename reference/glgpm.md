@@ -562,7 +562,7 @@ summary(fit)
 #> Spatial Gaussian process, Matern correlation with kappa = 0.5
 #>                          Estimate Lower limit Upper limit
 #> Spatial process var.       2.1220      0.9347      4.8173
-#> Spatial corr. scale (km) 102.1364     34.7203    300.4540
+#> Spatial corr. scale (km) 102.1364     34.7202    300.4544
 #> Variance of the nugget effect fixed at 0
 #> 
 #> Log-likelihood  -2018.33

@@ -13,7 +13,7 @@ assess_simulation(
   aggregate = NULL,
   boundaries = NULL,
   label = NULL,
-  objective = c("mse", "classify"),
+  objective = if (is.null(breaks)) "mse" else c("mse", "classify"),
   breaks = NULL,
   control_mcmc = set_control_mcmc(),
   seed = NULL,
@@ -89,8 +89,10 @@ assess_simulation(
 
 - objective:
 
-  A character vector specifying objectives, either `"mse"`,
-  `"classify"`, or both.
+  The measures of predictive performance, `"mse"` for the mean squared
+  error of the predictive mean, `"classify"` for the classification into
+  the classes of `breaks`, or both. By default the mean squared error,
+  and the classification as well when `breaks` are given.
 
 - breaks:
 
@@ -100,7 +102,7 @@ assess_simulation(
   A class includes its upper boundary, the lowest class also includes
   the first boundary, and values beyond the boundaries belong to the end
   classes, so every value has a class. Required if `objective` includes
-  `"classify"`.
+  `"classify"`, which it does by default when `breaks` are given.
 
 - control_mcmc:
 
@@ -244,7 +246,6 @@ assessment <- assess_simulation(
   spatial_scale = c("location", "area"),
   aggregate = "mean",
   boundaries = boundary,
-  objective = "mse",
   messages = FALSE
 )
 ```
