@@ -536,8 +536,10 @@ predicted residual and the number of Newton steps.
 - When the repeated Newton correction is refused (`residual_refused`), the
 first step is discarded with the steps that followed it, and the stage keeps
 its fitted estimate (#388). The second validation sample is drawn at the fitted
-estimate, whose bound plans the budget of the next stage, which starts from
-it, and the stage is not certified whatever that bound. The first step is
+estimate, and the stage is not certified whatever its bound. The next stage
+starts from the fitted estimate, and since that bound may not hold, it has at
+least the draws planned for twice the tolerance, five times as many, as after
+a stage whose held variance rises. The first step is
 recorded in the stage as `discarded_estimate`. Up to v2.0.0-rc3 the first step
 was kept, certified on the second sample, and the next stage started from it.
 That step is short in the metric of the observed information (0.1 to 0.3

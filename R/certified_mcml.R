@@ -778,9 +778,9 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' vanishes, as along a log variance near zero, can lower the log-likelihood
 ##' by many units. The estimate stays the fitted one, and the first step is
 ##' recorded as `discarded_estimate`. The second bank is drawn at the fitted
-##' estimate, whose bound plans the budget of the next stage
-##' (`fit_adaptive_mcml()`), which starts from it, but the stage is not
-##' certified whatever that bound.
+##' estimate, and the stage is not certified whatever its bound. The next stage
+##' (`fit_adaptive_mcml()`) starts from the fitted estimate, with at least the
+##' draws planned for twice the tolerance, since that bound may not hold.
 ##'
 ##' The check does not act where the radius is below `radius_floor`
 ##' statistical standard errors. The validation draws then barely vary, as
@@ -1567,10 +1567,14 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
         (budget >= maximum_budget &&
          !isTRUE(record$held_variance_rising))) break
     # A stage stopped by a rising held variance has no certificate, and says
-    # nothing about how many more draws the next one needs.
+    # nothing about how many more draws the next one needs. A stage whose
+    # correction was refused has a bound that may not hold, so the next one
+    # has at least the draws planned for twice the tolerance.
     budgets <- plan_next_budgets(budget, validation_budget,
                                  if (isTRUE(record$held_variance_rising)) {
                                    2 * tolerance
+                                 } else if (isTRUE(record$residual_refused)) {
+                                   max(record$certificate, 2 * tolerance)
                                  } else {
                                    record$certificate
                                  },
