@@ -69,6 +69,19 @@ footer:
   components:
     book: "Learn RiskMap with the book [Model-based geostatistics for global public health using R](https://www.mbgr.org/)."
 
+# Articles live in vignettes/articles/ and are built only for the website.
+# RiskMap.Rmd is "Get started"; the others are listed here in the order of an
+# analysis. Their slower results come from vignettes/articles/precompute.R.
+articles:
+  - title: Articles
+    navbar: ~
+    contents:
+      - '`articles/projections-and-distances`'
+      - '`articles/families-and-links`'
+      - '`articles/checking-a-fit`'
+      - '`articles/prediction-targets`'
+      - '`articles/assessing-predictions`'
+
 # Every exported function, method and dataset with a help page must be
 # listed here, or the site fails to build.
 reference:
