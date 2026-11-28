@@ -16,6 +16,8 @@
 #   `gaussian_intercept_model`.
 # - `binomial_nugget_data` comes from `y ~ cov + gp(nugget = TRUE)`, with five
 #   times the denominators, without which the nugget is not identified.
+# - `negative_binomial_data` comes from `y ~ cov + gp()` with a negative
+#   binomial family of size 2 and the exposure `denominator`.
 #
 # Each dataset draws its response with its own seed, chosen so that these fits
 # are clean, with a scale longer than the median distance between neighbouring
@@ -101,6 +103,10 @@ poisson_re_data <- simulate_fixture(3, function(columns) {
   rpois(fixture_n, columns$denominator *
           exp(-1 + 0.2 * columns$cov + fixture_field +
                 fixture_effect(columns$i)))
+})
+negative_binomial_data <- simulate_fixture(27, function(columns) {
+  rnbinom(fixture_n, size = 2, mu = columns$denominator *
+            exp(-1 + 0.2 * columns$cov + fixture_field))
 })
 
 # reduce iterations to speed up fits

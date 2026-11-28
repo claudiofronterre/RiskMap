@@ -77,7 +77,7 @@ test_that("fixed_pars holds the size of a negative binomial family", {
   skip_on_cran()
   counts <- function(...) {
     glgpm(
-      y ~ cov + gp(), data = poisson_data, denominator = denominator,
+      y ~ cov + gp(), data = negative_binomial_data, denominator = denominator,
       control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, return_samples = FALSE,
       messages = FALSE, ...
@@ -204,10 +204,16 @@ test_that("gp() points a value of the nugget to fixed_pars or to FALSE", {
   }
 })
 
-replicated_gaussian <- function() {
+# Four observations at each location of gaussian_data, from its model, each
+# with its own measurement error, and with a nugget at each location if
+# `nugget`.
+replicated_gaussian <- function(nugget = FALSE) {
   set.seed(3)
-  data <- do.call(rbind, replicate(4, gaussian_data, simplify = FALSE))
-  data$y <- data$y + rnorm(nrow(data), sd = 0.3)
+  rows <- rep(seq_len(fixture_n), 4)
+  data <- gaussian_data[rows, ]
+  location <- 3 + 0.5 * fixture_columns$cov + fixture_field +
+    if (nugget) rnorm(fixture_n, sd = sqrt(0.3)) else 0
+  data$y <- location[rows] + rnorm(length(rows), sd = sqrt(0.3))
   data
 }
 
@@ -431,7 +437,7 @@ test_that("glgpm_parameters() shows the parameters that fixed_pars holds", {
 })
 
 test_that("a held spatial variance leaves the nugget its standard error", {
-  data <- replicated_gaussian()
+  data <- replicated_gaussian(nugget = TRUE)
   fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = data, family = "gaussian",
                fixed_pars = list(sigma2 = 0.2), messages = FALSE)
   # log tau2 = nu2 + log sigma2, and sigma2 is known.

@@ -230,8 +230,7 @@ test_that("a Gaussian share is the kriging variance with the records averaged", 
   records <- observed[fit$ID_coords, ]
   point <- observed[2, , drop = FALSE] + c(0.3, 0.1)
   correlation <- function(a, b) {
-    distances <- sqrt(pmax(outer(rowSums(a^2), rowSums(b^2), "+") -
-                             2 * a %*% t(b), 0))
+    distances <- sqrt(outer(a[, 1], b[, 1], "-")^2 + outer(a[, 2], b[, 2], "-")^2)
     matern_correlation(distances, phi = parameters$phi, kappa = fit$kappa)
   }
   same_location <- outer(fit$ID_coords, fit$ID_coords, "==")
@@ -246,7 +245,7 @@ test_that("a Gaussian share is the kriging variance with the records averaged", 
   newdata <- st_as_sf(data.frame(x = point[1] / factor, z = point[2] / factor),
                       coords = c("x", "z"), crs = 32637)
   expect_equal(assess_extrapolation(fit, newdata)$spatial_unexplained,
-               expected, tolerance = 1e-7)
+               expected, tolerance = 1e-8)
 })
 
 test_that("documents that print data frames as tables show the print", {

@@ -349,7 +349,7 @@ test_that("counts have the PIT of counts from their predictive distributions", {
   }, denominator = rep(1L, fixture_n))
   fits <- list(
     binomial = binomial_model, poisson = poisson_model,
-    negative_binomial = fit(negative_binomial(), poisson_data,
+    negative_binomial = fit(negative_binomial(), negative_binomial_data,
                             denominator = denominator,
                             fixed_pars = list(theta = 2)),
     bernoulli = fit("binomial", bernoulli_data, denominator = denominator)

@@ -183,10 +183,10 @@ test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
     )
   }
   set.seed(2)
-  replicated <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
+  # Six copies of gaussian_re_data, each with its own measurement error, so
+  # that the error of the original data is a nugget at each location.
+  replicated <- do.call(rbind, replicate(6, gaussian_re_data, simplify = FALSE))
   replicated$y <- replicated$y + rnorm(nrow(replicated), sd = 0.3)
-  # The information of a variance estimated at zero is rounding, so that of the
-  # fit can need a jitter.
   gaussian_fit <- function(data, start_pars = NULL) {
     glgpm(
       y ~ cov + gp(nugget = TRUE) + re(i), data = data, family = "gaussian",
@@ -209,9 +209,9 @@ test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
       })
     }),
     negative_binomial = local({
-      fit <- count_fit(negative_binomial(), poisson_data)
+      fit <- count_fit(negative_binomial(), negative_binomial_data)
       list(fit = fit, refit = function() {
-        count_fit(negative_binomial(), poisson_data, coef(fit))
+        count_fit(negative_binomial(), negative_binomial_data, coef(fit))
       })
     }),
     gaussian_direct = list(fit = gaussian_model, refit = function() {
@@ -308,7 +308,7 @@ test_that("a start that leaves nothing to compare skips the comparison", {
   fitted <- 0
   counts <- with_mocked_bindings(
     glgpm(
-      y ~ cov + gp(), data = poisson_data, family = negative_binomial(),
+      y ~ cov + gp(), data = negative_binomial_data, family = negative_binomial(),
       denominator = denominator, control_mcmc = control_mcmc,
       seed = fixture_seed, control_mcml = fixture_control_mcml,
       return_samples = FALSE, messages = FALSE,

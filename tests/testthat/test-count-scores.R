@@ -380,7 +380,7 @@ test_that("a fit has the same count scores alone and in any position of a list",
   fits <- list(
     binomial = fit_family("binomial", binomial_data),
     poisson = fit_family("poisson", poisson_data),
-    negative_binomial = fit_family(negative_binomial(), poisson_data,
+    negative_binomial = fit_family(negative_binomial(), negative_binomial_data,
                                    fixed_pars = list(theta = 2))
   )
   assess <- function(models, seed = fixture_seed) {

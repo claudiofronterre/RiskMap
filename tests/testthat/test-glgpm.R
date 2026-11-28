@@ -453,8 +453,17 @@ test_that("check_computation() flags a spatial scale shorter than the spacing of
   expect_identical(checks$status[checks$check == "Spatial scale"], "SUSPICIOUS")
   expect_match(checks$fix[checks$check == "Spatial scale"],
                "set_control_mcml(pc_prior = TRUE)", fixed = TRUE)
-  # The short scale ran the dispersed starts of the check for other maxima.
-  expect_s3_class(attr(fit, "optimizer")$mcml_maxima_check, "data.frame")
+  # The short scale ran the dispersed starts of the check for other maxima,
+  # and the summary gives their table.
+  starts <- attr(fit, "optimizer")$mcml_maxima_check
+  expect_s3_class(starts, "data.frame")
+  checked <- check_computation(fit)
+  expect_identical(
+    checked$results[["Other maxima"]]$data[["Maxima from the dispersed starts"]],
+    tabulate_maxima_check(starts, fit$distance_units)
+  )
+  expect_true(any(grepl("Maxima from the dispersed starts",
+                        capture.output(print(summary(checked))), fixed = TRUE)))
 })
 
 test_that("a random-effect variance is held at zero when the data have no such effect (#206)", {
@@ -636,7 +645,7 @@ test_that("a model with re() terms keeps the default start without fitting a Gau
   fit_with <- function(family, start_pars = list()) {
     glgpm(
       y ~ cov + gp() + re(i),
-      data = if (family == "binomial") binomial_data else poisson_data,
+      data = if (family == "binomial") binomial_re_data else poisson_re_data,
       family = family, denominator = denominator,
       control_mcmc = control_mcmc, seed = fixture_seed,
       control_mcml = fixture_control_mcml, start_pars = start_pars,
@@ -845,9 +854,15 @@ test_that("a binomial model without an intercept starts from a regression withou
 })
 
 test_that("glgpm produces expected output for poisson models", {
-
+  # Counts with an exposure of one, for the fits without `denominator`.
+  unit_exposure <- function(seed, re) {
+    simulate_fixture(seed, function(columns) {
+      rpois(fixture_n, exp(1 + 0.2 * columns$cov + fixture_field +
+                             if (re) fixture_effect(columns$i) else 0))
+    }, denominator = rep(1L, fixture_n))
+  }
   fit_no_re <- glgpm(y ~ cov + gp(),
-                     data = poisson_data,
+                     data = unit_exposure(1, re = FALSE),
                      family = "poisson",
                      control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
@@ -856,11 +871,11 @@ test_that("glgpm produces expected output for poisson models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_identical(fit_no_re$family, "poisson")
-  expect_length(fitted(fit_no_re), nrow(poisson_data))
+  expect_length(fitted(fit_no_re), fixture_n)
   expect_true(all(fitted(fit_no_re) > 0))
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
-                  data = poisson_re_data,
+                  data = unit_exposure(9, re = TRUE),
                   family = "poisson",
                   control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
