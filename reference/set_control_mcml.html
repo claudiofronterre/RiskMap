@@ -5,7 +5,10 @@ fitting sample of draws, the estimate is corrected by one Newton step with
 the score from an independent validation sample, followed by further steps
 on that sample when the fitting sample predicts that one step leaves a
 residual, and the corrected estimate is certified with a second, fresh
-validation sample. The radius of the certificate, its allowance for the
+validation sample. If the further steps stop short of the maximum of that
+sample by more than the certificate tolerates, the correction is not
+applied and the estimate is not certified.
+The radius of the certificate, its allowance for the
 Monte Carlo error of that sample's score, is the larger of the radii of
 that sample and of a replicate of the same size drawn at the same
 estimate. The radius of one sample is estimated from its own draws, and is
@@ -23,7 +26,10 @@ fitting sample of draws, the estimate is corrected by one Newton step with
 the score from an independent validation sample, followed by further steps
 on that sample when the fitting sample predicts that one step leaves a
 residual, and the corrected estimate is certified with a second, fresh
-validation sample. The radius of the certificate, its allowance for the
+validation sample. If the further steps stop short of the maximum of that
+sample by more than the certificate tolerates, the correction is not
+applied and the estimate is not certified.
+The radius of the certificate, its allowance for the
 Monte Carlo error of that sample's score, is the larger of the radii of
 that sample and of a replicate of the same size drawn at the same
 estimate. The radius of one sample is estimated from its own draws, and is
@@ -82,7 +88,10 @@ fitting sample of draws, the estimate is corrected by one Newton step with
 the score from an independent validation sample, followed by further steps
 on that sample when the fitting sample predicts that one step leaves a
 residual, and the corrected estimate is certified with a second, fresh
-validation sample. The radius of the certificate, its allowance for the
+validation sample. If the further steps stop short of the maximum of that
+sample by more than the certificate tolerates, the correction is not
+applied and the estimate is not certified.
+The radius of the certificate, its allowance for the
 Monte Carlo error of that sample's score, is the larger of the radii of
 that sample and of a replicate of the same size drawn at the same
 estimate. The radius of one sample is estimated from its own draws, and is

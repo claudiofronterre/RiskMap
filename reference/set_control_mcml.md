@@ -6,19 +6,22 @@ fitting sample of draws, the estimate is corrected by one Newton step
 with the score from an independent validation sample, followed by
 further steps on that sample when the fitting sample predicts that one
 step leaves a residual, and the corrected estimate is certified with a
-second, fresh validation sample. The radius of the certificate, its
-allowance for the Monte Carlo error of that sample's score, is the
-larger of the radii of that sample and of a replicate of the same size
-drawn at the same estimate. The radius of one sample is estimated from
-its own draws, and is too small when the sample misses the rare draws of
-very large weight that dominate its error, which the replicate misses
-independently. The certificate is an approximate 95% bound, in
-statistical standard errors, on the Monte Carlo error of the estimate,
-that is its distance from the maximum of the exact likelihood that the
-fit has located. It is not an exact finite-sample guarantee, and it says
-nothing about whether that maximum is the highest (see `check_maxima`).
-If the certificate exceeds `tolerance`, the samples are enlarged to the
-size predicted to meet it and the fit is repeated.
+second, fresh validation sample. If the further steps stop short of the
+maximum of that sample by more than the certificate tolerates, the
+correction is not applied and the estimate is not certified. The radius
+of the certificate, its allowance for the Monte Carlo error of that
+sample's score, is the larger of the radii of that sample and of a
+replicate of the same size drawn at the same estimate. The radius of one
+sample is estimated from its own draws, and is too small when the sample
+misses the rare draws of very large weight that dominate its error,
+which the replicate misses independently. The certificate is an
+approximate 95% bound, in statistical standard errors, on the Monte
+Carlo error of the estimate, that is its distance from the maximum of
+the exact likelihood that the fit has located. It is not an exact
+finite-sample guarantee, and it says nothing about whether that maximum
+is the highest (see `check_maxima`). If the certificate exceeds
+`tolerance`, the samples are enlarged to the size predicted to meet it
+and the fit is repeated.
 
 ## Usage
 

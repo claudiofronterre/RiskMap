@@ -54,6 +54,11 @@ in the source repository.
   reports a bound on that error. In binomial and Poisson fits, household
   effects whose children differ in covariates are integrated out, which
   makes such fits much faster.
+- When the repeated Newton correction of a certified Monte Carlo maximum
+  likelihood estimate stops short of its maximum by more than the
+  certificate tolerates, the fit keeps the estimate it fitted, which is
+  not certified, and its next stage starts from that estimate with more
+  draws.
 - Every parameter has one name, the same in `start_pars`, `fixed_pars`,
   [`coef()`](https://rdrr.io/r/stats/coef.html),
   [`profile()`](https://rdrr.io/r/stats/profile.html) and
