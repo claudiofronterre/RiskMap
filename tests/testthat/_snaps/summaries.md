@@ -169,8 +169,9 @@
       
       Monte Carlo maximum likelihood
       x Not certified. The Newton correction of the estimate did not converge on the
-        validation draws, so the approximate 95% bound of 0.041 statistical standard
-        errors may not hold. Refit with a larger `max_draws` in `set_control_mcml()`.
+        validation draws, so it was not applied, and the approximate 95% bound of
+        0.041 statistical standard errors may not hold. Refit with a larger
+        `max_draws` in `set_control_mcml()`.
       ! 2 checks need a look. See `check_computation()`.
 
 # the summary of a cross-validation gives no area or limit for binary outcomes

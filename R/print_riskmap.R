@@ -162,8 +162,9 @@ describe_mcml_certificate <- function(mcml) {
     } else if (mcml$correction_refused) {
       paste0(
         "Not certified. The Newton correction of the estimate did not ",
-        "converge on the validation draws, so the approximate {level} bound ",
-        "of {bound} statistical standard errors may not hold. ",
+        "converge on the validation draws, so it was not applied, and the ",
+        "approximate {level} bound of {bound} statistical standard errors ",
+        "may not hold. ",
         refit("{.arg max_draws}")
       )
     } else {
