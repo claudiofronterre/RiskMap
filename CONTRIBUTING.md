@@ -443,7 +443,16 @@ ASCII symbols, and `test-format.R` also keeps one snapshot in Unicode.
   provided.
 - Test data is included in `tests/testthat/helper-data.R` which is
   loaded when `devtools::load_all()` is used and available to use in all
-  the tests.
+  the tests. Each dataset there is simulated from the model the tests
+  fit to it, so fit a model to data that contain every effect it
+  estimates, or simulate data at the same locations with
+  `simulate_fixture()`.
 - Tests affecting a change made should be run locally prior to
   submitting a PR, but the whole suite will be run whenever changes are
   pushed.
+- Do not use [`suppressWarnings()`](https://rdrr.io/r/base/warning.html)
+  in tests or fixtures. If a warning is expected, assert it with
+  `expect_warning()` and its class or message, or with
+  `expect_warnings()` from `tests/testthat/helper-conditions.R`, which
+  also fails on any other warning. If it is not expected, fix whatever
+  is causing it instead of hiding it.

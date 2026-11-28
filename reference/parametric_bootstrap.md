@@ -210,7 +210,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 # Ten simulations keep the example short. An analysis needs many more.
 bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 2026)
 #> ℹ Simulating and refitting 10 replicates.
-#> ✔ Done in 13 seconds. 10 of 10 refits succeeded.
+#> ✔ Done in 14 seconds. 10 of 10 refits succeeded.
 summary(bootstrap)
 #> ── Parametric bootstrap ────────────────────────────────────────────────────────
 #> Binomial geostatistical model, 10 replicates (seed 2026). Variances and the

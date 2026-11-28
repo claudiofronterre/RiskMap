@@ -248,8 +248,9 @@
 <div class="section level2">
 <h2 id="testing">Testing<a class="anchor" aria-label="anchor" href="#testing"></a></h2>
 <ul><li>We use <a href="https://cran.r-project.org/package=testthat" class="external-link">testthat</a> for unit tests. Each function should have unit tests to verify that they function as expected and fail gracefully when incorrect inputs are provided.</li>
-<li>Test data is included in <code>tests/testthat/helper-data.R</code> which is loaded when <code>devtools::load_all()</code> is used and available to use in all the tests.</li>
+<li>Test data is included in <code>tests/testthat/helper-data.R</code> which is loaded when <code>devtools::load_all()</code> is used and available to use in all the tests. Each dataset there is simulated from the model the tests fit to it, so fit a model to data that contain every effect it estimates, or simulate data at the same locations with <code>simulate_fixture()</code>.</li>
 <li>Tests affecting a change made should be run locally prior to submitting a PR, but the whole suite will be run whenever changes are pushed.</li>
+<li>Do not use <code><a href="https://rdrr.io/r/base/warning.html" class="external-link">suppressWarnings()</a></code> in tests or fixtures. If a warning is expected, assert it with <code>expect_warning()</code> and its class or message, or with <code>expect_warnings()</code> from <code>tests/testthat/helper-conditions.R</code>, which also fails on any other warning. If it is not expected, fix whatever is causing it instead of hiding it.</li>
 </ul></div>
 </div>
 
