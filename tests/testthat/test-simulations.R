@@ -325,7 +325,7 @@ test_that("assessment refits accept specify_glgpm templates #108", {
 test_that("joint output feeds the existing grid assessment", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
-                        prediction_grid = gaussian_data, seed = 2)
+                        prediction_grid = gaussian_data, seed = 25)
   result <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                               control_mcmc = control_mcmc,
                               seed = fixture_seed, spatial_scale = "location",
@@ -407,7 +407,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   boundaries <- create_convex_hull(gaussian_data)
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
-                        prediction_grid = gaussian_data, seed = 2)
+                        prediction_grid = gaussian_data, seed = 25)
 
   combined <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                 control_mcmc = control_mcmc,
@@ -498,7 +498,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
 test_that("assess_simulation classifies by default only when breaks are given #389", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
-                        prediction_grid = gaussian_data, seed = 2)
+                        prediction_grid = gaussian_data, seed = 25)
   assess <- function(...) {
     assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                       control_mcmc = control_mcmc, seed = fixture_seed,
@@ -740,7 +740,7 @@ test_that("assess_simulation records a failed fit instead of stopping", {
 test_that("assess_simulation leaves out areas without grid locations", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
-                        prediction_grid = gaussian_data, seed = 2)
+                        prediction_grid = gaussian_data, seed = 25)
   hull <- st_geometry(create_convex_hull(gaussian_data))
   boundaries <- st_sf(
     region = c("near", "far"),
