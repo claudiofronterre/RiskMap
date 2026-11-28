@@ -27,6 +27,13 @@ simulate_units <- function(records, seed = 11) {
        columns = columns)
 }
 
+# The records with the offset `known` added to the response, for a model with
+# that offset.
+with_offset <- function(simulated) {
+  simulated$columns$y <- simulated$columns$y + simulated$columns$known
+  simulated
+}
+
 in_units <- function(simulated, scale) {
   columns <- simulated$columns
   columns[c("y", "known")] <- scale * columns[c("y", "known")]
@@ -98,7 +105,7 @@ test_that("a Gaussian fit does not depend on the units of the response", {
     plain = list(y ~ gp(), single),
     covariate = list(y ~ x + gp(), single),
     no_intercept = list(y ~ 0 + x + gp(kappa = 1.5), single),
-    offset = list(y ~ x + offset(known) + gp(), single),
+    offset = list(y ~ x + offset(known) + gp(), with_offset(single)),
     random_effect = list(y ~ x + gp() + re(cluster), repeated),
     nugget = list(y ~ x + gp(nugget = TRUE), repeated),
     nugget_re = list(y ~ x + gp(nugget = TRUE) + re(cluster), repeated),
@@ -110,7 +117,7 @@ test_that("a Gaussian fit does not depend on the units of the response", {
                        fixed = function(k) list(tau2 = 0.25 * k^2)),
     held_error = list(y ~ x + gp(nugget = TRUE), many,
                       fixed = function(k) list(sigma2_me = 0.3 * k^2)),
-    held_others = list(y ~ x + gp() + re(cluster), repeated,
+    held_others = list(y ~ x + gp() + re(cluster), single,
                        fixed = function(k) {
                          list(sigma2 = k^2, sigma2_re = 0.25 * k^2)
                        }),
@@ -155,7 +162,7 @@ test_that("a Gaussian fit does not depend on the units of the response", {
 })
 
 test_that("a Gaussian fit does not depend on the mean of the response", {
-  simulated <- simulate_units(2)
+  simulated <- simulate_units(1)
   fit <- glgpm(y ~ x + gp(), data = in_units(simulated, 1),
                family = "gaussian", messages = FALSE)
   simulated$columns$y <- simulated$columns$y + 1e6
@@ -208,7 +215,9 @@ test_that("a response with a large variance does not stop far from the maximum",
   # With every variance starting at 1, 55% of these data sets multiplied by
   # 100, and 90% multiplied by 1000, stopped more than 0.1 below the maximum,
   # by up to 17.8, most of them with no spatial variance or at a scale far
-  # from the distances.
+  # from the distances. Some of the data sets have their maximum with no
+  # measurement error or at a scale below the spacing of the locations, which
+  # the search must reach too.
   for (seed in seq_len(20)) {
     set.seed(seed)
     locations <- cbind(runif(50, 0, 100), runif(50, 0, 100))
@@ -292,12 +301,12 @@ test_that("the starting regression is fitted on the standardised design", {
   simulated <- simulate_units(1)
   simulated$columns$year <- 2000 + 20 * seq(0, 1, length.out = 30)
   data <- in_units(simulated, 1)
-  formula <- y ~ year + I(year^2) + I(year^3) + gp()
+  formula <- y ~ x + year + I(year^2) + I(year^3) + gp()
   expect_lt(qr(model.matrix(~ year + I(year^2) + I(year^3), data))$rank, 4)
   fit <- glgpm(formula, data = data, family = "gaussian", messages = FALSE)
   started <- glgpm(formula, data = data, family = "gaussian",
                    messages = FALSE,
-                   start_pars = list(beta = c(mean(data$y), 0, 0, 0)))
+                   start_pars = list(beta = c(mean(data$y), 0, 0, 0, 0)))
   expect_equal(as.numeric(logLik(started)), as.numeric(logLik(fit)),
                tolerance = 1e-6)
   # The same model in the year since 2010.
@@ -336,7 +345,8 @@ test_that("the profiles of a Gaussian fit do not depend on the units", {
   skip_on_cran()
   simulated <- simulate_units(2)
   intervals <- lapply(c(1, 1e-6, 1e6), function(scale) {
-    fit <- glgpm(y ~ x + gp(), data = in_units(simulated, scale),
+    fit <- glgpm(y ~ x + gp(nugget = TRUE) + re(cluster),
+                 data = in_units(simulated, scale),
                  family = "gaussian", messages = FALSE)
     profiled <- profile(fit, parameters = c("x", "sigma2", "sigma2_me"),
                         n_points = 11, messages = FALSE)$intervals

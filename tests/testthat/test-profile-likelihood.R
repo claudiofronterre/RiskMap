@@ -681,6 +681,8 @@ test_that("a Gaussian profile point maximises the likelihood over the rest", {
 test_that("Gaussian profiles of fixed variances match refits", {
   problem <- make_gaussian_profile_problem(replicated_fit)
   measurement <- match("sigma2_me", problem$names)
+  # A point of the profile away from the estimate, at which the other
+  # parameters move.
   value <- problem$estimate[[measurement]] + 0.3
   point <- maximise_profile(problem, measurement, value,
                             problem$bank_estimate)
@@ -714,8 +716,15 @@ test_that("the Wald interval of the nugget variance is that of summary()", {
 })
 
 test_that("a joint Gaussian profile can fix every covariance parameter", {
-  fitted <- glgpm(y ~ gp(), data = replicated_data, family = "gaussian",
-                  fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
+  # The variances of the nugget and the measurement error are held at their
+  # estimates, so that the spatial variance and scale are the covariance
+  # parameters left.
+  estimates <- coef(replicated_fit)
+  fitted <- glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
+                  family = "gaussian",
+                  fixed_pars = list(sigma2_me = estimates$sigma2_me,
+                                    tau2 = estimates$tau2),
+                  messages = FALSE)
   profiles <- profile(fitted, parameters = "phi",
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, seed = 1, messages = FALSE)

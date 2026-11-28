@@ -112,13 +112,14 @@ test_that("estimate correctly names sigma2_me even when the nugget is also estim
   ## sigma2_me estimated) - see the #92 issue comment. Its *value* was still
   ## extracted correctly by position, so output was numerically unaffected;
   ## this guards against that gap reappearing now that lookup is name-based.
+  ## Two records at each location of gaussian_data, with a nugget at each
+  ## location and a measurement error for each record.
   set.seed(2)
-  n_loc <- 6
-  coords_u <- cbind(runif(n_loc, 0, 10000), runif(n_loc, 0, 10000))
-  coords_rep <- coords_u[rep(seq_len(n_loc), each = 2), ]
-  d <- data.frame(x = coords_rep[, 1], z = coords_rep[, 2], cov = rnorm(2 * n_loc))
-  d$y <- 1 + 0.5 * d$cov + rnorm(2 * n_loc)
-  dup_data <- sf::st_as_sf(d, coords = c("x", "z"), crs = 32637)
+  rows <- rep(seq_len(fixture_n), each = 2)
+  dup_data <- gaussian_data[rows, ]
+  location <- 3 + 0.5 * fixture_columns$cov + fixture_field +
+    rnorm(fixture_n, sd = sqrt(0.3))
+  dup_data$y <- location[rows] + rnorm(length(rows), sd = sqrt(0.3))
 
   fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = dup_data, family = "gaussian",
               messages = FALSE)

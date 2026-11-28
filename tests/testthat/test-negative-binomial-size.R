@@ -2,7 +2,8 @@
 # family block of the layout, with the records of the binomial kernel taken
 # at the size of each parameter value.
 
-size_survey <- function(n, field_variance, theta, seed, repeats = 1L) {
+size_survey <- function(n, field_variance, theta, seed, repeats = 1L,
+                        nugget = 0) {
   set.seed(seed)
   locations <- cbind(runif(n), runif(n)) * 100
   coords <- locations[rep(seq_len(n), each = repeats), , drop = FALSE]
@@ -13,6 +14,9 @@ size_survey <- function(n, field_variance, theta, seed, repeats = 1L) {
     drop(t(chol(covariance)) %*% rnorm(n))[rep(seq_len(n), each = repeats)]
   } else {
     numeric(n * repeats)
+  }
+  if (nugget > 0) {
+    field <- field + rnorm(n, sd = sqrt(nugget))[rep(seq_len(n), each = repeats)]
   }
   y <- rnbinom(n * repeats, size = theta,
                mu = m * exp(0.5 + 0.4 * x + field))
@@ -170,7 +174,7 @@ test_that("the size and a nugget need more than one record per location", {
   )
   # With two records per location they can be told apart, and the fit is
   # sampled, since the tables of the integrated form are for one size.
-  data <- size_survey(40, 0.5, 2, seed = 9, repeats = 2L)
+  data <- size_survey(40, 0.5, 2, seed = 9, repeats = 2L, nugget = 1)
   fit <- glgpm(y ~ x + gp(nugget = TRUE), data = data,
                family = negative_binomial(), denominator = m,
                control_mcml = set_control_mcml(integrate_noise = TRUE),

@@ -797,6 +797,8 @@ test_that("assess_simulation names missing candidate covariates on the grid", {
 })
 
 test_that("assess_simulation scores candidates without the generating model's nugget", {
+  # The candidate has no nugget, so that its fits take the nugget of the data
+  # into the field, at a scale below the spacing of the locations.
   generating <- specify_glgpm(
     y ~ gp(nugget = TRUE), data = binomial_nugget_data, family = "binomial",
     denominator = denominator,
