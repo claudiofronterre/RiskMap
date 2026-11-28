@@ -287,7 +287,7 @@ test_that("held variances of a binomial fit stay at their values", {
   expect_true(is.finite(summary(fit)$mcml$certificate))
   # The bootstrap refits with the holds, with columns for the others only.
   boot <- parametric_bootstrap(fit, n_sim = 2, seed = 3L,
-                                                messages = FALSE)
+                               messages = FALSE)
   expect_identical(colnames(boot$estimates),
                    c("beta.(Intercept)", "beta.cov", "phi"))
   # start_pars = coef(fit) works for a refit with the same holds.

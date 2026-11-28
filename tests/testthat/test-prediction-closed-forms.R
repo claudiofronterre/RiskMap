@@ -43,7 +43,7 @@ fit_held <- function(data, terms = character(), nugget = FALSE, ...) {
   if (length(terms)) held$sigma2_re <- held_re[terms]
   if (nugget && is.null(held$tau2)) held$tau2 <- 0.3
   glgpm(formula, data = data, family = "gaussian",
-                         fixed_pars = held, messages = FALSE)
+        fixed_pars = held, messages = FALSE)
 }
 
 # The distribution, given the data, of the linear predictor and of its spatial
@@ -624,13 +624,13 @@ test_that("a Gaussian variance estimated at zero keeps its estimate", {
   for (seed in 1:20) {
     data <- draw(seed)
     fit <- glgpm(y ~ gp(nugget = TRUE), data = data,
-                                  family = "gaussian", messages = FALSE)
+                 family = "gaussian", messages = FALSE)
     if (coef(fit)$tau2 < 1e-4) break
   }
   expect_lt(coef(fit)$tau2, 1e-4)
   expect_gt(sqrt(diag(fit$covariance))[["nu2"]], 100)
   without <- glgpm(y ~ gp(), data = data, family = "gaussian",
-                                    messages = FALSE)
+                   messages = FALSE)
   set.seed(1)
   draws <- RiskMap:::draw_parameter_values(fit, 500)
   # The nugget keeps its estimate, as its variance.

@@ -164,7 +164,7 @@ test_that("every result records the version of RiskMap that made it", {
   stamped(parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                                messages = FALSE))
   stamped(assess_extrapolation(gaussian_intercept_model, grid,
-                                                spatial_threshold = 0.8))
+                               spatial_threshold = 0.8))
   without_re <- simulate_glgpm(gaussian_intercept_model,
                                what = c("data", "surface"),
                                prediction_grid = grid,

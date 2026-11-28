@@ -472,8 +472,9 @@ test_that("weighted quadratic fits are exact and use QR when needed", {
   # Weight on two nodes only: the fit is not identified.
   concentrated <- matrix(0, 1, length(nodes))
   concentrated[1, 10:11] <- 1
-  expect_false(all(is.finite(fit_observation_quadratics(values[1, , drop = FALSE], concentrated,
-                               nodes)[1, ])))
+  expect_false(all(is.finite(
+    fit_observation_quadratics(values[1, , drop = FALSE], concentrated, nodes)[1, ]
+  )))
 })
 
 test_that("the global proposal keeps more effective draws than Laplace", {
@@ -658,10 +659,10 @@ test_that("a fit keeps its fitted estimate when the correction is refused", {
   survey <- st_as_sf(read.csv(test_path("fixtures", "refused-correction.csv")),
                      coords = c("x", "y"), crs = 32633)
   survey$units <- 5
-  fit <- suppressWarnings(glgpm(count ~ x1 + gp(nugget = TRUE), data = survey,
-                                family = "poisson", denominator = units,
-                                distance_units = "km", seed = 3302004,
-                                messages = FALSE))
+  fit <- glgpm(count ~ x1 + gp(nugget = TRUE), data = survey,
+               family = "poisson", denominator = units,
+               distance_units = "km", seed = 3302004,
+               messages = FALSE)
   first <- fit$mcml_history[[1L]]
   expect_true(first$residual_refused)
   expect_false(first$certified)

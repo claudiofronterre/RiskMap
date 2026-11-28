@@ -771,7 +771,7 @@ test_that("explicit non-Gaussian starts remain authoritative", {
 test_that("final fitted samples support a nugget model", {
   fit <- glgpm(
     y ~ cov + gp(nugget = TRUE),
-    fixed_pars = list(tau2 = 0.1),
+    fixed_pars = list(tau2 = 0.5),
     data = binomial_nugget_data,
     family = "binomial",
     denominator = denominator,

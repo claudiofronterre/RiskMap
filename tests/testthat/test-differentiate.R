@@ -48,7 +48,7 @@ test_that("a custom invlink that takes the numeric fallback fits as with its exa
   ## numeric fallback (as in the next test), here end to end through glgpm().
   ## The fit is that with the exact derivatives of the link. The fallback of
   ## a piecewise linear link from approxfun() does not yet move from its
-  ## starting values (#ISSUE).
+  ## starting values (#408).
   link <- function(eta) plogis(eta, scale = 1.5)
   exact <- list(
     inv = link,

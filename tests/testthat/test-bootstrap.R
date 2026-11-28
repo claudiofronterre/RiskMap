@@ -73,7 +73,7 @@ test_that("without a seed, one is drawn from the session's stream", {
 test_that("binomial bootstraps with random effects use separate streams", {
   skip_on_cran()
   boot <- parametric_bootstrap(binomial_model, n_sim = 2,
-                                                seed = 3, messages = FALSE)
+                               seed = 3, messages = FALSE)
   expect_identical(colnames(boot$estimates),
                    names(unlist(coef(binomial_model))))
   expect_false(anyNA(boot$estimates))

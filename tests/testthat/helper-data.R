@@ -1,27 +1,27 @@
 # The shared fixtures of the tests (#206). Every dataset is simulated from the
 # model that the tests fit to it, at the same 20 locations in a 10 km square
 # and with the same spatial field, so that each fit estimates effects its data
-# contain:
+# contain.
 #
-# - `gaussian_data`, `binomial_data` and `poisson_data` from `y ~ cov + gp()`,
-#   with a measurement error variance for the Gaussian data and the exposure
-#   `denominator` for the counts;
-# - `gaussian_re_data`, `binomial_re_data` and `poisson_re_data` from
-#   `y ~ cov + gp() + re(i)`, for `gaussian_model`, `binomial_model` and
-#   `poisson_model`;
-# - `gaussian_two_re_data` and `binomial_two_re_data` from
-#   `y ~ cov + gp() + re(i, j)`, with four levels of `j`;
-# - `gaussian_offset_data` from `y ~ cov + gp(nugget = TRUE) + offset(offset)`
-#   for `gaussian_offset_model`, and `gaussian_intercept_data` from `y ~ gp()`
-#   for `gaussian_intercept_model`;
-# - `binomial_nugget_data` from `y ~ cov + gp(nugget = TRUE)`, with five times
-#   the denominators, without which the nugget is not identified.
+# - `gaussian_data`, `binomial_data` and `poisson_data` come from
+#   `y ~ cov + gp()`, with a measurement error for the Gaussian data and the
+#   exposure `denominator` for the counts.
+# - `gaussian_re_data`, `binomial_re_data` and `poisson_re_data` come from
+#   `y ~ cov + gp() + re(i)`, and `gaussian_model`, `binomial_model` and
+#   `poisson_model` are fitted to them.
+# - `gaussian_two_re_data` and `binomial_two_re_data` come from
+#   `y ~ cov + gp() + re(i, j)`, with four levels of `j`.
+# - `gaussian_offset_data` comes from the model of `gaussian_offset_model` and
+#   `gaussian_intercept_data` from `y ~ gp()`, that of
+#   `gaussian_intercept_model`.
+# - `binomial_nugget_data` comes from `y ~ cov + gp(nugget = TRUE)`, with five
+#   times the denominators, without which the nugget is not identified.
 #
-# Each dataset draws its response with its own seed, chosen so that these
-# fits are clean: a scale longer than the median distance between
-# neighbouring locations (1.1 km), variances away from zero and every check of
-# `check_computation()` OK. Data for another model can be simulated at the
-# same locations with `simulate_fixture()`.
+# Each dataset draws its response with its own seed, chosen so that these fits
+# are clean, with a scale longer than the median distance between neighbouring
+# locations (1.1 km), variances away from zero and every check of
+# `check_computation()` OK. `simulate_fixture()` simulates data for another
+# model at the same locations.
 set.seed(1)
 fixture_n <- 20L
 fixture_groups <- fixture_n / 2L
@@ -33,7 +33,7 @@ fixture_columns <- withr::with_seed(1, {
              i = rep(seq_len(fixture_groups), each = 2),
              j = rep(1:2, each = fixture_groups))
 })
-# A field of variance 1 and scale 5.5 km.
+# A field of variance 1 and scale 5.5 km at the locations.
 fixture_field <- withr::with_seed(2, {
   correlation <- matern_correlation(dist(fixture_columns[, c("x", "z")]),
                                     phi = 5500, kappa = 1,
@@ -42,16 +42,16 @@ fixture_field <- withr::with_seed(2, {
 })
 
 # The locations with the response `y` that `response(columns)` draws with
-# `seed`. `columns` can replace columns of `fixture_columns`.
+# `seed`. Columns given in `...` replace those of `fixture_columns`.
 simulate_fixture <- function(seed, response, ...) {
   columns <- utils::modifyList(fixture_columns, list(...))
   columns$y <- withr::with_seed(seed, response(columns))
   st_as_sf(columns, coords = c("x", "z"), crs = 32637)
 }
+# Independent effects of the levels, one for each row.
 fixture_effect <- function(levels, variance = 1) {
   rnorm(max(levels), sd = sqrt(variance))[levels]
 }
-two_re_j <- rep(1:4, length.out = fixture_n)
 
 gaussian_data <- simulate_fixture(20, function(columns) {
   3 + 0.5 * columns$cov + fixture_field + rnorm(fixture_n, sd = sqrt(0.3))
@@ -63,7 +63,7 @@ gaussian_re_data <- simulate_fixture(10, function(columns) {
 gaussian_two_re_data <- simulate_fixture(60, function(columns) {
   3 + 0.5 * columns$cov + fixture_field + fixture_effect(columns$i) +
     fixture_effect(columns$j) + rnorm(fixture_n, sd = sqrt(0.3))
-}, j = two_re_j)
+}, j = rep(1:4, length.out = fixture_n))
 gaussian_offset_data <- simulate_fixture(14, function(columns) {
   3 + 0.5 * columns$cov + columns$offset + fixture_field +
     rnorm(fixture_n, sd = sqrt(0.3))
@@ -86,7 +86,7 @@ binomial_two_re_data <- simulate_fixture(31, function(columns) {
   rbinom(fixture_n, columns$denominator,
          plogis(0.2 + 0.3 * columns$cov + fixture_field +
                   fixture_effect(columns$i) + fixture_effect(columns$j)))
-}, j = two_re_j)
+}, j = rep(1:4, length.out = fixture_n))
 binomial_nugget_data <- simulate_fixture(20, function(columns) {
   rbinom(fixture_n, columns$denominator,
          plogis(0.2 + 0.3 * columns$cov + fixture_field +

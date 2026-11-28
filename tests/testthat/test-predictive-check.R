@@ -100,7 +100,7 @@ test_that("a model whose covariates leave no residuals has no variogram", {
   data <- gaussian_intercept_data
   data$site <- factor(seq_len(nrow(data)))
   fit <- glgpm(y ~ site + gp(), data = data, family = "gaussian", messages = FALSE,
-          fixed_pars = list(sigma2 = 0.5, phi = 2, sigma2_me = 0.1))
+               fixed_pars = list(sigma2 = 0.5, phi = 2, sigma2_me = 0.1))
   expect_warning(
     check <- assess_fit(list(saturated = fit, b = gaussian_intercept_model),
                         nsim = 19, seed = 1),
@@ -245,8 +245,8 @@ test_that("binomial observations are added up only if they are individuals", {
   set.seed(3)
   data$positive <- rbinom(2 * fixture_n, data$tested, 0.3)
   fit <- glgpm(positive ~ gp(), data = data, family = "binomial", denominator = tested,
-          fixed_pars = list(beta = -1, sigma2 = 0.5, phi = 2),
-          control_mcmc = control_mcmc, seed = 1, messages = FALSE)
+               fixed_pars = list(beta = -1, sigma2 = 0.5, phi = 2),
+               control_mcmc = control_mcmc, seed = 1, messages = FALSE)
   prevalence <- data$positive / data$tested
   check <- assess_fit(fit, nsim = 19, seed = 1)
   expect_identical(check$unit, "observation")
@@ -687,7 +687,8 @@ test_that("few locations have no variogram, or one class of it", {
   expect_output(print(check), "2\\s+locations")
   expect_input_error(plot_predictive_check(check, type = "variogram"), "x",
                      "no variogram, because no pair")
-  only <- assess_fit(fit, "variogram", nsim = 19, seed = 1)
+  expect_warning(only <- assess_fit(fit, "variogram", nsim = 19, seed = 1),
+                 "no variogram")
   expect_output(print(only), "There is no variogram, because no pair")
   expect_input_error(plot(only), "x", "no pair")
   one_class <- assess_fit(fit, breaks = c(0, 1e3), nsim = 19, seed = 1)
