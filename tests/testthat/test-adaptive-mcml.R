@@ -24,24 +24,30 @@ test_that("adaptive importance likelihood agrees with one-dimensional quadrature
   expect_equal(observed, exact, tolerance = 0.005)
 })
 
-test_that("a certified stage corrects the fit and certifies the correction", {
-  skip_on_cran()
+# One stage on 30 sites along a line, whose spatial effect has the amplitude
+# `amplitude`.
+fit_one_stage <- function(amplitude) {
   coordinate <- seq(0, 1, length.out = 30)
   covariate <- seq(-1, 1, length.out = 30)
   trials <- rep(20, 30)
   y <- round(trials * plogis(-0.4 + 0.5 * covariate +
-                               0.4 * sin(2 * pi * coordinate)))
+                               amplitude * sin(2 * pi * coordinate)))
   engine <- make_adaptive_mcml_engine(
     D = cbind(1, covariate), y = y,
     units_m = trials, distances = as.matrix(dist(coordinate)),
     family = "binomial"
   )
-  fit <- fit_adaptive_mcml(
+  fit_adaptive_mcml(
     engine = engine, start = c(-0.4, 0.5, log(0.8), log(0.4)),
     initial_budget = 1000, validation_budget = 2000, maximum_budget = 1000,
     maximum_stages = 1, seed = 2718,
     lower = c(-10, -10, -8, -8), upper = c(10, 10, 4, 4)
   )
+}
+
+test_that("a certified stage corrects the fit and certifies the correction", {
+  skip_on_cran()
+  fit <- fit_one_stage(0.8)
   stage <- fit$history[[1L]]
 
   expect_identical(stage$proposal, "global")
@@ -49,14 +55,38 @@ test_that("a certified stage corrects the fit and certifies the correction", {
   expect_true(is.finite(stage$certificate))
   expect_equal(stage$certificate,
                stage$certificate_distance + stage$certificate_radius)
+  expect_false(stage$residual_refused)
   expect_identical(fit$certified, stage$certificate <= 0.1)
-  expect_identical(fit$outcome,
-                   if (fit$certified) "certified" else "not certified")
+  expect_true(fit$certified)
+  expect_identical(fit$outcome, "certified")
   # The returned estimate is the corrected one, not the optimum of the bank.
   expect_identical(fit$estimate, stage$estimate)
-  expect_false(identical(stage$estimate, stage$fitted_estimate))
+  expect_false(isTRUE(all.equal(stage$estimate, stage$fitted_estimate,
+                                tolerance = 0)))
+  expect_null(stage$discarded_estimate)
   expect_equal(fit$score, stage$second_validation$score)
   expect_identical(fit$validation_budget, 2000L)
+})
+
+test_that("a stage whose correction is refused keeps the optimum of the bank", {
+  skip_on_cran()
+  # With a weaker spatial effect the spatial variance is at its lower bound,
+  # and the repeated correction along the scale barely contracts, so it is
+  # refused and the stage keeps the optimum of the bank, where the second bank
+  # is drawn.
+  fit <- fit_one_stage(0.4)
+  stage <- fit$history[[1L]]
+
+  expect_identical(stage$proposal, "global")
+  expect_true(is.finite(stage$certificate))
+  expect_true(stage$residual_refused)
+  expect_false(fit$certified)
+  expect_identical(fit$outcome, "not certified")
+  expect_identical(fit$estimate, stage$estimate)
+  expect_identical(stage$estimate, stage$fitted_estimate)
+  expect_length(stage$discarded_estimate, 4L)
+  expect_gt(max(abs(stage$discarded_estimate - stage$fitted_estimate)), 0)
+  expect_equal(fit$score, stage$second_validation$score)
 })
 
 test_that("boundary variance components and their linked scale parameter are detected", {
@@ -598,18 +628,85 @@ test_that("the correction continues only past its check", {
   expect_equal(exact$estimate, one_step, tolerance = 1e-6)
   expect_false(exact$residual_refused)
   # Repeated corrections that stop far from the bank's maximum are discarded
-  # and the estimate of the first step is not certified.
+  # with the first step, and the second bank is drawn at the fitted estimate,
+  # which is not certified.
   local_mocked_bindings(repeat_correction = function(engine, penalty,
                                                      corrected, root, ...) {
     list(estimate = corrected + 3, root = root / 2, information = diag(2),
          lengths = 3, converged = FALSE, remaining = 5)
   })
   stopped <- correct(curved, curved_score, c(1.5, 0))
-  expect_equal(stopped$estimate, one_step, tolerance = 1e-6)
+  expect_identical(stopped$estimate, c(1.5, 0))
+  expect_equal(stopped$discarded_estimate, one_step, tolerance = 1e-6)
+  expect_identical(stopped$second_validation$score, curved_score(c(1.5, 0)))
   expect_null(stopped$information)
   expect_true(stopped$residual_refused)
   expect_false(stopped$certified)
   expect_identical(stopped$correction_steps, 2L)
+  # A correction that is kept records nothing as discarded.
+  expect_null(corrected$discarded_estimate)
+})
+
+test_that("a fit keeps its fitted estimate when the correction is refused", {
+  skip_on_cran()
+  # Simulated Poisson counts with an exposure of 5 at 76 locations. The first
+  # Newton step is short in the metric of the information, but it moves the
+  # log nugget ratio from about -2.9 to above 0, where the log-likelihood is
+  # lower, and the repeated correction does not converge. A next stage that
+  # started from that step ended with a nugget variance of about 10 and a
+  # log-likelihood below -170, against about -132.5 at the maximum.
+  survey <- st_as_sf(read.csv(test_path("fixtures", "refused-correction.csv")),
+                     coords = c("x", "y"), crs = 32633)
+  survey$units <- 5
+  fit <- suppressWarnings(glgpm(count ~ x1 + gp(nugget = TRUE), data = survey,
+                                family = "poisson", denominator = units,
+                                distance_units = "km", seed = 3302004,
+                                messages = FALSE))
+  first <- fit$mcml_history[[1L]]
+  expect_true(first$residual_refused)
+  expect_false(first$certified)
+  expect_identical(first$estimate, first$fitted_estimate)
+  nugget <- length(first$estimate)
+  expect_gt(first$discarded_estimate[nugget] - first$fitted_estimate[nugget],
+            2)
+  # The second bank is drawn at the fitted estimate, so it agrees with the
+  # first bank about its log-likelihood.
+  expect_lt(abs(first$second_validation$log_likelihood -
+                  first$first_validation$log_likelihood), 1)
+  expect_gt(as.numeric(logLik(fit)), -134)
+  expect_lt(coef(fit)$tau2, 1)
+})
+
+test_that("a refused correction plans the next stage from twice the tolerance", {
+  # The bound of a stage whose correction was refused may not hold, so a bound
+  # just above the tolerance does not shrink the next stage to a few more
+  # draws, as it does when the correction is accepted.
+  plan <- function(refused) {
+    stages <- list(
+      list(outcome = "not certified", certified = FALSE, certificate = 0.11,
+           estimate = c(0, -3), residual_refused = refused),
+      list(outcome = "certified", certified = TRUE, certificate = 0.05,
+           estimate = c(0, -3))
+    )
+    budgets <- integer()
+    local_mocked_bindings(
+      run_certified_stage = function(engine, objective, penalty, start, budget,
+                                     ...) {
+        budgets[length(budgets) + 1L] <<- budget
+        stages[[length(budgets)]]
+      }
+    )
+    engine <- list(proposal_failures = function() 0L,
+                   reset_proposal_failures = function() NULL,
+                   proposal_type = function() "laplace",
+                   latent_dimension = 1L)
+    fit_adaptive_mcml(engine, start = c(0, 0), initial_budget = 1000L,
+                      validation_budget = 5000L, seed = 1L)
+    budgets
+  }
+  # Five times the draws, as for a certificate of 0.2.
+  expect_identical(plan(TRUE), c(1000L, 5000L))
+  expect_identical(plan(FALSE), c(1000L, 2000L))
 })
 
 test_that("the certificate takes the larger radius of two banks", {
@@ -1333,10 +1430,13 @@ test_that("the objective carries the PC penalty only when asked", {
 
 test_that("the table of the check for other maxima is restored to user units", {
   history <- list(list(estimate = c(0, 0, 1, log(2)),
+                       discarded_estimate = c(0, 0, 1, log(3)),
                        maxima_check = data.frame(log_phi = log(c(0.1, 3)))))
   restored <- restore_mcml_history_scale(history, diag(2), distance_scale = 10)
   expect_equal(restored[[1]]$maxima_check$log_phi, log(c(1, 30)))
   expect_equal(restored[[1]]$estimate[4], log(20))
+  # The first step of a refused correction is restored with the estimates.
+  expect_equal(restored[[1]]$discarded_estimate[4], log(30))
 })
 
 # The R computations that the compiled routines of the engine replaced, which

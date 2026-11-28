@@ -1158,7 +1158,8 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    for (field in intersect(c("estimate", "fitted_estimate"), names(entry))) {
+    for (field in intersect(c("estimate", "fitted_estimate",
+                              "discarded_estimate"), names(entry))) {
       if (is.list(entry[[field]])) {
         entry[[field]]$beta <- as.numeric(
           coefficient_transform %*% entry[[field]]$beta
@@ -3375,7 +3376,10 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' the score from an independent validation sample, followed by further steps
 ##' on that sample when the fitting sample predicts that one step leaves a
 ##' residual, and the corrected estimate is certified with a second, fresh
-##' validation sample. The radius of the certificate, its allowance for the
+##' validation sample. If the further steps stop short of the maximum of that
+##' sample by more than the certificate tolerates, the correction is not
+##' applied and the estimate is not certified.
+##' The radius of the certificate, its allowance for the
 ##' Monte Carlo error of that sample's score, is the larger of the radii of
 ##' that sample and of a replicate of the same size drawn at the same
 ##' estimate. The radius of one sample is estimated from its own draws, and is

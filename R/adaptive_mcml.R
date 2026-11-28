@@ -2044,7 +2044,7 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
     reason <- if (isTRUE(last$correction_left_bounds)) {
       "The Newton correction of the estimate would have taken a variance or scale past the upper bound of the search, along a direction where the likelihood is nearly flat, so it was not applied, and the approximate 95% bound of {bound} statistical standard errors may not hold."
     } else if (refused) {
-      "The Newton correction of the estimate did not converge on the validation draws, so the approximate 95% bound of {bound} statistical standard errors may not hold."
+      "The Newton correction of the estimate did not converge on the validation draws, so it was not applied, and the approximate 95% bound of {bound} statistical standard errors may not hold."
     } else {
       "Its approximate 95% bound is {bound} statistical standard errors, above the tolerance of {tolerance}."
     }
